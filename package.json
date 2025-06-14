@@ -1,10 +1,10 @@
 {
   "name": "wcli0",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Enhanced MCP server for Windows CLI interactions with advanced configuration and security features",
   "type": "module",
   "bin": {
-    "server-win-cli": "./dist/index.js"
+    "wcli0": "./dist/index.js"
   },
   "files": [
     "dist"

@@ -35,23 +35,22 @@ import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, bu
 import { loadConfig, createDefaultConfig, getResolvedShellConfig } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
-import { createRequire } from 'module';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Import package.json in a way that works in both development and production
-// When this file is at dist/index.js, package.json should be at ../package.json
+// Import package.json with fallback for robust cross-environment support
 const packageJson = (() => {
+  const fallbackPackageInfo = { version: '1.0.2', name: 'wcli0' };
+  
   try {
-    // First attempt: relative path from the compiled location
-    return JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
-  } catch (error) {
-    console.warn('Warning: Could not read package.json from expected location, using fallback');
-    return { version: '1.0.0', name: 'wcli0' };
+    const packagePath = path.resolve(__dirname, '../package.json');
+    return JSON.parse(readFileSync(packagePath, 'utf8'));
+  } catch (error: any) {
+    console.error('Warning: Could not locate package.json, using fallback version information');
+    return fallbackPackageInfo;
   }
 })();
 
@@ -903,8 +902,8 @@ const main = async () => {
   }
 };
 
-if (pathToFileURL(process.argv[1]).href === import.meta.url) {
-  main();
-}
+// For ES modules, always run main() when this file is executed directly
+// The module is only imported when used as a library, not when run as a binary
+main();
 
 export { CLIServer, main };
