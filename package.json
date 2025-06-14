@@ -1,0 +1,67 @@
+{
+  "name": "wcli0",
+  "version": "1.0.0",
+  "description": "Enhanced MCP server for Windows CLI interactions with advanced configuration and security features",
+  "type": "module",
+  "bin": {
+    "server-win-cli": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "author": "s2005 <s2005@users.noreply.github.com>",
+  "homepage": "https://github.com/s2005/wcli0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/s2005/wcli0.git"
+  },
+  "bugs": {
+    "url": "https://github.com/s2005/wcli0/issues"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "cli",
+    "windows",
+    "modelcontextprotocol",
+    "mcp-server"
+  ],
+  "overrides": {
+    "glob": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "clean": "shx rm -rf dist",
+    "build": "tsc && shx chmod +x dist/index.js",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:validation": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/validation.test.ts",
+    "test:wsl": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/wsl.test.ts",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration/",
+    "test:async": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/asyncOperations.test.ts",
+    "test:directory": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/directoryValidator.test.ts",
+    "test:debug": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.0.1",
+    "yargs": "^17.7.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.11.0",
+    "@types/yargs": "^17.0.33",
+    "jest": "^29.7.0",
+    "shx": "^0.3.4",
+    "ts-jest": "^29.3.4",
+    "typescript": "^5.3.3"
+  }
+}
