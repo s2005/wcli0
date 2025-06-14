@@ -42,7 +42,18 @@ import { dirname } from 'path';
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const packageJson = JSON.parse(readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+
+// Import package.json in a way that works in both development and production
+// When this file is at dist/index.js, package.json should be at ../package.json
+const packageJson = (() => {
+  try {
+    // First attempt: relative path from the compiled location
+    return JSON.parse(readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
+  } catch (error) {
+    console.warn('Warning: Could not read package.json from expected location, using fallback');
+    return { version: '1.0.0', name: 'wcli0' };
+  }
+})();
 
 // Parse command line arguments using yargs
 import yargs from 'yargs/yargs';
