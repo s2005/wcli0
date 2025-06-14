@@ -1,0 +1,56 @@
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 5000,
+      "commandTimeout": 120,
+      "enableInjectionProtection": false,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": ["format", "shutdown"],
+      "blockedArguments": ["--system"],
+      "blockedOperators": []
+    },
+    "paths": {
+      "allowedPaths": ["C:\\Dev", "D:\\Projects"],
+      "initialDir": "C:\\Dev"
+    }
+  },
+  "shells": {
+    "powershell": {
+      "enabled": true,
+      "executable": {
+        "command": "pwsh.exe",
+        "args": ["-NoProfile", "-Command"]
+      },
+      "overrides": {
+        "security": {
+          "commandTimeout": 300
+        }
+      }
+    },
+    "wsl": {
+      "enabled": true,
+      "executable": {
+        "command": "wsl.exe",
+        "args": ["-e"]
+      },
+      "wslConfig": {
+        "mountPoint": "/mnt/",
+        "inheritGlobalPaths": true,
+        "pathMapping": {
+          "enabled": true,
+          "windowsToWsl": true
+        }
+      },
+      "overrides": {
+        "security": {
+          "commandTimeout": 600
+        },
+        "paths": {
+          "allowedPaths": ["/home/dev", "/var/www", "/opt"]
+        }
+      }
+    }
+  }
+}

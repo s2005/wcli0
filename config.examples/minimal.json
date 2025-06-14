@@ -1,0 +1,17 @@
+{
+  "global": {
+    "security": {
+      "restrictWorkingDirectory": false,
+      "enableInjectionProtection": true
+    }
+  },
+  "shells": {
+    "cmd": {
+      "enabled": true,
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      }
+    }
+  }
+}

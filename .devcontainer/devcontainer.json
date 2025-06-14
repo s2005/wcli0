@@ -1,0 +1,27 @@
+{
+  "name": "wcli0-tests",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "target": "build"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash"
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode-remote.remote-containers",
+        "editorconfig.editorconfig"
+      ]
+    }
+  },
+  "postCreateCommand": "npm run clean && npm run test && npm run build",
+  "remoteUser": "root",
+  "containerEnv": {
+    "npm_config_cache": "/tmp/.npm",
+    "npm_config_unsafe_perm": "true"
+  }
+}

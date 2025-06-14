@@ -1,0 +1,193 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: npm test
+      - name: Test with open handles detection
+        run: npm run test:debug
+        continue-on-error: true
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Test
+        run: npm test
+
+  test-windows-no-bash:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Remove Git Bash from PATH
+        shell: pwsh # Ensure this script runs with PowerShell
+        run: |
+          $gitBashPathsToRemove = @(
+            "C:\Program Files\Git\usr\bin",
+            "C:\Program Files\Git\bin",
+            "C:\Program Files\Git\mingw64\bin",
+            "C:\mingw64\bin", # As seen in your logs
+            "C:\msys64\mingw64\bin", # Common MSYS2 path
+            "C:\msys64\usr\bin",      # Common MSYS2 path
+            "C:\ProgramData\Chocolatey\bin" # Chocolatey installs git to a path that might include shims
+            # Add any other paths you suspect might be providing bash tools
+          )
+
+          # Get the current PATH, trim whitespace from each segment, remove empty segments, and then de-duplicate
+          $envPath = $env:PATH
+          $pathSegments = $envPath -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" } | Select-Object -Unique
+          $deduplicatedPath = $pathSegments -join ';'
+
+          Write-Host "De-duplicated Original PATH (first 300 chars): $($deduplicatedPath.Substring(0, [System.Math]::Min($deduplicatedPath.Length, 300)))"
+
+          $newPathSegments = @()
+          # Iterate over the de-duplicated path segments
+          foreach ($segment in ($deduplicatedPath -split ';')) {
+            $isPathToRemove = $false
+            foreach ($pathPatternToRemove in $gitBashPathsToRemove) {
+              # Normalize both paths for comparison: trim trailing slashes/backslashes
+              $normalizedSegment = $segment.TrimEnd('\', '/')
+              $normalizedPathPattern = $pathPatternToRemove.TrimEnd('\', '/')
+              
+              # Case-insensitive comparison for equality
+              if ($normalizedSegment.Equals($normalizedPathPattern, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $isPathToRemove = $true
+                Write-Host "Removing path due to exact match: $segment (matched $pathPatternToRemove)"
+                break
+              }
+            }
+            
+            if (-not $isPathToRemove) {
+              $newPathSegments += $segment
+            }
+          }
+          $newPath = $newPathSegments -join ';'
+
+          if ($newPath.Length -lt $deduplicatedPath.Length) {
+              Write-Host "PATH has been modified. Some paths were removed."
+          } else {
+              Write-Host "PATH was not significantly changed. This might be okay if no targeted paths were present, or it might mean the paths to remove need adjustment."
+          }
+
+          Write-Host "Final New PATH to be set (first 300 chars): $($newPath.Substring(0, [System.Math]::Min($newPath.Length, 300)))"
+          echo "PATH=$newPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Verify PATH (Post-Modification)
+        shell: pwsh
+        run: |
+          Write-Host "Current PATH in this step (first 300 chars): $($env:PATH.Substring(0, [System.Math]::Min($env:PATH.Length, 300)))"
+
+          # Attempt to find 'ls.exe' (from Git Bash), it should not be found.
+          $lsExeLocation = Get-Command ls.exe -ErrorAction SilentlyContinue
+          if ($null -eq $lsExeLocation) {
+            Write-Host "'ls.exe' (Git Bash) command not found in PATH, as expected."
+          } else {
+            Write-Host "'ls.exe' (Git Bash) command IS STILL FOUND at $($lsExeLocation.Source). PATH modification might need further adjustment."
+          }
+
+          # For completeness, show that PowerShell's 'ls' alias is still there
+          $psLsAlias = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+          if ($null -ne $psLsAlias) {
+            Write-Host "PowerShell's 'ls' alias (for Get-ChildItem) is still available (Source: $($psLsAlias.Source)), as expected at this stage."
+          } else {
+            Write-Host "PowerShell's 'ls' alias not found. This is unexpected at this stage."
+          }
+
+      - name: Remove and Verify PowerShell 'ls' Alias
+        shell: pwsh
+        run: |
+          Write-Host "Initial check for PowerShell 'ls' alias..."
+          $initialLsAlias = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+          if ($null -ne $initialLsAlias) {
+            Write-Host "PowerShell 'ls' alias found initially (Source: $($initialLsAlias.Source)). Attempting removal..."
+            Remove-Item alias:ls -Force -ErrorAction Continue # Use 'Continue' to see errors if any
+            
+            Write-Host "Verifying removal of PowerShell 'ls' alias in the same script execution..."
+            $lsAliasAfterRemove = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+            if ($null -eq $lsAliasAfterRemove) {
+              Write-Host "VERIFICATION SUCCESSFUL: PowerShell 'ls' alias is NOT found after removal attempt."
+            } else {
+              Write-Host "VERIFICATION FAILED: PowerShell 'ls' alias IS STILL FOUND (Source: $($lsAliasAfterRemove.Source)) even after removal in the same script."
+              Write-Host "Attempting fallback: defining 'ls' as an erroring function."
+              function ls { Write-Error "ls command has been intentionally disabled by a custom function." ; exit 1 }
+              $checkLsFunction = Get-Command ls -ErrorAction SilentlyContinue
+              if ($checkLsFunction.CommandType -eq 'Function') {
+                Write-Host "'ls' is now a function. Invoking it should error."
+              } else {
+                Write-Host "Failed to redefine 'ls' as a function."
+              }
+            }
+          } else {
+            Write-Host "PowerShell 'ls' alias was not found initially. No removal needed."
+          }
+
+          # Final check for ls.exe (Git Bash)
+          $lsExeLocation = Get-Command ls.exe -ErrorAction SilentlyContinue
+          if ($null -eq $lsExeLocation) {
+            Write-Host "'ls.exe' (Git Bash) also remains not found in PATH, as expected."
+          } else {
+            Write-Host "WARNING: 'ls.exe' (Git Bash) command IS NOW FOUND at $($lsExeLocation.Source). This is unexpected."
+          }
+
+      - name: Verify 'ls' command NOT available in CMD
+        shell: cmd
+        run: |
+          @echo off
+          echo Verifying 'ls' command in CMD using 'where'...
+          where ls >nul 2>&1
+          if %errorlevel% == 0 (
+            echo ERROR: 'ls' command IS FOUND in CMD via 'where' command.
+            where ls
+            exit /b 1
+          )
+          echo SUCCESS: 'ls' command is NOT found in CMD via 'where' (errorlevel %errorlevel%), as expected.
+          
+          echo Verifying 'ls' command in CMD by direct execution...
+          ls >nul 2>&1
+          if %errorlevel% NEQ 9009 goto ls_direct_execution_failed
+          echo SUCCESS: Direct execution of 'ls' failed with errorlevel 9009 (command not found), as expected.
+          goto end_of_script
+
+          :ls_direct_execution_failed
+          echo ERROR: Direct execution of 'ls' did NOT fail with errorlevel 9009 (actual: %errorlevel%). 'ls' might be available.
+          exit /b 1
+
+          :end_of_script
+          echo All CMD 'ls' checks passed.
+          exit /b 0
+
+      - name: Test (Specific)
+        shell: cmd
+        run: npm test -- tests/integration/shellExecution.test.ts tests/wsl.test.ts

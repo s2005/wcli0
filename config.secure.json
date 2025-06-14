@@ -1,0 +1,79 @@
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 1000,
+      "commandTimeout": 15,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": [
+        "rm",
+        "del",
+        "rmdir",
+        "format",
+        "shutdown",
+        "restart",
+        "reg",
+        "regedit",
+        "net",
+        "netsh",
+        "takeown",
+        "icacls",
+        "powershell",
+        "cmd",
+        "bash",
+        "sh",
+        "python",
+        "node"
+      ],
+      "blockedArguments": [
+        "--exec",
+        "-e",
+        "/c",
+        "-enc",
+        "-encodedcommand",
+        "-command",
+        "--interactive",
+        "-i",
+        "--login",
+        "--system",
+        "--privileged",
+        "--admin",
+        "sudo"
+      ],
+      "blockedOperators": ["&", "|", ";", "`", "&&", "||", ">>", ">"]
+    },
+    "paths": {
+      "allowedPaths": ["C:\\SecureWorkspace"],
+      "initialDir": "C:\\SecureWorkspace"
+    }
+  },
+  "shells": {
+    "powershell": {
+      "enabled": true,
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Restricted", "-Command"]
+      },
+      "overrides": {
+        "security": {
+          "commandTimeout": 10
+        },
+        "restrictions": {
+          "blockedCommands": [
+            "Invoke-Expression",
+            "Invoke-Command",
+            "Start-Process",
+            "New-Object",
+            "Add-Type",
+            "Invoke-WebRequest",
+            "Invoke-RestMethod",
+            "Remove-Item",
+            "Clear-Content"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 3000,
+      "commandTimeout": 60,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": [
+        "format",
+        "shutdown",
+        "restart",
+        "reg",
+        "regedit"
+      ],
+      "blockedArguments": [
+        "--system",
+        "--privileged"
+      ],
+      "blockedOperators": [";", "&"]
+    },
+    "paths": {
+      "allowedPaths": [
+        "C:\\Users\\Developer\\Projects",
+        "C:\\temp",
+        "D:\\workspace"
+      ],
+      "initialDir": "C:\\Users\\Developer\\Projects"
+    }
+  },
+  "shells": {
+    "powershell": {
+      "enabled": true,
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      },
+      "overrides": {
+        "security": {
+          "commandTimeout": 90
+        }
+      }
+    },
+    "cmd": {
+      "enabled": true,
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      }
+    },
+    "gitbash": {
+      "enabled": true,
+      "executable": {
+        "command": "C:\\Program Files\\Git\\bin\\bash.exe",
+        "args": ["-c"]
+      }
+    },
+    "wsl": {
+      "enabled": true,
+      "executable": {
+        "command": "wsl.exe",
+        "args": ["-e"]
+      },
+      "wslConfig": {
+        "mountPoint": "/mnt/",
+        "inheritGlobalPaths": true,
+        "pathMapping": {
+          "enabled": true,
+          "windowsToWsl": true
+        }
+      }
+    }
+  }
+}

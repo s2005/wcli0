@@ -1,0 +1,67 @@
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 2000,
+      "commandTimeout": 30,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": [
+        "rm",
+        "del",
+        "rmdir",
+        "format",
+        "shutdown",
+        "restart",
+        "reg",
+        "regedit",
+        "net",
+        "netsh",
+        "takeown",
+        "icacls"
+      ],
+      "blockedArguments": [
+        "--exec",
+        "-e",
+        "/c",
+        "-enc",
+        "-encodedcommand",
+        "-command",
+        "--interactive",
+        "-i",
+        "--login",
+        "--system"
+      ],
+      "blockedOperators": ["&", "|", ";", "`"]
+    },
+    "paths": {
+      "allowedPaths": ["C:\\Users\\YourUsername", "C:\\Projects"],
+      "initialDir": null,
+      "restrictWorkingDirectory": true
+    }
+  },
+  "shells": {
+    "powershell": {
+      "enabled": true,
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      }
+    },
+    "cmd": {
+      "enabled": true,
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      }
+    },
+    "gitbash": {
+      "enabled": true,
+      "executable": {
+        "command": "C:\\Program Files\\Git\\bin\\bash.exe",
+        "args": ["-c"]
+      }
+    }
+  }
+}
