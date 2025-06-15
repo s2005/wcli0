@@ -36,6 +36,20 @@ describe('Detailed Tool Descriptions', () => {
     expect(result).toContain('Windows CMD:');
   });
 
+  test('buildExecuteCommandDescription notes path formats for all shells', () => {
+    const configs = new Map<string, ResolvedShellConfig>();
+    configs.set('powershell', sampleConfig('powershell.exe'));
+    configs.set('cmd', sampleConfig('cmd.exe'));
+    configs.set('gitbash', sampleConfig('bash.exe'));
+    configs.set('wsl', { ...sampleConfig('wsl.exe'), wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true } });
+
+    const result = buildExecuteCommandDescription(configs);
+
+    expect(result).toContain('Path format: Windows-style');
+    expect(result).toContain('Path format: Mixed');
+    expect(result).toContain('Path format: Unix-style');
+  });
+
   test('buildValidateDirectoriesDescription describes shell specific mode', () => {
     const result = buildValidateDirectoriesDescription(true);
     expect(result).toContain('Check if directories are within allowed paths');

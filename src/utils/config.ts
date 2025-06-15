@@ -161,7 +161,7 @@ export function getResolvedShellConfig(
   return resolved;
 }
 
-function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerConfig>): ServerConfig {
+export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerConfig>): ServerConfig {
   const merged: ServerConfig = {
     global: {
       security: {
@@ -300,7 +300,7 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
   return merged;
 }
 
-function validateConfig(config: ServerConfig): void {
+export function validateConfig(config: ServerConfig): void {
   // Validate security settings
   if (config.global.security.maxCommandLength < 1) {
     throw new Error('maxCommandLength must be positive');
