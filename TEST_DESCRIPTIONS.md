@@ -28,6 +28,17 @@ This document summarizes the purpose of each unit test in the project.
 - **loadConfig fills missing security settings with defaults** – verifies that any security settings not supplied in the config file are populated with default values.
 - **includeDefaultWSL setting is ignored (deprecated)** – ensures deprecated `includeDefaultWSL` in the security section does not enable WSL.
 
+## tests/configValidation.test.ts
+
+- **throws for nonpositive maxCommandLength** – ensures validation rejects negative or zero maxCommandLength values.
+- **throws for enabled shell missing executable fields** – detects incomplete shell executable settings.
+- **throws for commandTimeout below 1** – enforces a minimum timeout of one second.
+- **passes for valid configuration** – confirms that a properly formed config does not throw.
+
+## tests/defaultConfig.test.ts
+
+- **writes default config without validatePath functions** – verifies that the file created by `createDefaultConfig` omits runtime validation functions.
+
 ## tests/directoryValidator.test.ts
 
 - **should return valid for directories within allowed paths** – validates that directories contained in the allowed list are accepted.
@@ -73,6 +84,14 @@ This document summarizes the purpose of each unit test in the project.
 - **generates correct description with powershell and gitbash enabled** – ensures that only the relevant examples for enabled shells are present.
 - **handles empty allowed shells array** – confirms that an empty shell list results in a minimal description without examples.
 - **handles unknown shell names** – tests that unrecognized shell names appear in the header but no examples are generated.
+
+## tests/toolDescription.details.test.ts
+
+- **buildExecuteCommandDescription includes shell summaries and examples** – verifies that the detailed description lists each enabled shell with sample usage.
+- **buildExecuteCommandDescription notes path formats for all shells** – ensures path format hints for Windows, mixed, and Unix shells appear.
+- **buildValidateDirectoriesDescription describes shell specific mode** – confirms the shell-specific validation block is documented when enabled.
+- **buildValidateDirectoriesDescription without shell specific mode** – checks the simpler description when shell-specific validation is disabled.
+- **buildGetConfigDescription outlines return fields** – validates that the get_config tool documentation lists the configuration fields returned.
 
 ## tests/validation.test.ts
 
@@ -174,6 +193,19 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 ## tests/wsl/isWslPathAllowed.test.ts
 
 - **matches allowed and disallowed paths including `/mnt/<drive>` conversion** – parameterized cases verify path allowance and drive mount handling.
+
+## tests/pathValidation.edge.test.ts
+
+- **WSL converts Windows paths before validation** – ensures Windows style paths are converted to `/mnt/` form for checking.
+- **WSL rejects paths outside allowed list after conversion** – disallowed paths remain blocked even after conversion.
+- **GitBash accepts Windows and Unix style paths** – verifies both `C:\` and `/c/` formats are permitted when allowed.
+- **throws when allowedPaths empty** – validation fails if no allowed paths are configured.
+
+## tests/configMerge.test.ts
+
+- **handles user config enabling subset of shells** – merging honours explicit enable/disable flags while keeping defaults for others.
+- **uses defaults when sections omitted** – missing global sections retain default values during merge.
+- **omitted shells retain defaults** – unspecified shells are included with default configuration.
 
 ## tests/integration/endToEnd.test.ts
 
