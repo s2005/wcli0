@@ -11,3 +11,6 @@ tests/config*.json
 # VS Code
 .vscode/
 coverage/
+
+# Private documentation
+PUBLISHING.md
