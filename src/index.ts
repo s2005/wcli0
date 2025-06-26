@@ -273,6 +273,9 @@ class CLIServer {
           }
           // Pass original WSL path to emulator via environment variable
           envVars.WSL_ORIGINAL_PATH = workingDir;
+        } else if (shellName === 'gitbash') {
+          // Normalize Git Bash paths like /c/foo to Windows format for spawn
+          spawnCwd = normalizeWindowsPath(workingDir);
         }
         
         shellProcess = spawn(
