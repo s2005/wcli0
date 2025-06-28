@@ -101,15 +101,15 @@ export function buildExecuteCommandDescription(
       lines.push(`- Blocked operators: ${config.restrictions.blockedOperators.join(', ')}`);
     }
     
-    // Add path format information
-    if (shellName === 'wsl') {
+    // Add path format information based on shell type
+    if (config.type === 'wsl' || config.type === 'unix') {
       lines.push(`- Path format: Unix-style (/home/user, /mnt/c/...)`);
-      if (config.wslConfig?.inheritGlobalPaths) {
+      if (config.type === 'wsl' && config.wslConfig?.inheritGlobalPaths) {
         lines.push(`- Inherits global Windows paths (converted to /mnt/...)`);
       }
-    } else if (shellName === 'cmd' || shellName === 'powershell') {
+    } else if (config.type === 'windows') {
       lines.push(`- Path format: Windows-style (C:\\Users\\...)`);
-    } else if (shellName === 'gitbash') {
+    } else if (config.type === 'mixed') {
       lines.push(`- Path format: Mixed (C:\\... or /c/...)`);
     }
     

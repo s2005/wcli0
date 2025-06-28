@@ -25,12 +25,12 @@ export function buildExecuteCommandSchema(
     if (config) {
       const parts = [`${shell} shell`];
       parts.push(`timeout: ${config.security.commandTimeout}s`);
-      
-      if (shell === 'wsl') {
+
+      if (config.type === 'wsl' || config.type === 'unix') {
         parts.push('Unix paths');
-      } else if (shell === 'cmd' || shell === 'powershell') {
+      } else if (config.type === 'windows') {
         parts.push('Windows paths');
-      } else if (shell === 'gitbash') {
+      } else if (config.type === 'mixed') {
         parts.push('Mixed paths');
       }
       
@@ -54,9 +54,9 @@ export function buildExecuteCommandSchema(
       workingDir: {
         type: "string",
         description: "Working directory (optional). Format depends on shell type:\n" +
-                   "- Windows shells (cmd, powershell): Use C:\\Path\\Format\n" +
-                   "- WSL: Use /unix/path/format\n" +
-                   "- Git Bash: Both formats accepted"
+                   "- Windows shells: Use C:\\Path\\Format\n" +
+                   "- Unix/WSL shells: Use /unix/path/format\n" +
+                   "- Mixed shells: Both formats accepted"
       }
     },
     required: ["shell", "command"],

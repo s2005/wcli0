@@ -42,6 +42,7 @@ describe('get_config tool', () => {
     },
     shells: {
       powershell: {
+        type: 'windows',
         enabled: true,
         executable: {
           command: 'powershell.exe',
@@ -54,6 +55,7 @@ describe('get_config tool', () => {
         }
       },
       cmd: {
+        type: 'windows',
         enabled: true,
         executable: {
           command: 'cmd.exe',
@@ -66,6 +68,7 @@ describe('get_config tool', () => {
         }
       },
       gitbash: {
+        type: 'mixed',
         enabled: false,
         executable: {
           command: 'bash.exe',

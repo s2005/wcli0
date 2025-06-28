@@ -55,6 +55,7 @@ export function buildShellConfig(
   overrides: Partial<BaseShellConfig | WslShellConfig> = {}
 ): BaseShellConfig | WslShellConfig {
   const base: BaseShellConfig = {
+    type: shellType === 'wsl' ? 'wsl' : 'windows',
     enabled: true,
     executable: {
       command: 'test.exe',
@@ -82,6 +83,7 @@ export function createWslEmulatorConfig(overrides: Partial<WslShellConfig> = {})
   const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
   
   return {
+    type: 'wsl',
     enabled: true,
     executable: {
       command: 'node',

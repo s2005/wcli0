@@ -4,6 +4,7 @@ import { createValidationContext } from '../../src/utils/validationContext.js';
 import type { ResolvedShellConfig } from '../../src/types/config.js';
 
 const baseResolved: Readonly<ResolvedShellConfig> = {
+  type: 'wsl',
   enabled: true,
   executable: { command: 'wsl.exe', args: [] },
   security: {

@@ -101,8 +101,9 @@ export function resolveShellConfiguration(
   shell: BaseShellConfig | WslShellConfig
 ): ResolvedShellConfig {
   const overrides = shell.overrides || {};
-  
+
   const resolved: ResolvedShellConfig = {
+    type: shell.type,
     enabled: shell.enabled,
     executable: shell.executable,
     security: overrides.security 

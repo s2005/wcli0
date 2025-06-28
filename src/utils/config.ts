@@ -38,6 +38,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
   },
   shells: {
     powershell: {
+      type: 'windows',
       enabled: true,
       executable: {
         command: 'powershell.exe',
@@ -46,6 +47,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       validatePath: (dir: string) => /^[a-zA-Z]:\\/.test(dir)
     },
     cmd: {
+      type: 'windows',
       enabled: true,
       executable: {
         command: 'cmd.exe',
@@ -59,6 +61,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       }
     },
     gitbash: {
+      type: 'mixed',
       enabled: true,
       executable: {
         command: 'C:\\Program Files\\Git\\bin\\bash.exe',
@@ -72,6 +75,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       }
     },
     wsl: {
+      type: 'wsl',
       enabled: true,
       executable: {
         command: 'wsl.exe',
@@ -154,7 +158,7 @@ export function getResolvedShellConfig(
   let resolved = resolveShellConfiguration(config.global, shell);
   
   // Special handling for WSL path inheritance
-  if (shellName === 'wsl' && resolved.wslConfig) {
+  if (resolved.type === 'wsl' && resolved.wslConfig) {
     resolved = applyWslPathInheritance(resolved, config.global.paths.allowedPaths);
   }
   
@@ -199,6 +203,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   // Add each shell, ensuring required properties are always set
   if (shouldIncludePowerShell) {
     const baseShell = defaultConfig.shells.powershell || {
+      type: 'windows',
       enabled: false,
       executable: { command: '', args: [] }
     };
@@ -220,6 +225,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
 
   if (shouldIncludeCmd) {
     const baseShell = defaultConfig.shells.cmd || {
+      type: 'windows',
       enabled: false,
       executable: { command: '', args: [] }
     };
@@ -241,6 +247,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
 
   if (shouldIncludeGitBash) {
     const baseShell = defaultConfig.shells.gitbash || {
+      type: 'mixed',
       enabled: false,
       executable: { command: '', args: [] }
     };
@@ -262,6 +269,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
 
   if (shouldIncludeWSL) {
     const baseShell = defaultConfig.shells.wsl || {
+      type: 'wsl',
       enabled: false,
       executable: { command: '', args: [] },
       wslConfig: {

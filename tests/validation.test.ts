@@ -26,12 +26,13 @@ import type { ResolvedShellConfig } from '../src/types/config.js';
  * Helper function to create a resolved shell config for testing
  */
 function createTestConfig(
-  blockedCommands: string[] = [], 
-  blockedArgs: string[] = [], 
+  blockedCommands: string[] = [],
+  blockedArgs: string[] = [],
   blockedOperators: string[] = [],
   allowedPaths: string[] = []
 ): ResolvedShellConfig {
   return {
+    type: 'windows',
     enabled: true,
     executable: {
       command: 'test',
@@ -369,6 +370,7 @@ describe('Path Validation', () => {
   test('validateWorkingDirectory handles GitBash paths properly', () => {
     // Using memory of GitBash style paths in the new config system
     const gitbashConfig = createTestConfig([], [], [], ['C:\\Users\\test', 'D:\\Projects']);
+    gitbashConfig.type = 'mixed';
     const gitbashContext = createTestContext('gitbash', gitbashConfig);
     
     // GitBash paths format should be properly converted and validated
@@ -424,6 +426,7 @@ describe('WSL Path Validation', () => {
   test('validateWorkingDirectory with WSL validation context', () => {
     // Create a WSL config with allowedPaths
     const wslConfig = createTestConfig([], [], [], ['/mnt/c/allowed', '/tmp', '/home/user']);
+    wslConfig.type = 'wsl';
     wslConfig.wslConfig = {
       mountPoint: '/mnt/',
       inheritGlobalPaths: true
@@ -445,6 +448,7 @@ describe('WSL Path Validation', () => {
   test('validateWorkingDirectory with WSL context handles Windows paths', () => {
     // Create a WSL config with Windows paths being converted
     const wslConfig = createTestConfig([], [], [], ['/mnt/c/allowed', '/home/user']);
+    wslConfig.type = 'wsl';
     wslConfig.wslConfig = {
       mountPoint: '/mnt/',
       inheritGlobalPaths: true
