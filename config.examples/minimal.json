@@ -5,9 +5,10 @@
       "enableInjectionProtection": true
     }
   },
-  "shells": {
-    "cmd": {
-      "enabled": true,
+    "shells": {
+      "cmd": {
+        "type": "windows",
+        "enabled": true,
       "executable": {
         "command": "cmd.exe",
         "args": ["/c"]

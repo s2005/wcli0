@@ -18,6 +18,7 @@
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "pwsh.exe",
@@ -30,6 +31,7 @@
       }
     },
     "wsl": {
+      "type": "wsl",
       "enabled": true,
       "executable": {
         "command": "wsl.exe",
