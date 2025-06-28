@@ -62,6 +62,7 @@ describe('Async Command Execution', () => {
     
     // Configure WSL shell to use the emulator for cross platform tests
     config.shells.wsl = {
+      type: 'wsl',
       enabled: true,
       executable: {
         command: 'node',

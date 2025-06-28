@@ -246,7 +246,7 @@ class CLIServer {
       let shellProcess: ReturnType<typeof spawn>;
       let spawnArgs: string[];
 
-      if (shellName === 'wsl') {
+      if (shellConfig.type === 'wsl') {
         const parsedCommand = parseCommand(command);
         spawnArgs = [...shellConfig.executable.args, parsedCommand.command, ...parsedCommand.args];
       } else {
@@ -257,7 +257,7 @@ class CLIServer {
         // For WSL, convert WSL paths back to Windows paths for spawn cwd
         let spawnCwd = workingDir;
         let envVars = { ...process.env };
-        if (shellName === 'wsl') {
+        if (shellConfig.type === 'wsl') {
           if (workingDir.startsWith('/mnt/')) {
             // Convert /mnt/c/path to C:\path
             const match = workingDir.match(/^\/mnt\/([a-z])\/(.*)$/i);
@@ -273,7 +273,7 @@ class CLIServer {
           }
           // Pass original WSL path to emulator via environment variable
           envVars.WSL_ORIGINAL_PATH = workingDir;
-        } else if (shellName === 'gitbash') {
+        } else if (shellConfig.type === 'mixed') {
           // Normalize Git Bash paths like /c/foo to Windows format for spawn
           spawnCwd = normalizeWindowsPath(workingDir);
         }

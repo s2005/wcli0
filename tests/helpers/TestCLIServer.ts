@@ -28,6 +28,7 @@ export class TestCLIServer {
     // Configure wsl shell to use the local emulator script
     const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
     const wslShell = {
+      type: 'wsl',
       enabled: true,
       executable: {
         command: 'node',
