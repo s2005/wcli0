@@ -31,7 +31,7 @@
   },
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -44,7 +44,7 @@
       }
     },
     "cmd": {
-      "type": "windows",
+      "type": "cmd",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
@@ -52,7 +52,7 @@
       }
     },
     "gitbash": {
-      "type": "mixed",
+      "type": "gitbash",
       "enabled": true,
       "executable": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe",

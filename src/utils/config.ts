@@ -38,7 +38,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
   },
   shells: {
     powershell: {
-      type: 'windows',
+      type: 'powershell',
       enabled: true,
       executable: {
         command: 'powershell.exe',
@@ -47,7 +47,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       validatePath: (dir: string) => /^[a-zA-Z]:\\/.test(dir)
     },
     cmd: {
-      type: 'windows',
+      type: 'cmd',
       enabled: true,
       executable: {
         command: 'cmd.exe',
@@ -61,7 +61,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       }
     },
     gitbash: {
-      type: 'mixed',
+      type: 'gitbash',
       enabled: true,
       executable: {
         command: 'C:\\Program Files\\Git\\bin\\bash.exe',
@@ -203,7 +203,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   // Add each shell, ensuring required properties are always set
   if (shouldIncludePowerShell) {
     const baseShell = defaultConfig.shells.powershell || {
-      type: 'windows',
+      type: 'powershell',
       enabled: false,
       executable: { command: '', args: [] }
     };
@@ -225,7 +225,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
 
   if (shouldIncludeCmd) {
     const baseShell = defaultConfig.shells.cmd || {
-      type: 'windows',
+      type: 'cmd',
       enabled: false,
       executable: { command: '', args: [] }
     };
@@ -247,7 +247,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
 
   if (shouldIncludeGitBash) {
     const baseShell = defaultConfig.shells.gitbash || {
-      type: 'mixed',
+      type: 'gitbash',
       enabled: false,
       executable: { command: '', args: [] }
     };

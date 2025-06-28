@@ -42,20 +42,37 @@
         "--admin",
         "sudo"
       ],
-      "blockedOperators": ["&", "|", ";", "`", "&&", "||", ">>", ">"]
+      "blockedOperators": [
+        "&",
+        "|",
+        ";",
+        "`",
+        "&&",
+        "||",
+        ">>",
+        ">"
+      ]
     },
     "paths": {
-      "allowedPaths": ["C:\\SecureWorkspace"],
+      "allowedPaths": [
+        "C:\\SecureWorkspace"
+      ],
       "initialDir": "C:\\SecureWorkspace"
     }
   },
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
-        "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Restricted", "-Command"]
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Restricted",
+          "-Command"
+        ]
       },
       "overrides": {
         "security": {

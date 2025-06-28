@@ -55,7 +55,7 @@ export function buildShellConfig(
   overrides: Partial<BaseShellConfig | WslShellConfig> = {}
 ): BaseShellConfig | WslShellConfig {
   const base: BaseShellConfig = {
-    type: shellType === 'wsl' ? 'wsl' : 'windows',
+    type: shellType === 'wsl' ? 'wsl' : 'cmd',
     enabled: true,
     executable: {
       command: 'test.exe',

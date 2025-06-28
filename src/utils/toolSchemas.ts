@@ -26,11 +26,11 @@ export function buildExecuteCommandSchema(
       const parts = [`${shell} shell`];
       parts.push(`timeout: ${config.security.commandTimeout}s`);
 
-      if (config.type === 'wsl' || config.type === 'unix') {
+      if (config.type === 'wsl') {
         parts.push('Unix paths');
-      } else if (config.type === 'windows') {
+      } else if (config.type === 'cmd' || config.type === 'powershell') {
         parts.push('Windows paths');
-      } else if (config.type === 'mixed') {
+      } else if (config.type === 'gitbash') {
         parts.push('Mixed paths');
       }
       

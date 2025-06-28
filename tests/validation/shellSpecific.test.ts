@@ -16,7 +16,14 @@ function createMockShellConfig(
   blockedOps: string[] = ['&', '|', ';']
 ): ResolvedShellConfig {
   return {
-    type: shellName === 'wsl' ? 'wsl' : (shellName === 'gitbash' ? 'mixed' : 'windows'),
+    type:
+      shellName === 'wsl'
+        ? 'wsl'
+        : shellName === 'gitbash'
+        ? 'gitbash'
+        : shellName === 'powershell'
+        ? 'powershell'
+        : 'cmd',
     enabled: true,
     executable: { command: 'test.exe', args: [] },
     security: {

@@ -18,8 +18,9 @@ export function createValidationContext(
   shellName: string,
   shellConfig: ResolvedShellConfig
 ): ValidationContext {
-  const isWindowsShell = shellConfig.type === 'windows';
-  const isUnixShell = shellConfig.type === 'unix' || shellConfig.type === 'wsl';
+  const isWindowsShell =
+    shellConfig.type === 'cmd' || shellConfig.type === 'powershell';
+  const isUnixShell = shellConfig.type === 'gitbash' || shellConfig.type === 'wsl';
   const isWslShell = shellConfig.type === 'wsl';
   
   return {
@@ -37,6 +38,6 @@ export function createValidationContext(
 export function getExpectedPathFormat(context: ValidationContext): 'windows' | 'unix' | 'mixed' {
   if (context.isWindowsShell) return 'windows';
   if (context.isWslShell) return 'unix';
-  if (context.shellConfig.type === 'mixed') return 'mixed';
+  if (context.shellConfig.type === 'gitbash') return 'mixed';
   return 'unix';
 }

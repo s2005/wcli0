@@ -8,47 +8,93 @@
     },
     "restrictions": {
       "blockedCommands": [
-        "format", "del", "rm", "rmdir", "rd",
-        "shutdown", "restart", "reboot",
-        "reg", "regedit", "regedt32",
-        "net", "netsh", "netstat",
-        "taskkill", "tasklist",
-        "sc", "wmic",
-        "bcdedit", "diskpart",
-        "cipher", "sfc",
-        "powershell", "pwsh", "cmd", "bash", "sh"
+        "format",
+        "del",
+        "rm",
+        "rmdir",
+        "rd",
+        "shutdown",
+        "restart",
+        "reboot",
+        "reg",
+        "regedit",
+        "regedt32",
+        "net",
+        "netsh",
+        "netstat",
+        "taskkill",
+        "tasklist",
+        "sc",
+        "wmic",
+        "bcdedit",
+        "diskpart",
+        "cipher",
+        "sfc",
+        "powershell",
+        "pwsh",
+        "cmd",
+        "bash",
+        "sh"
       ],
       "blockedArguments": [
-        "--exec", "-e", "/c", "-c",
-        "-enc", "-encodedcommand",
-        "-command", "-file",
-        "--interactive", "-i",
-        "--login", "-l",
-        "--system", "-s",
-        "--force", "-f",
-        "--recursive", "-r", "-rf"
+        "--exec",
+        "-e",
+        "/c",
+        "-c",
+        "-enc",
+        "-encodedcommand",
+        "-command",
+        "-file",
+        "--interactive",
+        "-i",
+        "--login",
+        "-l",
+        "--system",
+        "-s",
+        "--force",
+        "-f",
+        "--recursive",
+        "-r",
+        "-rf"
       ],
-      "blockedOperators": ["&", "|", ";", "`", "$(", "||", "&&", ">", ">>", "<"]
+      "blockedOperators": [
+        "&",
+        "|",
+        ";",
+        "`",
+        "$(",
+        "||",
+        "&&",
+        ">",
+        ">>",
+        "<"
+      ]
     },
     "paths": {
-      "allowedPaths": ["C:\\SafeScripts"],
+      "allowedPaths": [
+        "C:\\SafeScripts"
+      ],
       "initialDir": "C:\\SafeScripts"
     }
   },
   "shells": {
     "cmd": {
-      "type": "windows",
+      "type": "cmd",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
-        "args": ["/c"]
+        "args": [
+          "/c"
+        ]
       },
       "overrides": {
         "security": {
           "maxCommandLength": 200
         },
         "restrictions": {
-          "blockedCommands": ["*"]
+          "blockedCommands": [
+            "*"
+          ]
         }
       }
     }

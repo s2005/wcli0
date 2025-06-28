@@ -7,22 +7,33 @@
       "restrictWorkingDirectory": true
     },
     "restrictions": {
-      "blockedCommands": ["format", "shutdown"],
-      "blockedArguments": ["--system"],
+      "blockedCommands": [
+        "format",
+        "shutdown"
+      ],
+      "blockedArguments": [
+        "--system"
+      ],
       "blockedOperators": []
     },
     "paths": {
-      "allowedPaths": ["C:\\Dev", "D:\\Projects"],
+      "allowedPaths": [
+        "C:\\Dev",
+        "D:\\Projects"
+      ],
       "initialDir": "C:\\Dev"
     }
   },
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "pwsh.exe",
-        "args": ["-NoProfile", "-Command"]
+        "args": [
+          "-NoProfile",
+          "-Command"
+        ]
       },
       "overrides": {
         "security": {
@@ -35,7 +46,9 @@
       "enabled": true,
       "executable": {
         "command": "wsl.exe",
-        "args": ["-e"]
+        "args": [
+          "-e"
+        ]
       },
       "wslConfig": {
         "mountPoint": "/mnt/",
@@ -50,7 +63,11 @@
           "commandTimeout": 600
         },
         "paths": {
-          "allowedPaths": ["/home/dev", "/var/www", "/opt"]
+          "allowedPaths": [
+            "/home/dev",
+            "/var/www",
+            "/opt"
+          ]
         }
       }
     }

@@ -33,37 +33,53 @@
         "--login",
         "--system"
       ],
-      "blockedOperators": ["&", "|", ";", "`"]
+      "blockedOperators": [
+        "&",
+        "|",
+        ";",
+        "`"
+      ]
     },
     "paths": {
-      "allowedPaths": ["C:\\Users\\YourUsername", "C:\\Projects"],
+      "allowedPaths": [
+        "C:\\Users\\YourUsername",
+        "C:\\Projects"
+      ],
       "initialDir": null,
       "restrictWorkingDirectory": true
     }
   },
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
-        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command"
+        ]
       }
     },
     "cmd": {
-      "type": "windows",
+      "type": "cmd",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
-        "args": ["/c"]
+        "args": [
+          "/c"
+        ]
       }
     },
     "gitbash": {
-      "type": "mixed",
+      "type": "gitbash",
       "enabled": true,
       "executable": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe",
-        "args": ["-c"]
+        "args": [
+          "-c"
+        ]
       }
     }
   }
