@@ -6,8 +6,9 @@ import {
 } from '../src/utils/toolDescription.js';
 import type { ResolvedShellConfig } from '../src/types/config.js';
 
-function sampleConfig(name: string): ResolvedShellConfig {
+function sampleConfig(name: string, type: ResolvedShellConfig['type'] = 'windows'): ResolvedShellConfig {
   return {
+    type,
     enabled: true,
     executable: { command: name, args: [] },
     security: {
@@ -25,7 +26,7 @@ describe('Detailed Tool Descriptions', () => {
   test('buildExecuteCommandDescription includes shell summaries and examples', () => {
     const configs = new Map<string, ResolvedShellConfig>();
     configs.set('cmd', sampleConfig('cmd.exe'));
-    configs.set('wsl', { ...sampleConfig('wsl.exe'), wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true } });
+    configs.set('wsl', { ...sampleConfig('wsl.exe', 'wsl'), wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true } });
 
     const result = buildExecuteCommandDescription(configs);
 
@@ -40,8 +41,8 @@ describe('Detailed Tool Descriptions', () => {
     const configs = new Map<string, ResolvedShellConfig>();
     configs.set('powershell', sampleConfig('powershell.exe'));
     configs.set('cmd', sampleConfig('cmd.exe'));
-    configs.set('gitbash', sampleConfig('bash.exe'));
-    configs.set('wsl', { ...sampleConfig('wsl.exe'), wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true } });
+    configs.set('gitbash', sampleConfig('bash.exe', 'mixed'));
+    configs.set('wsl', { ...sampleConfig('wsl.exe', 'wsl'), wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true } });
 
     const result = buildExecuteCommandDescription(configs);
 

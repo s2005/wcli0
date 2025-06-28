@@ -30,6 +30,7 @@ export function createSerializableConfig(config: ServerConfig): any {
     if (!shellConfig) continue;
 
     const shellInfo: any = {
+      type: shellConfig.type,
       enabled: shellConfig.enabled,
       executable: {
         command: shellConfig.executable.command,
@@ -88,6 +89,7 @@ export function createResolvedConfigSummary(
 ): any {
   return {
     shell: shellName,
+    type: resolved.type,
     enabled: resolved.enabled,
     executable: {
       command: resolved.executable.command,

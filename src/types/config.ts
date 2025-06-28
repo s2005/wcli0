@@ -103,9 +103,18 @@ export interface ShellExecutableConfig {
 }
 
 /**
+ * Supported shell semantics types
+ */
+export type ShellType = 'windows' | 'unix' | 'mixed' | 'wsl';
+
+/**
  * Base configuration for all shell types
  */
 export interface BaseShellConfig {
+  /**
+   * The type of shell semantics (windows, unix, mixed or wsl)
+   */
+  type: ShellType;
   /**
    * Whether this shell is enabled
    */
@@ -161,6 +170,7 @@ export interface WslSpecificConfig {
  * Extended configuration for WSL shell with WSL-specific options
  */
 export interface WslShellConfig extends BaseShellConfig {
+  type: 'wsl';
   /**
    * WSL-specific configuration
    */
@@ -192,6 +202,10 @@ export interface ServerConfig {
  * This is used internally and represents the final configuration for a shell
  */
 export interface ResolvedShellConfig {
+  /**
+   * The type of shell semantics
+   */
+  type: ShellType;
   /**
    * Whether this shell is enabled
    */

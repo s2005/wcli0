@@ -42,6 +42,7 @@ beforeAll(() => {
     },
     shells: {
       cmd: {
+        type: 'windows',
         enabled: true,
         executable: {
           command: 'cmd.exe',
@@ -66,6 +67,7 @@ describe('validateCommand with different settings', () => {
       },
       shells: {
         cmd: {
+          type: 'windows',
           enabled: true,
           executable: {
             command: 'cmd.exe',
@@ -89,6 +91,7 @@ describe('validateCommand with different settings', () => {
       },
       shells: {
         cmd: {
+          type: 'windows',
           enabled: true,
           executable: {
             command: 'cmd.exe',
@@ -112,6 +115,7 @@ describe('validateCommand with different settings', () => {
       },
       shells: {
         cmd: {
+          type: 'windows',
           enabled: true,
           executable: {
             command: 'cmd.exe',

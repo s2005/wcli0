@@ -46,6 +46,7 @@ beforeAll(() => {
     },
     shells: {
       cmd: {
+        type: 'windows',
         enabled: true,
         executable: {
           command: 'cmd.exe',

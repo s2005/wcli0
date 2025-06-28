@@ -283,6 +283,7 @@ describe('Shell Config Resolution', () => {
       },
       shells: {
         cmd: {
+          type: 'windows',
           enabled: true,
           executable: {
             command: 'cmd.exe',
@@ -337,6 +338,7 @@ describe('Shell Config Resolution', () => {
       },
       shells: {
         cmd: {
+          type: 'windows',
           enabled: true,
           executable: {
             command: 'cmd.exe',
@@ -377,6 +379,7 @@ describe('Shell Config Resolution', () => {
       },
       shells: {
         wsl: {
+          type: 'wsl',
           enabled: true,
           executable: {
             command: 'node',

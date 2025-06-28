@@ -4,9 +4,13 @@ import { createValidationContext } from '../../src/utils/validationContext';
 import { ResolvedShellConfig } from '../../src/types/config';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 
-// Helper to create mock config
-function createMockConfig(allowedPaths: string[] = ['C:\\Windows', 'C:\\Users']): ResolvedShellConfig {
-  return {
+// Helper to create mock config. Allows passing either a list of allowed paths
+// or a partial ResolvedShellConfig to override defaults.
+function createMockConfig(
+  overrides: Partial<ResolvedShellConfig> | string[] = ['C:\\Windows', 'C:\\Users']
+): ResolvedShellConfig {
+  const base: ResolvedShellConfig = {
+    type: 'windows',
     enabled: true,
     executable: { command: 'test.exe', args: [] },
     security: {
@@ -21,10 +25,25 @@ function createMockConfig(allowedPaths: string[] = ['C:\\Windows', 'C:\\Users'])
       blockedOperators: ['&']
     },
     paths: {
-      allowedPaths,
+      allowedPaths: Array.isArray(overrides) ? overrides : ['C:\\Windows', 'C:\\Users'],
       initialDir: undefined
     }
   };
+
+  if (!Array.isArray(overrides)) {
+    Object.assign(base, overrides);
+    if (overrides.paths) {
+      base.paths = { ...base.paths, ...overrides.paths };
+    }
+    if (overrides.security) {
+      base.security = { ...base.security, ...overrides.security };
+    }
+    if (overrides.restrictions) {
+      base.restrictions = { ...base.restrictions, ...overrides.restrictions };
+    }
+  }
+
+  return base;
 }
 
 describe('Path Validation', () => {
@@ -41,7 +60,7 @@ describe('Path Validation', () => {
     });
 
     test('normalizes Unix paths correctly', () => {
-      const context = createValidationContext('wsl', createMockConfig());
+      const context = createValidationContext('wsl', createMockConfig({ type: 'wsl' }));
       context.shellConfig.wslConfig = { mountPoint: '/mnt/', inheritGlobalPaths: true };
       
       expect(normalizePathForShell('/usr/bin', context)).toBe('/usr/bin');
@@ -51,7 +70,7 @@ describe('Path Validation', () => {
     });
 
     test('normalizes GitBash paths correctly', () => {
-      const context = createValidationContext('gitbash', createMockConfig());
+      const context = createValidationContext('gitbash', createMockConfig({ type: 'mixed' }));
       
       const normalizedGitBashPath = normalizePathForShell('/c/Windows/System32', context);
       // The actual normalization might differ from test expectations, so check key parts
@@ -77,7 +96,7 @@ describe('Path Validation', () => {
     });
 
     test('validates WSL paths with WSL shell', () => {
-      const wslConfig = createMockConfig();
+      const wslConfig = createMockConfig({ type: 'wsl' });
       wslConfig.wslConfig = { mountPoint: '/mnt/', inheritGlobalPaths: true };
       wslConfig.paths.allowedPaths = ['/mnt/c/Windows', '/mnt/c/Users', '/home/user'];
       
@@ -93,7 +112,7 @@ describe('Path Validation', () => {
     });
 
     test('validates GitBash paths with GitBash shell', () => {
-      const context = createValidationContext('gitbash', createMockConfig());
+      const context = createValidationContext('gitbash', createMockConfig({ type: 'mixed' }));
       
       // Valid GitBash paths should not throw - use /c/ format which is properly recognized
       expect(() => validateWorkingDirectory('/c/Windows', context)).not.toThrow();

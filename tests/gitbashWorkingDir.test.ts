@@ -33,7 +33,7 @@ describe('Git Bash working directory handling', () => {
     const server = new CLIServer(buildTestConfig({
       global: { security: { restrictWorkingDirectory: false } },
       shells: {
-        gitbash: { enabled: true, executable: { command: 'bash.exe', args: ['-c'] } },
+        gitbash: { type: 'mixed', enabled: true, executable: { command: 'bash.exe', args: ['-c'] } },
         cmd: { enabled: false },
         powershell: { enabled: false },
         wsl: { enabled: false }

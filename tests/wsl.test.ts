@@ -25,6 +25,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
     if (testConfig.shells) {
       // Setup WSL shell with emulator
       testConfig.shells.wsl = {
+        type: 'wsl',
         enabled: true,
         executable: {
           command: 'node',
@@ -166,6 +167,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     if (cwdTestConfig.shells) {
       // Setup WSL shell with emulator
       cwdTestConfig.shells.wsl = {
+        type: 'wsl',
         enabled: true,
         executable: {
           command: 'node',
