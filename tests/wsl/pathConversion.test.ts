@@ -74,6 +74,7 @@ describe('convertWindowsToWslPath', () => {
 
 describe('validateWslPath with Windows drives', () => {
   const baseConfig: ResolvedShellConfig = {
+    type: 'wsl',
     enabled: true,
     executable: { command: 'wsl.exe', args: [] },
     security: {

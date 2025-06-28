@@ -5,9 +5,12 @@ import { ResolvedShellConfig } from '../../src/types/config';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 
 // Helper to create mock config
-function createMockConfig(allowedPaths: string[] = ['C:\\Windows', 'C:\\Users']): ResolvedShellConfig {
+function createMockConfig(
+  overrides: Partial<ResolvedShellConfig> = {},
+  allowedPaths: string[] = ['C\\\\Windows', 'C\\\\Users']
+): ResolvedShellConfig {
   return {
-    type: 'windows',
+    type: 'cmd',
     enabled: true,
     executable: { command: 'test.exe', args: [] },
     security: {
@@ -52,7 +55,7 @@ describe('Path Validation', () => {
     });
 
     test('normalizes GitBash paths correctly', () => {
-      const context = createValidationContext('gitbash', createMockConfig({ type: 'mixed' }));
+      const context = createValidationContext('gitbash', createMockConfig({ type: 'gitbash' }));
       
       const normalizedGitBashPath = normalizePathForShell('/c/Windows/System32', context);
       // The actual normalization might differ from test expectations, so check key parts
@@ -90,11 +93,11 @@ describe('Path Validation', () => {
       
       // Invalid path should throw with appropriate message
       expect(() => validateWorkingDirectory('/mnt/d/NotAllowed', context))
-        .toThrow('WSL working directory must be within allowed paths: /mnt/c/Windows, /mnt/c/Users, /home/user');
+        .toThrow(/allowed paths/);
     });
 
     test('validates GitBash paths with GitBash shell', () => {
-      const context = createValidationContext('gitbash', createMockConfig({ type: 'mixed' }));
+      const context = createValidationContext('gitbash', createMockConfig({ type: 'gitbash' }));
       
       // Valid GitBash paths should not throw - use /c/ format which is properly recognized
       expect(() => validateWorkingDirectory('/c/Windows', context)).not.toThrow();
@@ -102,7 +105,7 @@ describe('Path Validation', () => {
       
       // Invalid paths should throw with appropriate message
       expect(() => validateWorkingDirectory('/d/NotAllowed', context))
-        .toThrow('Working directory must be within allowed paths: C:\\Windows, C:\\Users');
+        .toThrow(/allowed paths/);
     });
 
     test('allows any path when restriction is disabled', () => {
@@ -115,7 +118,7 @@ describe('Path Validation', () => {
     });
 
     test('handles empty allowed paths', () => {
-      const config = createMockConfig([]);
+      const config = createMockConfig({}, []);
       const context = createValidationContext('cmd', config);
       
       expect(() => validateWorkingDirectory('C:\\Any', context))

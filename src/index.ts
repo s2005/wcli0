@@ -273,7 +273,7 @@ class CLIServer {
           }
           // Pass original WSL path to emulator via environment variable
           envVars.WSL_ORIGINAL_PATH = workingDir;
-        } else if (shellConfig.type === 'mixed') {
+        } else if (shellConfig.type === 'gitbash') {
           // Normalize Git Bash paths like /c/foo to Windows format for spawn
           spawnCwd = normalizeWindowsPath(workingDir);
         }
