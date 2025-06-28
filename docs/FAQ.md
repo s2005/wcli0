@@ -303,12 +303,13 @@ A: Use the project's issue tracker:
 
 ### Q: Can I create custom shell configurations?
 
-A: Yes, you can add custom shells by specifying the executable and arguments:
+A: Yes, you can add custom shells by specifying the executable and arguments. Each custom shell must also define a `type` field indicating whether it uses `windows`, `unix`, `mixed` or `wsl` semantics:
 
 ```json
 {
   "shells": {
     "custom-bash": {
+      "type": "unix",
       "enabled": true,
       "executable": {
         "command": "/usr/bin/bash",
