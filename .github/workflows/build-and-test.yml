@@ -3,8 +3,14 @@ name: Build and Test
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**/*.ts'
+      - '**/*.js'
   pull_request:
     branches: [ "**" ]
+    paths:
+      - '**/*.ts'
+      - '**/*.js'
 
 jobs:
   test-linux:
