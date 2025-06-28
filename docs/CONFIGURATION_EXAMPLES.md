@@ -2,6 +2,8 @@
 
 This document provides practical examples of different configuration scenarios for the Windows CLI MCP Server.
 
+Each shell entry now requires a `type` property specifying the shell semantics (`windows`, `unix`, `mixed` or `wsl`).
+
 ## Basic Configurations
 
 ### Minimal Configuration
@@ -17,6 +19,7 @@ The simplest configuration that enables basic functionality:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -54,6 +57,7 @@ Configuration suitable for development work with multiple shells:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -61,6 +65,7 @@ Configuration suitable for development work with multiple shells:
       }
     },
     "cmd": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
@@ -68,6 +73,7 @@ Configuration suitable for development work with multiple shells:
       }
     },
     "gitbash": {
+      "type": "mixed",
       "enabled": true,
       "executable": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe",
@@ -113,6 +119,7 @@ Restrictive configuration for sensitive environments:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -163,6 +170,7 @@ Configuration that allows monitoring and logging:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -193,6 +201,7 @@ Configuration that only enables PowerShell with specific restrictions:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -287,6 +296,7 @@ Configuration supporting different environments with shell-specific overrides:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -302,6 +312,7 @@ Configuration supporting different environments with shell-specific overrides:
       }
     },
     "cmd": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
@@ -317,6 +328,7 @@ Configuration supporting different environments with shell-specific overrides:
       }
     },
     "gitbash": {
+      "type": "mixed",
       "enabled": true,
       "executable": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe",
@@ -374,6 +386,7 @@ Configuration suitable for automated testing:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -386,6 +399,7 @@ Configuration suitable for automated testing:
       }
     },
     "cmd": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
@@ -393,6 +407,7 @@ Configuration suitable for automated testing:
       }
     },
     "gitbash": {
+      "type": "mixed",
       "enabled": true,
       "executable": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe",

@@ -181,6 +181,7 @@ The server uses an inheritance-based configuration system where global defaults 
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -196,6 +197,7 @@ The server uses an inheritance-based configuration system where global defaults 
       }
     },
     "wsl": {
+      "type": "wsl",
       "enabled": true,
       "executable": {
         "command": "wsl.exe",
@@ -256,6 +258,7 @@ If no configuration file is found, the server will use a default (restricted) co
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -263,6 +266,7 @@ If no configuration file is found, the server will use a default (restricted) co
       }
     },
     "cmd": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
@@ -270,6 +274,7 @@ If no configuration file is found, the server will use a default (restricted) co
       }
     },
     "gitbash": {
+      "type": "mixed",
       "enabled": true,
       "executable": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe",
@@ -351,6 +356,7 @@ Global settings provide defaults that apply to all shells unless overridden.
 #### Shell Configuration
 
 Each shell can be individually configured and can override global settings.
+Each shell entry must include a `type` field indicating the shell semantics. Valid values are `windows`, `unix`, `mixed` (Git Bash style), and `wsl`.
 
 ##### Basic Shell Configuration
 
@@ -358,6 +364,7 @@ Each shell can be individually configured and can override global settings.
 {
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -374,6 +381,7 @@ Each shell can be individually configured and can override global settings.
 {
   "shells": {
     "powershell": {
+      "type": "windows",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -402,6 +410,7 @@ WSL shells have additional configuration options for path mapping:
 {
   "shells": {
     "wsl": {
+      "type": "wsl",
       "enabled": true,
       "executable": {
         "command": "wsl.exe",
@@ -440,6 +449,7 @@ Example of inheritance in action:
   },
   "shells": {
     "powershell": {
+      "type": "windows",
       "overrides": {
         "security": { "commandTimeout": 45 },
         "restrictions": { "blockedCommands": ["Remove-Item"] }
