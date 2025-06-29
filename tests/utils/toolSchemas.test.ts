@@ -4,11 +4,8 @@ import type { ResolvedShellConfig } from '../../src/types/config.js';
 
 describe('Tool Schema Builders', () => {
   // Helper to create mock resolved shell configs
-  const createMockConfig = (
-    shellName: string,
-    overrides: Partial<ResolvedShellConfig> = {}
-  ): ResolvedShellConfig => ({
-    type: shellName === 'wsl' ? 'wsl' : shellName === 'gitbash' ? 'mixed' : 'windows',
+  const createMockConfig = (shellName: string, overrides: Partial<ResolvedShellConfig> = {}): ResolvedShellConfig => ({
+    type: shellName as any,
     enabled: true,
     executable: { command: `${shellName}.exe`, args: [] },
     security: {

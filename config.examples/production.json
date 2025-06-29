@@ -37,6 +37,7 @@
   },
   "shells": {
     "cmd": {
+      "type": "cmd",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",

@@ -51,6 +51,7 @@
   },
   "shells": {
     "powershell": {
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",

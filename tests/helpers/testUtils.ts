@@ -39,6 +39,9 @@ export function buildTestConfig(overrides: DeepPartial<ServerConfig> = {}): Serv
     const shells = overrides.shells;
     Object.entries(shells).forEach(([key, shellConfig]) => {
       if (shellConfig) {
+        if (!(shellConfig as any).type) {
+          (shellConfig as any).type = key;
+        }
         (config.shells as any)[key] = shellConfig;
       }
     });
@@ -55,7 +58,7 @@ export function buildShellConfig(
   overrides: Partial<BaseShellConfig | WslShellConfig> = {}
 ): BaseShellConfig | WslShellConfig {
   const base: BaseShellConfig = {
-    type: shellType === 'wsl' ? 'wsl' : 'windows',
+    type: shellType === 'wsl' ? 'wsl' : 'cmd',
     enabled: true,
     executable: {
       command: 'test.exe',

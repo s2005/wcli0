@@ -32,7 +32,7 @@ function createTestConfig(
   allowedPaths: string[] = []
 ): ResolvedShellConfig {
   return {
-    type: 'windows',
+    type: 'cmd',
     enabled: true,
     executable: {
       command: 'test',
@@ -370,7 +370,7 @@ describe('Path Validation', () => {
   test('validateWorkingDirectory handles GitBash paths properly', () => {
     // Using memory of GitBash style paths in the new config system
     const gitbashConfig = createTestConfig([], [], [], ['C:\\Users\\test', 'D:\\Projects']);
-    gitbashConfig.type = 'mixed';
+    gitbashConfig.type = 'gitbash';
     const gitbashContext = createTestContext('gitbash', gitbashConfig);
     
     // GitBash paths format should be properly converted and validated

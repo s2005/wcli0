@@ -33,7 +33,7 @@ describe('Git Bash working directory handling', () => {
     const server = new CLIServer(buildTestConfig({
       global: { security: { restrictWorkingDirectory: false } },
       shells: {
-        gitbash: { type: 'mixed', enabled: true, executable: { command: 'bash.exe', args: ['-c'] } },
+        gitbash: { type: 'gitbash', enabled: true, executable: { command: 'bash.exe', args: ['-c'] } },
         cmd: { enabled: false },
         powershell: { enabled: false },
         wsl: { enabled: false }
@@ -50,7 +50,7 @@ describe('Git Bash working directory handling', () => {
     const result = await execPromise as any;
     expect(result.isError).toBe(false);
     expect(spawnMock).toHaveBeenCalled();
-    const spawnOptions = spawnMock.mock.calls[0][2];
+    const spawnOptions = spawnMock.mock.calls[0][2] as any;
     expect(spawnOptions.cwd).toBe('D:\\testdir');
     expect(result.metadata.workingDirectory).toBe('/d/testdir');
   });

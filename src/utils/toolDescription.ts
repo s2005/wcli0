@@ -102,14 +102,14 @@ export function buildExecuteCommandDescription(
     }
     
     // Add path format information based on shell type
-    if (config.type === 'wsl' || config.type === 'unix') {
+    if (config.type === 'wsl') {
       lines.push(`- Path format: Unix-style (/home/user, /mnt/c/...)`);
-      if (config.type === 'wsl' && config.wslConfig?.inheritGlobalPaths) {
+      if (config.wslConfig?.inheritGlobalPaths) {
         lines.push(`- Inherits global Windows paths (converted to /mnt/...)`);
       }
-    } else if (config.type === 'windows') {
+    } else if (config.type === 'cmd' || config.type === 'powershell') {
       lines.push(`- Path format: Windows-style (C:\\Users\\...)`);
-    } else if (config.type === 'mixed') {
+    } else if (config.type === 'gitbash') {
       lines.push(`- Path format: Mixed (C:\\... or /c/...)`);
     }
     
