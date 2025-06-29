@@ -22,13 +22,6 @@ export function normalizePathForShell(inputPath: string, context: ValidationCont
       }
       return inputPath.replace(/\\/g, '/');
       
-    case 'mixed':
-      // Git Bash: Try to determine format and normalize accordingly
-      if (inputPath.match(/^[A-Z]:\\/i) || inputPath.includes('\\')) {
-        return normalizeWindowsPath(inputPath);
-      }
-      return inputPath.replace(/\\/g, '/');
-      
     default:
       return inputPath;
   }
@@ -63,8 +56,8 @@ export function validateWorkingDirectory(
   } else if (context.isWindowsShell) {
     validateWindowsPath(normalizedDir, allowedPaths, context);
   } else {
-    // Git Bash or other mixed format shells
-    validateMixedPath(normalizedDir, allowedPaths, context);
+    // Git Bash or other Unix-like shells
+    validateUnixPath(normalizedDir, allowedPaths, context);
   }
 }
 
@@ -133,13 +126,13 @@ function validateWindowsPath(
 /**
  * Validate mixed format paths (Git Bash)
  */
-function validateMixedPath(
+function validateUnixPath(
   dir: string,
   allowedPaths: string[],
   context: ValidationContext
 ): void {
   // Git Bash can use both Windows and Unix paths
-  const isWindowsFormat = /^[A-Z]:\\/i.test(dir) || dir.includes('\\');
+  const isWindowsFormat = /^[A-Z]:[\\\/]/i.test(dir) || dir.includes('\\');
   const isUnixFormat = dir.startsWith('/');
   
   if (!isWindowsFormat && !isUnixFormat) {
