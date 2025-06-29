@@ -202,9 +202,6 @@ export interface ServerConfig {
  * This is used internally and represents the final configuration for a shell
  */
 export interface ResolvedShellConfig {
-  /**
- * The type of shell
- */
   type: ShellType;
   /**
    * Whether this shell is enabled

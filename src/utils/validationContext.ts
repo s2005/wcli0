@@ -34,9 +34,8 @@ export function createValidationContext(
 /**
  * Determine expected path format for shell
  */
-export function getExpectedPathFormat(context: ValidationContext): 'windows' | 'unix' | 'mixed' {
+export function getExpectedPathFormat(context: ValidationContext): 'windows' | 'unix' {
   if (context.isWindowsShell) return 'windows';
   if (context.isWslShell) return 'unix';
-  if (context.shellConfig.type === 'gitbash') return 'mixed';
   return 'unix';
 }

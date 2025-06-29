@@ -1,0 +1,31 @@
+# validation
+
+- **extractCommandName handles various formats** – covers numerous command string formats to make sure only the executable name is returned.
+- **extractCommandName is case insensitive** – validates that command extraction works regardless of case.
+- **isCommandBlocked identifies blocked commands** – ensures commands in the blocked list are detected even with paths or extensions.
+- **isCommandBlocked is case insensitive** – checks detection of blocked commands independent of case.
+- **isCommandBlocked handles different extensions** – tests blocked command detection across `.cmd`, `.bat`, and other extensions.
+- **isArgumentBlocked identifies blocked arguments** – verifies arguments in the blocked list are found.
+- **isArgumentBlocked is case insensitive for security** – ensures argument checks are case insensitive.
+- **isArgumentBlocked handles multiple arguments** – confirms any blocked argument in a list triggers detection.
+- **parseCommand handles basic commands** – parses simple commands and ensures arguments are split properly.
+- **parseCommand handles quoted arguments** – supports arguments wrapped in quotes.
+- **parseCommand handles paths with spaces** – validates parsing when the executable path contains spaces.
+- **parseCommand handles empty input** – returns empty command and args when given whitespace.
+- **parseCommand handles mixed quotes** – supports quotes with embedded spaces and key=value pairs.
+- **normalizeWindowsPath handles various formats** – converts a mix of Windows, Unix, and UNC style paths into canonical Windows format.
+- **normalizeWindowsPath removes redundant separators** – collapses duplicate slashes and backslashes.
+- **normalizeWindowsPath resolves relative segments** – resolves `..` segments in Windows style paths.
+- **normalizeWindowsPath resolves git bash style relative segments** – handles `/c/../` style paths used by Git Bash.
+- **normalizeWindowsPath handles drive-relative paths** – normalizes paths like `C:folder/file`.
+- **removes duplicates and normalizes paths** – ensures normalization removes duplicate allowed paths.
+- **removes nested subpaths** – verifies that nested allowed paths are collapsed to the parent path.
+- **keeps multiple top-level paths** – multiple unrelated allowed paths remain after normalization.
+- **isPathAllowed validates paths correctly** – checks standard cases of allowed and disallowed path validation.
+- **isPathAllowed handles trailing slashes correctly** – ensures trailing slashes in either path do not affect validation.
+- **isPathAllowed is case insensitive** – path checking disregards letter case.
+- **isPathAllowed supports UNC paths** – validates UNC network paths.
+- **validateWorkingDirectory throws for invalid paths** – ensures relative or disallowed working directories are rejected.
+- **validateShellOperators blocks dangerous operators** – verifies that blocked shell operators cause validation failure.
+- **validateShellOperators allows safe operators when configured** – ensures allowed operators do not throw.
+- **validateShellOperators respects shell config** – checks that shell-specific operator settings are honored.
