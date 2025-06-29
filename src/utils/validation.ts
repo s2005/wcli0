@@ -278,31 +278,18 @@ export function isPathAllowed(testPath: string, allowedPaths: string[]): boolean
         normalizedAllowedPath = normalizedAllowedPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
         let comparisonResult = false;
-        // Ensure both paths are clean of trailing slashes for comparison,
-        // unless they are root paths like "c:\" which should retain it after initial normalization.
-        // The .replace(/[/\\]+$/, '') handles this robustly.
-
         if (normalizedTestPath === normalizedAllowedPath) {
             comparisonResult = true;
         } else if (normalizedTestPath.startsWith(normalizedAllowedPath)) {
-            // Check if normalizedAllowedPath is a prefix of normalizedTestPath
-            // and the next character in normalizedTestPath is a path separator.
-            if (normalizedAllowedPath.length === normalizedTestPath.length) {
-                // This case should have been caught by exact match, but as a safeguard.
+            const charAfterAllowedPath = normalizedTestPath[normalizedAllowedPath.length];
+            if (charAfterAllowedPath === '/' || charAfterAllowedPath === '\\') {
                 comparisonResult = true;
-            } else {
-                const separatorChar = normalizedTestPath[normalizedAllowedPath.length];
-                if (separatorChar === '\\' || separatorChar === '/') {
-                    comparisonResult = true;
-                }
-                // Example: allowed='c:\win', test='c:\windows' -> sep = 'd', false.
-                // Example: allowed='c:\windows', test='c:\windowsapi' -> sep = 'a', false.
-                // Example: allowed='c:\windows', test='c:\windows\system32' -> sep = '\', true.
             }
         }
 
         if (comparisonResult) return true;
 
+        // Fallback for other paths
         return false;
     });
 }
@@ -398,7 +385,8 @@ export function normalizeWindowsPath(inputPath: string): string {
 
         if (path.win32.isAbsolute(tempPath)) {
             if (startsWithDrive) { // e.g. "C:\\foo"
-                resolvedPath = path.win32.normalize(tempPath);
+                // Using resolve for potentially more robust canonicalization than normalize alone
+                resolvedPath = path.win32.resolve(tempPath);
             } else { // Absolute but no drive, e.g. "\\foo\\bar". Tests expect C-rooting.
                 resolvedPath = path.win32.resolve('C:\\', tempPath);
             }
