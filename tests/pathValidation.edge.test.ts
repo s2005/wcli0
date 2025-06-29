@@ -37,6 +37,11 @@ describe('validateWorkingDirectory edge cases', () => {
     expect(() => validateWorkingDirectory('/c/Users', ctx)).not.toThrow();
     expect(() => validateWorkingDirectory('C:\\Users', ctx)).not.toThrow();
   });
+  test('GitBash accepts lowercase drive letter paths', () => {
+    const cfg = makeConfig('gitbash', ['D:\\Projects']);
+    const ctx = createValidationContext('gitbash', cfg);
+    expect(() => validateWorkingDirectory('d:\\Projects', ctx)).not.toThrow();
+  });
   test("GitBash converts allowed Unix paths to Windows for comparison", () => {
     const cfg = makeConfig("gitbash", ["/c/Allowed"]);
     const ctx = createValidationContext("gitbash", cfg);

@@ -132,7 +132,8 @@ function validateUnixPath(
   context: ValidationContext
 ): void {
   // Git Bash can use both Windows and Unix paths
-  const isWindowsFormat = /^[A-Z]:[\\\/]/i.test(dir) || dir.includes('\\');
+  const isWindowsFormat =
+    path.win32.isAbsolute(dir) || /^[A-Za-z]:/.test(dir) || dir.includes('\\');
   const isUnixFormat = dir.startsWith('/');
   
   if (!isWindowsFormat && !isUnixFormat) {

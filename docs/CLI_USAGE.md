@@ -38,6 +38,7 @@ Each shell expects paths in specific formats:
 # Both formats work
 "workingDir": "C:\\Projects\\MyApp"
 "workingDir": "/c/Projects/MyApp"
+"workingDir": "d:\\Projects\\MyApp" # lowercase drive letters also supported
 ```
 
 ## Shell Usage Examples
