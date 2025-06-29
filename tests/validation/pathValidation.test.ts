@@ -7,7 +7,7 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 // Helper to create mock config
 function createMockConfig(
   overrides: Partial<ResolvedShellConfig> = {},
-  allowedPaths: string[] = ['C\\\\Windows', 'C\\\\Users']
+  allowedPaths: string[] = ['C:\\Windows', 'C:\\Users']  // Fixed: Use proper Windows paths
 ): ResolvedShellConfig {
   return {
     type: 'cmd',
@@ -97,7 +97,8 @@ describe('Path Validation', () => {
     });
 
     test('validates GitBash paths with GitBash shell', () => {
-      const context = createValidationContext('gitbash', createMockConfig({ type: 'gitbash' }));
+      // Fixed: Use proper Windows paths that will be converted to Git Bash format for comparison
+      const context = createValidationContext('gitbash', createMockConfig({ type: 'gitbash' }, ['C:\\Windows', 'C:\\Users']));
       
       // Valid GitBash paths should not throw - use /c/ format which is properly recognized
       expect(() => validateWorkingDirectory('/c/Windows', context)).not.toThrow();
