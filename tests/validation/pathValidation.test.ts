@@ -73,10 +73,12 @@ describe('Path Validation', () => {
       
       // Valid paths should not throw
       expect(() => validateWorkingDirectory('C:\\Windows\\System32', context)).not.toThrow();
-      expect(() => validateWorkingDirectory('C:\\Users\\Test', context)).not.toThrow();
+      expect(() => validateWorkingDirectory('C:\\Users\\Test\\Documents', context)).not.toThrow(); // Made path more specific
       
       // Invalid path should throw with appropriate message
       expect(() => validateWorkingDirectory('D:\\NotAllowed', context))
+        .toThrow('Working directory must be within allowed paths: C:\\Windows, C:\\Users');
+      expect(() => validateWorkingDirectory('C:\\Program Files', context)) // Explicitly test this common case
         .toThrow('Working directory must be within allowed paths: C:\\Windows, C:\\Users');
     });
 
@@ -88,11 +90,13 @@ describe('Path Validation', () => {
       const context = createValidationContext('wsl', wslConfig);
       
       // Valid paths should not throw
-      expect(() => validateWorkingDirectory('/mnt/c/Windows', context)).not.toThrow();
+      expect(() => validateWorkingDirectory('/mnt/c/Windows/System32', context)).not.toThrow(); // Made path more specific
       expect(() => validateWorkingDirectory('/home/user/projects', context)).not.toThrow();
       
       // Invalid path should throw with appropriate message
       expect(() => validateWorkingDirectory('/mnt/d/NotAllowed', context))
+        .toThrow(/allowed paths/);
+      expect(() => validateWorkingDirectory('/mnt/c/Program Files', context)) // Explicitly test this common case
         .toThrow(/allowed paths/);
     });
 
@@ -100,11 +104,13 @@ describe('Path Validation', () => {
       const context = createValidationContext('gitbash', createMockConfig({ type: 'gitbash' }));
       
       // Valid GitBash paths should not throw - use /c/ format which is properly recognized
-      expect(() => validateWorkingDirectory('/c/Windows', context)).not.toThrow();
-      expect(() => validateWorkingDirectory('/c/Users/Test', context)).not.toThrow();
+      expect(() => validateWorkingDirectory('/c/Windows/System32', context)).not.toThrow(); // Made path more specific
+      expect(() => validateWorkingDirectory('/c/Users/Test/Documents', context)).not.toThrow(); // Made path more specific
       
       // Invalid paths should throw with appropriate message
       expect(() => validateWorkingDirectory('/d/NotAllowed', context))
+        .toThrow(/allowed paths/);
+      expect(() => validateWorkingDirectory('/c/Program Files', context)) // Explicitly test this common case
         .toThrow(/allowed paths/);
     });
 
