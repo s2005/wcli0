@@ -181,7 +181,7 @@ The server uses an inheritance-based configuration system where global defaults 
   },
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -258,7 +258,7 @@ If no configuration file is found, the server will use a default (restricted) co
   },
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -266,7 +266,7 @@ If no configuration file is found, the server will use a default (restricted) co
       }
     },
     "cmd": {
-      "type": "windows",
+      "type": "cmd",
       "enabled": true,
       "executable": {
         "command": "cmd.exe",
@@ -274,7 +274,7 @@ If no configuration file is found, the server will use a default (restricted) co
       }
     },
     "gitbash": {
-      "type": "mixed",
+      "type": "gitbash",
       "enabled": true,
       "executable": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe",
@@ -356,7 +356,7 @@ Global settings provide defaults that apply to all shells unless overridden.
 #### Shell Configuration
 
 Each shell can be individually configured and can override global settings.
-Each shell entry must include a `type` field indicating the shell semantics. Valid values are `windows`, `unix`, `mixed` (Git Bash style), and `wsl`.
+Each shell entry must include a `type` field indicating the shell. Valid values are `powershell`, `cmd`, `gitbash`, and `wsl`.
 
 ##### Basic Shell Configuration
 
@@ -364,7 +364,7 @@ Each shell entry must include a `type` field indicating the shell semantics. Val
 {
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -381,7 +381,7 @@ Each shell entry must include a `type` field indicating the shell semantics. Val
 {
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "enabled": true,
       "executable": {
         "command": "powershell.exe",
@@ -449,7 +449,7 @@ Example of inheritance in action:
   },
   "shells": {
     "powershell": {
-      "type": "windows",
+      "type": "powershell",
       "overrides": {
         "security": { "commandTimeout": 45 },
         "restrictions": { "blockedCommands": ["Remove-Item"] }

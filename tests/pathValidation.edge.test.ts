@@ -5,6 +5,7 @@ import type { ResolvedShellConfig } from '../src/types/config.js';
 
 function makeConfig(shell: 'wsl' | 'gitbash', allowed: string[]): ResolvedShellConfig {
   const base: ResolvedShellConfig = {
+    type: shell,
     enabled: true,
     executable: { command: 'test.exe', args: [] },
     security: { maxCommandLength: 1000, commandTimeout: 30, enableInjectionProtection: true, restrictWorkingDirectory: true },

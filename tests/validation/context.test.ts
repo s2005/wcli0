@@ -5,7 +5,7 @@ import { ResolvedShellConfig } from '../../src/types/config';
 // Helper to create mock shell configs
 function createMockShellConfig(overrides: Partial<ResolvedShellConfig> = {}): ResolvedShellConfig {
   return {
-    type: 'windows',
+    type: 'cmd',
     enabled: true,
     executable: { command: 'test.exe', args: [] },
     security: {
@@ -36,7 +36,7 @@ describe('ValidationContext', () => {
     expect(cmdContext.isWslShell).toBe(false);
     
     // Unix shell (gitbash)
-  const gitbashContext = createValidationContext('gitbash', createMockShellConfig({ type: 'mixed' }));
+  const gitbashContext = createValidationContext('gitbash', createMockShellConfig({ type: 'gitbash' }));
     expect(gitbashContext.isWindowsShell).toBe(false);
     expect(gitbashContext.isUnixShell).toBe(true);
     expect(gitbashContext.isWslShell).toBe(false);

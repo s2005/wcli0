@@ -103,16 +103,16 @@ export interface ShellExecutableConfig {
 }
 
 /**
- * Supported shell semantics types
+ * Supported shell types
  */
-export type ShellType = 'windows' | 'unix' | 'mixed' | 'wsl';
+export type ShellType = 'cmd' | 'powershell' | 'gitbash' | 'wsl';
 
 /**
  * Base configuration for all shell types
  */
 export interface BaseShellConfig {
   /**
-   * The type of shell semantics (windows, unix, mixed or wsl)
+   * The type of shell (cmd, powershell, gitbash or wsl)
    */
   type: ShellType;
   /**
@@ -203,8 +203,8 @@ export interface ServerConfig {
  */
 export interface ResolvedShellConfig {
   /**
-   * The type of shell semantics
-   */
+ * The type of shell
+ */
   type: ShellType;
   /**
    * Whether this shell is enabled
