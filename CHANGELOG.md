@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5] - 2025-06-29
+
+### Changed
+
+- Updated package dependencies and minor bug fixes
+- Improved test coverage and stability
+- Enhanced command validation and error handling
+
 ## [1.0.0] - Enhanced Fork
 
 ### Added
