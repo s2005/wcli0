@@ -365,6 +365,18 @@ export function normalizeWindowsPath(inputPath: string): string {
         // Convert any forward slashes to backslashes for Windows paths
         tempPath = tempPath.replace(/\//g, '\\');
 
+        // Aggressively normalize multiple backslashes to a single backslash,
+        // EXCLUDING the leading \\ of UNC paths.
+        if (!tempPath.startsWith('\\\\')) {
+            tempPath = tempPath.replace(/\\\\+/g, '\\'); // Replace one or more \ with single \
+        } else {
+            // For UNC paths, normalize separators only after the \\server\share part
+            const uncMatch = tempPath.match(/^(\\\\\\[^\\]+\\[^\\]+)(.*)$/);
+            if (uncMatch) {
+                tempPath = uncMatch[1] + (uncMatch[2] ? uncMatch[2].replace(/\\\\+/g, '\\') : '');
+            }
+        }
+
         // Handle paths starting with a single backslash (e.g. \Users\foo)
         if (tempPath.startsWith('\\') && !tempPath.startsWith('\\\\')) {
             tempPath = 'C:' + tempPath;
