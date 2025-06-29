@@ -244,6 +244,7 @@ Configuration optimized for WSL development:
   },
   "shells": {
     "wsl": {
+      "type": "wsl",
       "enabled": true,
       "executable": {
         "command": "wsl.exe",
@@ -341,6 +342,7 @@ Configuration supporting different environments with shell-specific overrides:
       }
     },
     "wsl": {
+      "type": "wsl",
       "enabled": true,
       "executable": {
         "command": "wsl.exe",
