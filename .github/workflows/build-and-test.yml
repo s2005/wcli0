@@ -3,14 +3,13 @@ name: Build and Test
 on:
   push:
     branches: [ main ]
-    paths:
-      - '**/*.ts'
-      - '**/*.js'
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
-    branches: [ "**" ]
-    paths:
-      - '**/*.ts'
-      - '**/*.js'
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
 
 jobs:
   test-linux:
@@ -25,6 +24,8 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+      - name: Lint
+        run: npm run lint
       - name: Test
         run: npm test
       - name: Test with open handles detection
@@ -43,6 +44,8 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+      - name: Lint
+        run: npm run lint
       - name: Test
         run: npm test
 
@@ -58,6 +61,8 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+      - name: Lint
+        run: npm run lint
       - name: Remove Git Bash from PATH
         shell: pwsh # Ensure this script runs with PowerShell
         run: |
