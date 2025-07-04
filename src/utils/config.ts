@@ -347,3 +347,23 @@ export function createDefaultConfig(configPath: string): void {
   
   fs.writeFileSync(configPath, JSON.stringify(configForSave, null, 2));
 }
+
+export function applyCliInitialDir(config: ServerConfig, dir?: string): void {
+  if (!dir) return;
+
+  const normalized = normalizeWindowsPath(dir);
+  if (fs.existsSync(normalized) && fs.statSync(normalized).isDirectory()) {
+    config.global.paths.initialDir = normalized;
+    if (config.global.security.restrictWorkingDirectory) {
+      if (!config.global.paths.allowedPaths.includes(normalized)) {
+        config.global.paths.allowedPaths.push(normalized);
+      }
+    }
+  } else {
+    console.warn(`WARN: Provided initialDir '${dir}' does not exist.`);
+  }
+
+  config.global.paths.allowedPaths = normalizeAllowedPaths(
+    config.global.paths.allowedPaths
+  );
+}

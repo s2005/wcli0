@@ -32,7 +32,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { fileURLToPath } from 'url';
@@ -68,6 +68,10 @@ const parseArgs = async () => {
     .option('init-config', {
       type: 'string',
       description: 'Create a default config file at the specified path'
+    })
+    .option('initialDir', {
+      type: 'string',
+      description: 'Initial working directory (overrides config)'
     })
     .help()
     .parse();
@@ -896,7 +900,10 @@ const main = async () => {
 
     // Load configuration
     const config = loadConfig(args.config);
-    
+
+    // Apply command line override for initialDir
+    applyCliInitialDir(config, args.initialDir as string | undefined);
+
     const server = new CLIServer(config);
     await server.run();
   } catch (error) {
