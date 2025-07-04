@@ -136,9 +136,9 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 - **`should capture stderr output`**: Tests that stderr output from commands executed in WSL is captured and returned in the command result.
 - **`should block commands with prohibited shell operators`**: Confirms that injection protection works for the WSL shell, blocking commands with operators like `;`.
 - **`WSL Working Directory Validation`**: This suite of tests (5.1, 5.2, 5.3) validates the working directory functionality for WSL:
-    - **`should execute command in valid WSL working directory when allowed` (Test 5.1)**: Verifies that a command can be executed when its `workingDir` is a valid WSL path (e.g., `/mnt/c/some_dir`) and this path is correctly normalized and listed in `allowedPaths`.
-    - **`should reject command in invalid WSL working directory (different root)` (Test 5.2)**: Ensures commands are rejected if their `workingDir` is a WSL path on a different/disallowed root (e.g., `/mnt/d/...` when only `/mnt/c/...` is allowed).
-    - **`should reject command in invalid WSL working directory (disallowed suffix)` (Test 5.3)**: Ensures commands are rejected if their `workingDir` is a WSL path that is not covered by any entry in `allowedPaths`.
+  - **`should execute command in valid WSL working directory when allowed` (Test 5.1)**: Verifies that a command can be executed when its `workingDir` is a valid WSL path (e.g., `/mnt/c/some_dir`) and this path is correctly normalized and listed in `allowedPaths`.
+  - **`should reject command in invalid WSL working directory (different root)` (Test 5.2)**: Ensures commands are rejected if their `workingDir` is a WSL path on a different/disallowed root (e.g., `/mnt/d/...` when only `/mnt/c/...` is allowed).
+  - **`should reject command in invalid WSL working directory (disallowed suffix)` (Test 5.3)**: Ensures commands are rejected if their `workingDir` is a WSL path that is not covered by any entry in `allowedPaths`.
 
 ## tests/wslEmulator.test.ts
 
@@ -221,4 +221,3 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 - **should reject commands with blocked operators** – executing a command containing `;` results in an `McpError`.
 - **should enforce working directory restrictions** – commands fail when executed from disallowed directories.
 - **should execute when working directory allowed** – succeeds when the directory is permitted by the configuration.
-
