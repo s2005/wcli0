@@ -28,7 +28,7 @@ describe('Configuration Examples', () => {
   });
 
   test('sample config is valid', () => {
-    const samplePath = path.join(process.cwd(), 'config.sample.json');
+    const samplePath = path.join(process.cwd(), 'config.examples', 'config.sample.json');
     if (fs.existsSync(samplePath)) {
       expect(() => loadConfig(samplePath)).not.toThrow();
     }

@@ -116,15 +116,15 @@ For use with a specific config file, add the `--config` flag:
 To get started with configuration:
 
 1. **Use a sample configuration**:
-   - Copy `config.sample.json` for basic setup
-   - Copy `config.development.json` for development environments
-   - Copy `config.secure.json` for high-security environments
+   - Copy `config.examples/config.sample.json` for basic setup
+   - Copy `config.examples/config.development.json` for development environments
+   - Copy `config.examples/config.secure.json` for high-security environments
 
 2. **Create your own configuration**:
 
    ```bash
    # Copy and customize a sample
-   cp config.sample.json my-config.json
+   cp config.examples/config.sample.json my-config.json
    
    # Or generate a default config
    npx wcli0 --init-config ./my-config.json
