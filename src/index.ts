@@ -37,6 +37,7 @@ import { createSerializableConfig, createResolvedConfigSummary } from './utils/c
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { setDebugLogging, debugLog, debugWarn, errorLog } from './utils/log.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -49,7 +50,7 @@ const packageJson = (() => {
     const packagePath = path.resolve(__dirname, '../package.json');
     return JSON.parse(readFileSync(packagePath, 'utf8'));
   } catch (error: any) {
-    console.error('Warning: Could not locate package.json, using fallback version information');
+    debugWarn('Warning: Could not locate package.json, using fallback version information');
     return fallbackPackageInfo;
   }
 })();
@@ -72,6 +73,11 @@ const parseArgs = async () => {
     .option('initialDir', {
       type: 'string',
       description: 'Initial working directory (overrides config)'
+    })
+    .option('debug', {
+      type: 'boolean',
+      default: false,
+      description: 'Enable debug logging'
     })
     .help()
     .parse();
@@ -169,7 +175,7 @@ class CLIServer {
       startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
     }
 
-    startupMessages.forEach(msg => console.error(msg));
+    startupMessages.forEach(msg => debugLog(msg));
   }
 
   private getShellConfig(shellName: string): ResolvedShellConfig | null {
@@ -516,7 +522,7 @@ class CLIServer {
         const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs);
         const executeCommandSchema = buildExecuteCommandSchema(enabledShells, this.resolvedConfigs);
         
-        console.error(`[tool: execute_command] Description:\n${executeCommandDescription}`);
+        debugLog(`[tool: execute_command] Description:\n${executeCommandDescription}`);
         
         tools.push({
           name: "execute_command",
@@ -877,7 +883,7 @@ class CLIServer {
     });
     
     await this.server.connect(transport);
-    console.error("Windows CLI MCP Server running on stdio");
+    debugLog("Windows CLI MCP Server running on stdio");
   }
 }
 
@@ -885,15 +891,18 @@ class CLIServer {
 const main = async () => {
   try {
     const args = await parseArgs();
+
+    // Set debug logging based on CLI argument
+    setDebugLogging(Boolean(args.debug));
     
     // Handle --init-config flag
     if (args['init-config']) {
       try {
         createDefaultConfig(args['init-config'] as string);
-        console.error(`Created default config at: ${args['init-config']}`);
+        errorLog(`Created default config at: ${args['init-config']}`);
         process.exit(0);
       } catch (error) {
-        console.error('Failed to create config file:', error);
+        errorLog('Failed to create config file:', error);
         process.exit(1);
       }
     }
@@ -907,7 +916,7 @@ const main = async () => {
     const server = new CLIServer(config);
     await server.run();
   } catch (error) {
-    console.error("Fatal error:", error);
+    errorLog("Fatal error:", error);
     process.exit(1);
   }
 };
