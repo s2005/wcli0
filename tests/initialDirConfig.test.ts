@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import { loadConfig } from '../src/utils/config.js';
 import { normalizeWindowsPath } from '../src/utils/validation.js';
+import { setDebugLogging } from '../src/utils/log.js';
 
 const createTempConfig = (config: any): string => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'win-cli-initdir-'));
@@ -69,12 +70,14 @@ describe('loadConfig initialDir handling', () => {
 
   test('invalid initialDir logs warning and is undefined', () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    setDebugLogging(true);
     const configPath = createTempConfig({ security: { initialDir: '/nonexistent/path', restrictWorkingDirectory: true } });
     const cfg = loadConfig(configPath);
     expect(cfg.global.paths.initialDir).toBeUndefined();
     expect(warnSpy).toHaveBeenCalled();
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
     warnSpy.mockRestore();
+    setDebugLogging(false);
   });
 
   test('initialDir not provided results in undefined', () => {

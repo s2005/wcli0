@@ -4,6 +4,7 @@ import os from 'os';
 import { ServerConfig, ResolvedShellConfig } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
+import { debugWarn, errorLog } from './log.js';
 
 const defaultValidatePathRegex = /^[a-zA-Z]:\\(?:[^<>:"/\\|?*]+\\)*[^<>:"/\\|?*]*$/;
 
@@ -110,7 +111,7 @@ export function loadConfig(configPath?: string): ServerConfig {
         break;
       }
     } catch (error) {
-      console.error(`Error loading config from ${location}:`, error);
+      errorLog(`Error loading config from ${location}:`, error);
     }
   }
 
@@ -130,7 +131,7 @@ export function loadConfig(configPath?: string): ServerConfig {
         }
       }
     } else {
-      console.warn(`WARN: Configured initialDir '${config.global.paths.initialDir}' does not exist.`);
+      debugWarn(`WARN: Configured initialDir '${config.global.paths.initialDir}' does not exist.`);
       config.global.paths.initialDir = undefined;
     }
   }
@@ -360,7 +361,7 @@ export function applyCliInitialDir(config: ServerConfig, dir?: string): void {
       }
     }
   } else {
-    console.warn(`WARN: Provided initialDir '${dir}' does not exist.`);
+    debugWarn(`WARN: Provided initialDir '${dir}' does not exist.`);
   }
 
   config.global.paths.allowedPaths = normalizeAllowedPaths(

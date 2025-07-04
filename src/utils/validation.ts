@@ -1,6 +1,7 @@
 import path from 'path';
 import type { ValidationContext } from './validationContext.js';
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js"; // Import McpError and ErrorCode
+import { debugWarn } from './log.js';
 
 export function extractCommandName(command: string): string {
     // Replace backslashes with forward slashes
@@ -222,7 +223,7 @@ export function resolveWslAllowedPaths(globalAllowedPaths: string[], context: Va
       } catch (error) {
         // Check if error is an instance of Error and has a message
         const message = error instanceof Error ? error.message : String(error);
-        console.warn(`Skipping global path "${globalPath}" for WSL: ${message}`);
+        debugWarn(`Skipping global path "${globalPath}" for WSL: ${message}`);
       }
     });
   }
