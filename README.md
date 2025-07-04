@@ -130,6 +130,13 @@ To get started with configuration:
    npx wcli0 --init-config ./my-config.json
    ```
 
+   The server also accepts an `--initialDir` flag to override the initial
+   working directory defined in your configuration file:
+
+   ```bash
+   npx wcli0 --config ./my-config.json --initialDir /path/to/start
+   ```
+
 3. **Update your Claude Desktop configuration** to use your config file:
 
    ```json
