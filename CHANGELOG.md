@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.6] - 2025-07-04
+
+### Added
+
+- Added comprehensive manual debug documentation (MANUAL_DEBUG.md)
+- Enhanced debug commands and testing instructions
+- Debug logging toggle functionality
+
+### Changed
+
+- Implement initialDir CLI override
+- Fix gitbash Windows working directory handling
+- Minor version increment for release management
+
 ## [1.0.5] - 2025-06-29
 
 ### Changed
