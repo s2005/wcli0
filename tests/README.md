@@ -7,6 +7,7 @@ The test suite uses a Node.js-based WSL emulator (`scripts/wsl-emulator.js`) to 
 ### Emulated Commands
 
 The emulator provides special handling for common test commands:
+
 - `pwd`: Returns the current working directory
 - `echo`: Outputs arguments
 - `ls /tmp`: Simulates temporary directory listing
@@ -17,6 +18,7 @@ The emulator provides special handling for common test commands:
 ### Test Configuration
 
 All WSL tests should use the Node.js emulator:
+
 ```typescript
 command: 'node',
 args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e']
