@@ -56,7 +56,7 @@ This enhanced version includes advanced configuration management, improved secur
 
 ## Features
 
- - **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), Git Bash, Bash, and WSL
+- **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), Git Bash, Bash, and WSL
 - **Inheritance-Based Configuration**: Global defaults with shell-specific overrides
 - **Shell-Specific Validation**: Each shell can have its own security settings and path formats
 - **Flexible Path Management**: Different shells support different path formats (Windows/Unix/Mixed)
@@ -133,9 +133,9 @@ To get started with configuration:
    The server also accepts an `--initialDir` flag to override the initial
    working directory defined in your configuration file:
 
-   ```bash
-npx wcli0 --config ./my-config.json --initialDir /path/to/start
-```
+    ```bash
+    npx wcli0 --config ./my-config.json --initialDir /path/to/start
+    ```
 
    You can also start the server with a specific shell and allowed directories
    without a configuration file:
