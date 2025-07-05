@@ -368,3 +368,30 @@ export function applyCliInitialDir(config: ServerConfig, dir?: string): void {
     config.global.paths.allowedPaths
   );
 }
+
+export function applyCliShellAndAllowedDirs(
+  config: ServerConfig,
+  shellName?: string,
+  allowedDirs: string[] = []
+): void {
+  if (shellName) {
+    for (const name of Object.keys(config.shells)) {
+      const shell = (config.shells as Record<string, any>)[name];
+      if (shell) {
+        shell.enabled = name === shellName;
+      }
+    }
+
+    const key = shellName as keyof ServerConfig['shells'];
+    if (allowedDirs.length > 0 && config.shells[key]) {
+      const shell = config.shells[key]!;
+      shell.overrides = shell.overrides || {};
+      shell.overrides.paths = shell.overrides.paths || {};
+      shell.overrides.paths.allowedPaths = [...allowedDirs];
+    }
+  }
+
+  if (allowedDirs.length > 0) {
+    config.global.paths.allowedPaths = normalizeAllowedPaths(allowedDirs);
+  }
+}

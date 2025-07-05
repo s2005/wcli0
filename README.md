@@ -134,7 +134,15 @@ To get started with configuration:
    working directory defined in your configuration file:
 
    ```bash
-   npx wcli0 --config ./my-config.json --initialDir /path/to/start
+npx wcli0 --config ./my-config.json --initialDir /path/to/start
+```
+
+   You can also start the server with a specific shell and allowed directories
+   without a configuration file:
+
+   ```bash
+   npx wcli0 --shell powershell \
+     --allowedDir C:\safe --allowedDir D:\projects
    ```
 
 3. **Update your Claude Desktop configuration** to use your config file:
