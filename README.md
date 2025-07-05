@@ -145,6 +145,10 @@ npx wcli0 --config ./my-config.json --initialDir /path/to/start
      --allowedDir C:\safe --allowedDir D:\projects
    ```
 
+   When started this way, `restrictWorkingDirectory` is forced on and
+   `enableInjectionProtection` is disabled to ensure the allowed paths apply
+   without shell injection checks.
+
 3. **Update your Claude Desktop configuration** to use your config file:
 
    ```json
