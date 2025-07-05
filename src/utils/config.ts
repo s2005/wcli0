@@ -393,5 +393,7 @@ export function applyCliShellAndAllowedDirs(
 
   if (allowedDirs.length > 0) {
     config.global.paths.allowedPaths = normalizeAllowedPaths(allowedDirs);
+    config.global.security.restrictWorkingDirectory = true;
+    config.global.security.enableInjectionProtection = false;
   }
 }

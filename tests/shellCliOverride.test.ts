@@ -26,5 +26,7 @@ describe('applyCliShellAndAllowedDirs', () => {
     expect((config.shells.cmd?.overrides?.paths?.allowedPaths)).toEqual(
       ['C\\one', 'D\\two']
     );
+    expect(config.global.security.restrictWorkingDirectory).toBe(true);
+    expect(config.global.security.enableInjectionProtection).toBe(false);
   });
 });
