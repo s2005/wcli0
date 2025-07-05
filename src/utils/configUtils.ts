@@ -25,9 +25,9 @@ export function createSerializableConfig(config: ServerConfig): any {
     shells: {}
   };
 
-  // Add shell configurations
+  // Add shell configurations for enabled shells only
   for (const [shellName, shellConfig] of Object.entries(config.shells)) {
-    if (!shellConfig) continue;
+    if (!shellConfig || !shellConfig.enabled) continue;
 
     const shellInfo: any = {
       type: shellConfig.type,

@@ -116,7 +116,7 @@ describe('get_config tool', () => {
     }
     
     if (testConfig.shells.gitbash) {
-      expect(safeConfig.shells.gitbash.enabled).toBe(testConfig.shells.gitbash.enabled);
+      expect(safeConfig.shells.gitbash).toBeUndefined();
     }
     
     // Verify that function properties are not included in the serializable config
@@ -168,6 +168,14 @@ describe('get_config tool', () => {
       }
     });
 
+  });
+
+  test('createSerializableConfig omits disabled shells', () => {
+    const safeConfig = createSerializableConfig(testConfig);
+
+    expect(safeConfig.shells.gitbash).toBeUndefined();
+    expect(safeConfig.shells.powershell).toBeDefined();
+    expect(safeConfig.shells.cmd).toBeDefined();
   });
 
   test('createSerializableConfig handles empty shells config', () => {
