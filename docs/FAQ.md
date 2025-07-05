@@ -4,7 +4,7 @@
 
 ### Q: What is the Windows CLI MCP Server?
 
-A: The Windows CLI MCP Server is a Model Context Protocol (MCP) server that provides secure command-line access for Windows systems. It allows MCP clients like Claude Desktop to execute commands in various shells (PowerShell, CMD, Git Bash, WSL) with configurable security controls.
+A: The Windows CLI MCP Server is a Model Context Protocol (MCP) server that provides secure command-line access for Windows systems. It allows MCP clients like Claude Desktop to execute commands in various shells (PowerShell, CMD, Git Bash, Bash, WSL) with configurable security controls.
 
 ### Q: How does the inheritance-based configuration work?
 
@@ -20,6 +20,7 @@ A: The server supports:
 - **PowerShell** (`powershell`) - Windows PowerShell or PowerShell Core
 - **Command Prompt** (`cmd`) - Windows CMD
 - **Git Bash** (`gitbash`) - Git for Windows Bash
+- **Bash** (`bash`) - Standard Unix Bash shell
 - **WSL** (`wsl`) - Windows Subsystem for Linux
 
 ## Configuration Questions
@@ -126,6 +127,7 @@ A: Each shell has its own conventions:
 - **CMD/PowerShell**: Windows format (`C:\\Users\\Name`)
 - **WSL**: Unix format (`/home/user`, `/mnt/c/...`)
 - **Git Bash**: Both formats (`C:\\Projects` or `/c/Projects`)
+- **Bash**: Unix format (`/home/user`)
 
 ### Q: What does "restrictWorkingDirectory" do?
 
@@ -261,6 +263,7 @@ A: Choose based on your needs:
 - **PowerShell**: Windows administration, .NET operations, object-based commands
 - **CMD**: Simple Windows commands, batch files, legacy scripts
 - **Git Bash**: Git operations, Unix-like commands, cross-platform scripts
+- **Bash**: Native Linux commands and scripting
 - **WSL**: Linux development, Python/Node.js development, Unix tools
 
 ### Q: How can I optimize performance?

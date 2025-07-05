@@ -3,7 +3,7 @@
 [![NPM Downloads](https://img.shields.io/npm/dt/wcli0.svg?style=flat)](https://www.npmjs.com/package/wcli0)
 [![NPM Version](https://img.shields.io/npm/v/wcli0.svg?style=flat)](https://www.npmjs.com/package/wcli0?activeTab=versions)
 
-[MCP server](https://modelcontextprotocol.io/introduction) for secure command-line interactions on Windows systems, enabling controlled access to PowerShell, CMD, Git Bash shells.
+[MCP server](https://modelcontextprotocol.io/introduction) for secure command-line interactions on Windows systems, enabling controlled access to PowerShell, CMD, Git Bash, and Bash shells.
 It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to perform operations on your system, similar to [Open Interpreter](https://github.com/OpenInterpreter/open-interpreter).
 
 This enhanced version includes advanced configuration management, improved security features, and comprehensive testing capabilities.
@@ -56,7 +56,7 @@ This enhanced version includes advanced configuration management, improved secur
 
 ## Features
 
-- **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), Git Bash, and WSL
+ - **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), Git Bash, Bash, and WSL
 - **Inheritance-Based Configuration**: Global defaults with shell-specific overrides
 - **Shell-Specific Validation**: Each shell can have its own security settings and path formats
 - **Flexible Path Management**: Different shells support different path formats (Windows/Unix/Mixed)
@@ -375,7 +375,7 @@ Global settings provide defaults that apply to all shells unless overridden.
 #### Shell Configuration
 
 Each shell can be individually configured and can override global settings.
-Each shell entry must include a `type` field indicating the shell. Valid values are `powershell`, `cmd`, `gitbash`, and `wsl`.
+Each shell entry must include a `type` field indicating the shell. Valid values are `powershell`, `cmd`, `gitbash`, `bash`, and `wsl`.
 
 ##### Basic Shell Configuration
 
@@ -491,7 +491,7 @@ Results in PowerShell having:
 
   - Execute a command in the specified shell
   - Inputs:
-    - `shell` (string): Shell to use ("powershell", "cmd", "gitbash", or "wsl")
+    - `shell` (string): Shell to use ("powershell", "cmd", "gitbash", "bash", or "wsl")
     - `command` (string): Command to execute
     - `workingDir` (optional string): Working directory
   - Returns command output as text, or error message if execution fails

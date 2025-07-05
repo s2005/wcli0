@@ -59,6 +59,22 @@
         "args": ["-c"]
       }
     },
+    "bash": {
+      "type": "bash",
+      "enabled": true,
+      "executable": {
+        "command": "bash",
+        "args": ["-c"]
+      },
+      "wslConfig": {
+        "mountPoint": "/mnt/",
+        "inheritGlobalPaths": true,
+        "pathMapping": {
+          "enabled": true,
+          "windowsToWsl": true
+        }
+      }
+    },
     "wsl": {
       "type": "wsl",
       "enabled": true,

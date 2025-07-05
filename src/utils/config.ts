@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ServerConfig, ResolvedShellConfig } from '../types/config.js';
+import { ServerConfig, ResolvedShellConfig, WslShellConfig } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 import { debugWarn, errorLog } from './log.js';
@@ -73,6 +73,19 @@ export const DEFAULT_CONFIG: ServerConfig = {
         restrictions: {
           blockedCommands: ['rm']
         }
+      }
+    },
+    bash: {
+      type: 'bash',
+      enabled: true,
+      executable: {
+        command: 'bash',
+        args: ['-c']
+      },
+      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
+      wslConfig: {
+        mountPoint: '/mnt/',
+        inheritGlobalPaths: true
       }
     },
     wsl: {
@@ -158,8 +171,8 @@ export function getResolvedShellConfig(
   
   let resolved = resolveShellConfiguration(config.global, shell);
   
-  // Special handling for WSL path inheritance
-  if (resolved.type === 'wsl' && resolved.wslConfig) {
+  // Special handling for WSL/Bash path inheritance
+  if ((resolved.type === 'wsl' || resolved.type === 'bash') && resolved.wslConfig) {
     resolved = applyWslPathInheritance(resolved, config.global.paths.allowedPaths);
   }
   
@@ -199,6 +212,7 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   const shouldIncludePowerShell = userConfig.shells?.powershell !== undefined || defaultConfig.shells.powershell !== undefined;
   const shouldIncludeCmd = userConfig.shells?.cmd !== undefined || defaultConfig.shells.cmd !== undefined;
   const shouldIncludeGitBash = userConfig.shells?.gitbash !== undefined || defaultConfig.shells.gitbash !== undefined;
+  const shouldIncludeBash = userConfig.shells?.bash !== undefined || defaultConfig.shells.bash !== undefined;
   const shouldIncludeWSL = userConfig.shells?.wsl !== undefined || defaultConfig.shells.wsl !== undefined;
 
   // Add each shell, ensuring required properties are always set
@@ -265,6 +279,39 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     // Ensure executable is properly set
     if (!merged.shells.gitbash.executable) {
       merged.shells.gitbash.executable = { command: '', args: [] };
+    }
+  }
+
+  if (shouldIncludeBash) {
+    const baseShell = defaultConfig.shells.bash || {
+      type: 'bash',
+      enabled: false,
+      executable: { command: '', args: [] },
+      wslConfig: {
+        mountPoint: '/mnt/',
+        inheritGlobalPaths: true
+      }
+    } as WslShellConfig;
+    merged.shells.bash = {
+      ...baseShell,
+      ...(userConfig.shells?.bash || {}),
+      enabled: (userConfig.shells?.bash?.enabled !== undefined) ?
+        userConfig.shells.bash.enabled :
+        (baseShell.enabled !== undefined ? baseShell.enabled : true),
+      wslConfig: {
+        ...(baseShell as any).wslConfig,
+        ...((userConfig.shells?.bash as any)?.wslConfig || {}),
+        mountPoint: ((userConfig.shells?.bash as any)?.wslConfig?.mountPoint !== undefined) ?
+          (userConfig.shells?.bash as any).wslConfig.mountPoint :
+          ((baseShell as any).wslConfig?.mountPoint || '/mnt/'),
+        inheritGlobalPaths: ((userConfig.shells?.bash as any)?.wslConfig?.inheritGlobalPaths !== undefined) ?
+          (userConfig.shells?.bash as any).wslConfig.inheritGlobalPaths :
+          ((baseShell as any).wslConfig?.inheritGlobalPaths !== undefined ?
+            (baseShell as any).wslConfig.inheritGlobalPaths : true)
+      }
+    } as WslShellConfig;
+    if (!merged.shells.bash.executable) {
+      merged.shells.bash.executable = { command: '', args: [] };
     }
   }
 
