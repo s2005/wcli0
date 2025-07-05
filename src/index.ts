@@ -32,7 +32,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { fileURLToPath } from 'url';
@@ -73,6 +73,15 @@ const parseArgs = async () => {
     .option('initialDir', {
       type: 'string',
       description: 'Initial working directory (overrides config)'
+    })
+    .option('shell', {
+      type: 'string',
+      description: 'Enable only this shell and disable others'
+    })
+    .option('allowedDir', {
+      type: 'string',
+      array: true,
+      description: 'Allowed directory, can be specified multiple times'
     })
     .option('debug', {
       type: 'boolean',
@@ -912,6 +921,11 @@ const main = async () => {
 
     // Apply command line override for initialDir
     applyCliInitialDir(config, args.initialDir as string | undefined);
+    applyCliShellAndAllowedDirs(
+      config,
+      args.shell as string | undefined,
+      args.allowedDir as string[] | undefined
+    );
 
     const server = new CLIServer(config);
     await server.run();
