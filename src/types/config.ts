@@ -105,14 +105,14 @@ export interface ShellExecutableConfig {
 /**
  * Supported shell types
  */
-export type ShellType = 'cmd' | 'powershell' | 'gitbash' | 'wsl';
+export type ShellType = 'cmd' | 'powershell' | 'gitbash' | 'wsl' | 'bash';
 
 /**
  * Base configuration for all shell types
  */
 export interface BaseShellConfig {
   /**
-   * The type of shell (cmd, powershell, gitbash or wsl)
+   * The type of shell (cmd, powershell, gitbash, wsl or bash)
    */
   type: ShellType;
   /**
@@ -170,7 +170,7 @@ export interface WslSpecificConfig {
  * Extended configuration for WSL shell with WSL-specific options
  */
 export interface WslShellConfig extends BaseShellConfig {
-  type: 'wsl';
+  type: 'wsl' | 'bash';
   /**
    * WSL-specific configuration
    */
@@ -193,6 +193,7 @@ export interface ServerConfig {
     powershell?: BaseShellConfig;
     cmd?: BaseShellConfig;
     gitbash?: BaseShellConfig;
+    bash?: WslShellConfig;
     wsl?: WslShellConfig;
   };
 }

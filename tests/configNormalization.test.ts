@@ -119,7 +119,8 @@ describe('Config Normalization', () => {
         },
         powershell: { enabled: false, executable: { command: 'powershell.exe', args: [] } },
         cmd: { enabled: false, executable: { command: 'cmd.exe', args: ['/c'] } },
-        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
+        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } },
+        bash: { enabled: false, executable: { command: 'bash', args: ['-c'] } }
       }
     };
 
@@ -132,6 +133,7 @@ describe('Config Normalization', () => {
     // Other shells might be present but should be disabled
     if (cfg.shells.powershell) expect(cfg.shells.powershell.enabled).toBe(false);
     if (cfg.shells.cmd) expect(cfg.shells.cmd.enabled).toBe(false);
+    if (cfg.shells.bash) expect(cfg.shells.bash.enabled).toBe(false);
     if (cfg.shells.wsl) expect(cfg.shells.wsl.enabled).toBe(false);
 
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
@@ -157,6 +159,7 @@ describe('Config Normalization', () => {
         powershell: { enabled: false, executable: { command: 'powershell.exe', args: [] } },
         cmd: { enabled: false, executable: { command: 'cmd.exe', args: ['/c'] } },
         gitbash: { enabled: false, executable: { command: 'bash.exe', args: ['-c'] } },
+        bash: { enabled: false, executable: { command: 'bash', args: ['-c'] } },
         wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     });
@@ -205,6 +208,7 @@ describe('Config Normalization', () => {
           }
         },
         gitbash: { enabled: false, executable: { command: 'bash.exe', args: ['-c'] } },
+        bash: { enabled: false, executable: { command: 'bash', args: ['-c'] } },
         wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     };
@@ -219,6 +223,7 @@ describe('Config Normalization', () => {
     
     // These shells might be present but should be disabled
     if (cfg.shells.gitbash) expect(cfg.shells.gitbash.enabled).toBe(false);
+    if (cfg.shells.bash) expect(cfg.shells.bash.enabled).toBe(false);
     if (cfg.shells.wsl) expect(cfg.shells.wsl.enabled).toBe(false);
 
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });

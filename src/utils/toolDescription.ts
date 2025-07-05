@@ -65,6 +65,20 @@ export function buildToolDescription(allowedShells: string[]): string[] {
     );
   }
 
+  if (allowedShells.includes('bash')) {
+    descriptionLines.push(
+      "Example usage (Bash):",
+      "```json",
+      "{",
+      "  \"shell\": \"bash\",",
+      "  \"command\": \"ls -la\",",
+      "  \"workingDir\": \"/home/user\"",
+      "}",
+      "```",
+      ""
+    );
+  }
+
   return descriptionLines;
 }
 
@@ -102,7 +116,7 @@ export function buildExecuteCommandDescription(
     }
     
     // Add path format information based on shell type
-    if (config.type === 'wsl') {
+    if (config.type === 'wsl' || config.type === 'bash') {
       lines.push(`- Path format: Unix-style (/home/user, /mnt/c/...)`);
       if (config.wslConfig?.inheritGlobalPaths) {
         lines.push(`- Inherits global Windows paths (converted to /mnt/...)`);
@@ -143,6 +157,18 @@ export function buildExecuteCommandDescription(
     lines.push('```json');
     lines.push('{');
     lines.push('  "shell": "wsl",');
+    lines.push('  "command": "ls -la",');
+    lines.push('  "workingDir": "/home/user"');
+    lines.push('}');
+    lines.push('```');
+    lines.push('');
+  }
+
+  if (resolvedConfigs.has('bash')) {
+    lines.push('Bash:');
+    lines.push('```json');
+    lines.push('{');
+    lines.push('  "shell": "bash",');
     lines.push('  "command": "ls -la",');
     lines.push('  "workingDir": "/home/user"');
     lines.push('}');

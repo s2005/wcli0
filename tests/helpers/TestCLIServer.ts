@@ -55,6 +55,7 @@ export class TestCLIServer {
       if (baseConfig.shells.powershell) baseConfig.shells.powershell.enabled = false;
       if (baseConfig.shells.cmd) baseConfig.shells.cmd.enabled = false;
       if (baseConfig.shells.gitbash) baseConfig.shells.gitbash.enabled = false;
+      if (baseConfig.shells.bash) baseConfig.shells.bash.enabled = false;
       
       // Add WSL shell
       baseConfig.shells.wsl = wslShell;
@@ -259,7 +260,7 @@ export class TestCLIServer {
     resolvedConfigs: Map<string, any>
   ): string {
     const lines = [
-      'Execute a command in the specified shell (cmd, gitbash)'
+      'Execute a command in the specified shell (cmd, gitbash, bash)'
     ];
     
     // Add shell-specific descriptions
@@ -273,6 +274,8 @@ export class TestCLIServer {
           pathFormat = 'Path format: Windows-style';
         } else if (shell === 'gitbash') {
           pathFormat = 'Path format: Mixed';
+        } else if (shell === 'bash') {
+          pathFormat = 'Path format: Unix-style';
         }
         
         lines.push(`${shell}: Command timeout: ${config.security.commandTimeout}s - ${pathFormat}`);

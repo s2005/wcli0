@@ -26,7 +26,7 @@ export function buildExecuteCommandSchema(
       const parts = [`${shell} shell`];
       parts.push(`timeout: ${config.security.commandTimeout}s`);
 
-      if (config.type === 'wsl') {
+      if (config.type === 'wsl' || config.type === 'bash') {
         parts.push('Unix paths');
       } else if (config.type === 'cmd' || config.type === 'powershell') {
         parts.push('Windows paths');
