@@ -32,7 +32,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { fileURLToPath } from 'url';
@@ -82,6 +82,14 @@ const parseArgs = async () => {
       type: 'string',
       array: true,
       description: 'Allowed directory, can be specified multiple times'
+    })
+    .option('maxCommandLength', {
+      type: 'number',
+      description: 'Maximum length for command strings'
+    })
+    .option('commandTimeout', {
+      type: 'number',
+      description: 'Command timeout in seconds'
     })
     .option('debug', {
       type: 'boolean',
@@ -925,6 +933,11 @@ const main = async () => {
       config,
       args.shell as string | undefined,
       args.allowedDir as string[] | undefined
+    );
+    applyCliSecurityOverrides(
+      config,
+      args.maxCommandLength as number | undefined,
+      args.commandTimeout as number | undefined
     );
 
     const server = new CLIServer(config);

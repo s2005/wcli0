@@ -444,3 +444,21 @@ export function applyCliShellAndAllowedDirs(
     config.global.security.enableInjectionProtection = false;
   }
 }
+
+export function applyCliSecurityOverrides(
+  config: ServerConfig,
+  maxCommandLength?: number,
+  commandTimeout?: number
+): void {
+  if (typeof maxCommandLength === 'number' && maxCommandLength > 0) {
+    config.global.security.maxCommandLength = maxCommandLength;
+  } else if (maxCommandLength !== undefined) {
+    debugWarn(`WARN: Invalid maxCommandLength '${maxCommandLength}', ignoring.`);
+  }
+
+  if (typeof commandTimeout === 'number' && commandTimeout > 0) {
+    config.global.security.commandTimeout = commandTimeout;
+  } else if (commandTimeout !== undefined) {
+    debugWarn(`WARN: Invalid commandTimeout '${commandTimeout}', ignoring.`);
+  }
+}
