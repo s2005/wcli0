@@ -137,6 +137,13 @@ To get started with configuration:
     npx wcli0 --config ./my-config.json --initialDir /path/to/start
     ```
 
+   You can override global command limits directly from the CLI:
+
+    ```bash
+    npx wcli0 --config ./my-config.json \
+      --maxCommandLength 5000 --commandTimeout 60
+    ```
+
    You can also start the server with a specific shell and allowed directories
    without a configuration file:
 
