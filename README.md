@@ -145,6 +145,19 @@ To get started with configuration:
       --maxCommandLength 5000 --commandTimeout 60
     ```
 
+   You can override blocked restrictions directly from the CLI. Pass the option with
+   an empty string to clear defaults:
+
+    ```bash
+    npx wcli0 --blockedCommand "" --blockedArgument "" --blockedOperator ""
+    ```
+
+   Provide the flag multiple times to specify values:
+
+    ```bash
+    npx wcli0 --blockedCommand rm --blockedCommand del
+    ```
+
    You can also start the server with a specific shell and allowed directories
    without a configuration file:
 

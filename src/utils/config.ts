@@ -576,3 +576,31 @@ export function applyCliWslMountPoint(
     }
   }
 }
+
+export function applyCliRestrictions(
+  config: ServerConfig,
+  blockedCommands?: string[],
+  blockedArguments?: string[],
+  blockedOperators?: string[]
+): void {
+  if (blockedCommands !== undefined) {
+    const list = blockedCommands.length === 1 && blockedCommands[0] === ''
+      ? []
+      : blockedCommands;
+    config.global.restrictions.blockedCommands = list;
+  }
+
+  if (blockedArguments !== undefined) {
+    const list = blockedArguments.length === 1 && blockedArguments[0] === ''
+      ? []
+      : blockedArguments;
+    config.global.restrictions.blockedArguments = list;
+  }
+
+  if (blockedOperators !== undefined) {
+    const list = blockedOperators.length === 1 && blockedOperators[0] === ''
+      ? []
+      : blockedOperators;
+    config.global.restrictions.blockedOperators = list;
+  }
+}
