@@ -149,21 +149,6 @@ export interface WslSpecificConfig {
    * Whether to inherit global path settings and convert to WSL format
    */
   inheritGlobalPaths?: boolean;
-  
-  /**
-   * Path mapping settings between Windows and WSL
-   */
-  pathMapping?: {
-    /**
-     * Whether path mapping is enabled
-     */
-    enabled: boolean;
-    
-    /**
-     * Whether to convert Windows paths to WSL format
-     */
-    windowsToWsl: boolean;
-  };
 }
 
 /**

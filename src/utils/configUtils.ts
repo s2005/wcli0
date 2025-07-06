@@ -66,11 +66,7 @@ export function createSerializableConfig(config: ServerConfig): any {
       const wc = (shellConfig as any).wslConfig;
       shellInfo.wslConfig = {
         mountPoint: wc.mountPoint,
-        inheritGlobalPaths: wc.inheritGlobalPaths,
-        pathMapping: wc.pathMapping ? {
-          enabled: wc.pathMapping.enabled,
-          windowsToWsl: wc.pathMapping.windowsToWsl
-        } : undefined
+        inheritGlobalPaths: wc.inheritGlobalPaths
       };
     }
 

@@ -94,11 +94,7 @@ export function createWslEmulatorConfig(overrides: Partial<WslShellConfig> = {})
     },
     wslConfig: {
       mountPoint: '/mnt/',
-      inheritGlobalPaths: true,
-      pathMapping: {
-        enabled: true,
-        windowsToWsl: true
-      }
+      inheritGlobalPaths: true
     },
     ...overrides
   };
