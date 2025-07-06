@@ -72,6 +72,20 @@ This document summarizes the purpose of each unit test in the project.
 - **overrides config initialDir and updates allowedPaths** – applying the CLI option replaces the configured `initialDir` with the provided path and appends it to `allowedPaths`.
 - **invalid directory logs warning and does not override** – supplying a nonexistent directory causes a warning and the original configuration remains unchanged.
 
+## tests/shellCliOverride.test.ts
+
+- **enables only selected shell and sets allowed directories** – activating the CLI flag disables other shells, updates global and shell-specific `allowedPaths`, and enforces working directory restriction.
+
+## tests/securityCliOverride.test.ts
+
+- **overrides security values with valid numbers** – valid `maxCommandLength` and `commandTimeout` values update the configuration when provided via CLI.
+- **logs warning and ignores invalid values** – zero or negative numbers trigger a warning and leave the original security settings intact.
+
+## tests/wslMountPointCliOverride.test.ts
+
+- **overrides mount point for WSL and Bash shells** – applying the CLI option changes the `mountPoint` for both WSL and Bash shell configurations.
+- **ignores when mount point is undefined** – omitting the value leaves existing mount points unchanged.
+
 ## tests/serverCwdInitialization.test.ts
 
 - **launch outside allowed paths leaves cwd undefined** – starting the server in a disallowed directory results in no active working directory.
