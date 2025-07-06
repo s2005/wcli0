@@ -35,7 +35,7 @@ import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, bu
 import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
 import { setDebugLogging, debugLog, debugWarn, errorLog } from './utils/log.js';
 
@@ -938,8 +938,10 @@ const main = async () => {
   }
 };
 
-// For ES modules, always run main() when this file is executed directly
-// The module is only imported when used as a library, not when run as a binary
-main();
+// For ES modules, run main() only when executed directly via Node
+// This avoids starting the server when the module is imported in tests
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
 
 export { CLIServer, main };
