@@ -32,7 +32,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -90,6 +90,10 @@ const parseArgs = async () => {
     .option('commandTimeout', {
       type: 'number',
       description: 'Command timeout in seconds'
+    })
+    .option('wslMountPoint', {
+      type: 'string',
+      description: 'Mount point for Windows drives in WSL (default: /mnt/)'
     })
     .option('debug', {
       type: 'boolean',
@@ -929,6 +933,7 @@ const main = async () => {
       args.maxCommandLength as number | undefined,
       args.commandTimeout as number | undefined
     );
+    applyCliWslMountPoint(config, args.wslMountPoint as string | undefined);
 
     const server = new CLIServer(config);
     await server.run();
