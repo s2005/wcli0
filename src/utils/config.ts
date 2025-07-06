@@ -30,10 +30,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       blockedOperators: ['&', '|', ';', '`']
     },
     paths: {
-      allowedPaths: [
-        os.homedir(),
-        process.cwd()
-      ],
+      allowedPaths: [],
       initialDir: undefined
     }
   },
@@ -104,7 +101,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
   }
 };
 
-export function loadConfig(configPath?: string): ServerConfig {
+export function loadConfig(configPath?: string, disableIfEmpty = false): ServerConfig {
   // If no config path provided, look in default locations
   const configLocations = [
     configPath,
@@ -129,9 +126,24 @@ export function loadConfig(configPath?: string): ServerConfig {
   }
 
   // Use defaults if no config was loaded or merge with loaded config
-  const config = Object.keys(loadedConfig).length > 0
+  const userProvidedConfig = Object.keys(loadedConfig).length > 0;
+
+  const config = userProvidedConfig
     ? mergeConfigs(DEFAULT_CONFIG, loadedConfig)
     : { ...DEFAULT_CONFIG };
+
+  if (!config.global.paths.allowedPaths) {
+    config.global.paths.allowedPaths = [];
+  }
+
+  if (
+    disableIfEmpty &&
+    config.global.security.restrictWorkingDirectory &&
+    config.global.paths.allowedPaths.length === 0 &&
+    !config.global.paths.initialDir
+  ) {
+    config.global.security.restrictWorkingDirectory = false;
+  }
   
   // Validate and process initialDir if provided
   if (config.global.paths.initialDir) {

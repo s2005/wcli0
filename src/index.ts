@@ -95,6 +95,11 @@ const parseArgs = async () => {
       type: 'string',
       description: 'Mount point for Windows drives in WSL (default: /mnt/)'
     })
+    .option('allowAllDirs', {
+      type: 'boolean',
+      default: false,
+      description: 'Disable working directory restriction when no allowed paths are configured'
+    })
     .option('debug', {
       type: 'boolean',
       default: false,
@@ -919,7 +924,7 @@ const main = async () => {
     }
 
     // Load configuration
-    const config = loadConfig(args.config);
+    const config = loadConfig(args.config, Boolean(args.allowAllDirs));
 
     // Apply command line override for initialDir
     applyCliInitialDir(config, args.initialDir as string | undefined);

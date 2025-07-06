@@ -2,7 +2,10 @@ import { describe, test, expect } from '@jest/globals';
 import { TestCLIServer } from '../helpers/TestCLIServer.js';
 
 const server = new TestCLIServer({
-  security: { restrictWorkingDirectory: true, allowedPaths: [process.cwd()] }
+  global: {
+    security: { restrictWorkingDirectory: true },
+    paths: { allowedPaths: [process.cwd()] }
+  }
 });
 
 describe('MCP Protocol Interactions', () => {

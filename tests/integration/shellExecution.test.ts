@@ -4,7 +4,9 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 
 describe('Shell Execution Security', () => {
   test('should reject commands with blocked operators', async () => {
-    const server = new TestCLIServer();
+    const server = new TestCLIServer({
+      global: { paths: { allowedPaths: [process.cwd()] } }
+    });
     await expect(
       server.executeCommand({ shell: 'wsl', command: 'echo hi ; ls' })
     ).rejects.toBeInstanceOf(McpError);
