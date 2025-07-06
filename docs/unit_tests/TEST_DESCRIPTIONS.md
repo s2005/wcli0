@@ -226,6 +226,11 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 - **uses defaults when sections omitted** – missing global sections retain default values during merge.
 - **omitted shells retain defaults** – unspecified shells are included with default configuration.
 
+## tests/emptyRestrictions.test.ts
+
+- **global empty arrays remove all restrictions** – specifying empty arrays removes all default blocked commands, arguments, and operators.
+- **shell config without restriction overrides** – default shell restrictions are not inherited when overrides omit them.
+
 ## tests/integration/endToEnd.test.ts
 
 - **should execute shell command with proper isolation** – uses the helper server to run a command end‑to‑end and verifies the output and working directory metadata.

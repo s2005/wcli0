@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ServerConfig, ResolvedShellConfig, WslShellConfig } from '../types/config.js';
+import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 import { debugWarn, errorLog } from './log.js';
@@ -200,15 +200,14 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
         ...(userConfig.global?.security || {})
       },
       restrictions: {
-        // Merge arrays properly - only use user config arrays if they have content,
-        // otherwise keep defaults
-        blockedCommands: (userConfig.global?.restrictions?.blockedCommands && userConfig.global.restrictions.blockedCommands.length > 0) 
-          ? userConfig.global.restrictions.blockedCommands 
+        // Use user provided arrays even if empty. Fall back to defaults when undefined.
+        blockedCommands: userConfig.global?.restrictions?.blockedCommands !== undefined
+          ? userConfig.global.restrictions.blockedCommands
           : defaultConfig.global.restrictions.blockedCommands,
-        blockedArguments: (userConfig.global?.restrictions?.blockedArguments && userConfig.global.restrictions.blockedArguments.length > 0)
+        blockedArguments: userConfig.global?.restrictions?.blockedArguments !== undefined
           ? userConfig.global.restrictions.blockedArguments
           : defaultConfig.global.restrictions.blockedArguments,
-        blockedOperators: (userConfig.global?.restrictions?.blockedOperators && userConfig.global.restrictions.blockedOperators.length > 0)
+        blockedOperators: userConfig.global?.restrictions?.blockedOperators !== undefined
           ? userConfig.global.restrictions.blockedOperators
           : defaultConfig.global.restrictions.blockedOperators
       },
@@ -229,11 +228,28 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
 
   // Add each shell, ensuring required properties are always set
   if (shouldIncludePowerShell) {
-    const baseShell = defaultConfig.shells.powershell || {
-      type: 'powershell',
-      enabled: false,
-      executable: { command: '', args: [] }
-    };
+    const userShell = userConfig.shells?.powershell;
+    const baseShell: BaseShellConfig = defaultConfig.shells.powershell
+      ? {
+          ...defaultConfig.shells.powershell,
+          overrides: defaultConfig.shells.powershell.overrides
+            ? {
+                ...defaultConfig.shells.powershell.overrides,
+                restrictions: defaultConfig.shells.powershell.overrides.restrictions
+                  ? { ...defaultConfig.shells.powershell.overrides.restrictions }
+                  : undefined
+              }
+            : undefined
+        }
+      : {
+          type: 'powershell',
+          enabled: false,
+          executable: { command: '', args: [] }
+        };
+    if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
+      const { restrictions, ...rest } = baseShell.overrides;
+      baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
+    }
     merged.shells.powershell = {
       // Start with defaults
       ...baseShell,
@@ -251,11 +267,28 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   }
 
   if (shouldIncludeCmd) {
-    const baseShell = defaultConfig.shells.cmd || {
-      type: 'cmd',
-      enabled: false,
-      executable: { command: '', args: [] }
-    };
+    const userShell = userConfig.shells?.cmd;
+    const baseShell: BaseShellConfig = defaultConfig.shells.cmd
+      ? {
+          ...defaultConfig.shells.cmd,
+          overrides: defaultConfig.shells.cmd.overrides
+            ? {
+                ...defaultConfig.shells.cmd.overrides,
+                restrictions: defaultConfig.shells.cmd.overrides.restrictions
+                  ? { ...defaultConfig.shells.cmd.overrides.restrictions }
+                  : undefined
+              }
+            : undefined
+        }
+      : {
+          type: 'cmd',
+          enabled: false,
+          executable: { command: '', args: [] }
+        };
+    if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
+      const { restrictions, ...rest } = baseShell.overrides;
+      baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
+    }
     merged.shells.cmd = {
       // Start with defaults
       ...baseShell,
@@ -273,11 +306,28 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   }
 
   if (shouldIncludeGitBash) {
-    const baseShell = defaultConfig.shells.gitbash || {
-      type: 'gitbash',
-      enabled: false,
-      executable: { command: '', args: [] }
-    };
+    const userShell = userConfig.shells?.gitbash;
+    const baseShell: BaseShellConfig = defaultConfig.shells.gitbash
+      ? {
+          ...defaultConfig.shells.gitbash,
+          overrides: defaultConfig.shells.gitbash.overrides
+            ? {
+                ...defaultConfig.shells.gitbash.overrides,
+                restrictions: defaultConfig.shells.gitbash.overrides.restrictions
+                  ? { ...defaultConfig.shells.gitbash.overrides.restrictions }
+                  : undefined
+              }
+            : undefined
+        }
+      : {
+          type: 'gitbash',
+          enabled: false,
+          executable: { command: '', args: [] }
+        };
+    if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
+      const { restrictions, ...rest } = baseShell.overrides;
+      baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
+    }
     merged.shells.gitbash = {
       // Start with defaults
       ...baseShell,
@@ -295,15 +345,32 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   }
 
   if (shouldIncludeBash) {
-    const baseShell = defaultConfig.shells.bash || {
-      type: 'bash',
-      enabled: false,
-      executable: { command: '', args: [] },
-      wslConfig: {
-        mountPoint: '/mnt/',
-        inheritGlobalPaths: true
-      }
-    } as WslShellConfig;
+    const userShell = userConfig.shells?.bash;
+    const baseShell: WslShellConfig = defaultConfig.shells.bash
+      ? {
+          ...defaultConfig.shells.bash,
+          overrides: defaultConfig.shells.bash.overrides
+            ? {
+                ...defaultConfig.shells.bash.overrides,
+                restrictions: defaultConfig.shells.bash.overrides.restrictions
+                  ? { ...defaultConfig.shells.bash.overrides.restrictions }
+                  : undefined
+              }
+            : undefined
+        }
+      : {
+          type: 'bash',
+          enabled: false,
+          executable: { command: '', args: [] },
+          wslConfig: {
+            mountPoint: '/mnt/',
+            inheritGlobalPaths: true
+          }
+        } as WslShellConfig;
+    if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
+      const { restrictions, ...rest } = baseShell.overrides;
+      baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
+    }
     merged.shells.bash = {
       ...baseShell,
       ...(userConfig.shells?.bash || {}),
@@ -328,15 +395,32 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   }
 
   if (shouldIncludeWSL) {
-    const baseShell = defaultConfig.shells.wsl || {
-      type: 'wsl',
-      enabled: false,
-      executable: { command: '', args: [] },
-      wslConfig: {
-        mountPoint: '/mnt/',
-        inheritGlobalPaths: true
-      }
-    };
+    const userShell = userConfig.shells?.wsl;
+    const baseShell: WslShellConfig = defaultConfig.shells.wsl
+      ? {
+          ...defaultConfig.shells.wsl,
+          overrides: defaultConfig.shells.wsl.overrides
+            ? {
+                ...defaultConfig.shells.wsl.overrides,
+                restrictions: defaultConfig.shells.wsl.overrides.restrictions
+                  ? { ...defaultConfig.shells.wsl.overrides.restrictions }
+                  : undefined
+              }
+            : undefined,
+        }
+      : {
+          type: 'wsl',
+          enabled: false,
+          executable: { command: '', args: [] },
+          wslConfig: {
+            mountPoint: '/mnt/',
+            inheritGlobalPaths: true
+          }
+        };
+    if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
+      const { restrictions, ...rest } = baseShell.overrides;
+      baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
+    }
     merged.shells.wsl = {
       // Start with defaults
       ...baseShell,

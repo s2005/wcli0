@@ -474,7 +474,7 @@ The inheritance system works as follows:
 
 1. **Global defaults** are applied to all shells
 2. **Shell-specific overrides** replace or extend global settings
-3. **Array settings** (like `blockedCommands`) are merged, not replaced
+3. **Array settings** (like `blockedCommands`) override defaults when provided
 4. **Object settings** are deep-merged
 5. **Primitive settings** are replaced
 
@@ -501,7 +501,7 @@ Example of inheritance in action:
 Results in PowerShell having:
 
 - `commandTimeout`: 45 (overridden)
-- `blockedCommands`: ["rm", "format", "Remove-Item"] (merged)
+- `blockedCommands`: ["Remove-Item"] (overrides defaults)
 
 ## API
 
