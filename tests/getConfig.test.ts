@@ -183,6 +183,23 @@ describe('get_config tool', () => {
     expect(safeConfig.shells).toBeDefined();
     expect(Object.keys(safeConfig.shells)).toHaveLength(0);
   });
+
+  test('createSerializableConfig omits restrictions when injection protection disabled', () => {
+    const disabledConfig: ServerConfig = {
+      ...testConfig,
+      global: {
+        ...testConfig.global,
+        security: {
+          ...testConfig.global.security,
+          enableInjectionProtection: false
+        }
+      }
+    };
+
+    const safeConfig = createSerializableConfig(disabledConfig);
+
+    expect(safeConfig.global.restrictions).toBeUndefined();
+  });
   
   test('get_config tool response format', () => {
     // Call the utility function directly with our test config
