@@ -30,10 +30,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       blockedOperators: ['&', '|', ';', '`']
     },
     paths: {
-      allowedPaths: [
-        os.homedir(),
-        process.cwd()
-      ],
+      allowedPaths: [],
       initialDir: undefined
     }
   },
@@ -129,9 +126,15 @@ export function loadConfig(configPath?: string): ServerConfig {
   }
 
   // Use defaults if no config was loaded or merge with loaded config
-  const config = Object.keys(loadedConfig).length > 0
+  const userProvidedConfig = Object.keys(loadedConfig).length > 0;
+
+  const config = userProvidedConfig
     ? mergeConfigs(DEFAULT_CONFIG, loadedConfig)
     : { ...DEFAULT_CONFIG };
+
+  if (!config.global.paths.allowedPaths) {
+    config.global.paths.allowedPaths = [];
+  }
   
   // Validate and process initialDir if provided
   if (config.global.paths.initialDir) {

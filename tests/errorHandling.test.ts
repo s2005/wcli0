@@ -26,6 +26,7 @@ describe('Error Handling', () => {
 
   test('should recover from shell crashes', async () => {
     const crashConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    crashConfig.global.paths.allowedPaths = [process.cwd()];
     if (crashConfig.shells && crashConfig.shells.cmd) {
       // Update the shell configuration to use the new structure
       crashConfig.shells.cmd.executable = {

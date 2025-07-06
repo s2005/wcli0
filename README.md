@@ -280,9 +280,7 @@ If no configuration file is found, the server will use a default (restricted) co
       "blockedOperators": ["&", "|", ";", "`"]
     },
     "paths": {
-      "allowedPaths": ["~", "."],
-      "initialDir": null,
-      "restrictWorkingDirectory": true
+      "initialDir": null
     }
   },
   "shells": {
@@ -381,6 +379,11 @@ Global settings provide defaults that apply to all shells unless overridden.
   }
 }
 ```
+
+If the `allowedPaths` array is omitted from your configuration file, no default
+directories are automatically allowed. When `restrictWorkingDirectory` is
+enabled, only the `initialDir` (if specified) will be added to the allowed paths
+list.
 
 #### Shell Configuration
 
