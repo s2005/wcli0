@@ -119,6 +119,7 @@ To get started with configuration:
    - Copy `config.examples/config.sample.json` for basic setup
    - Copy `config.examples/config.development.json` for development environments
    - Copy `config.examples/config.secure.json` for high-security environments
+   - Copy `config.examples/emptyRestrictions.json` to remove all default restrictions
 
 2. **Create your own configuration**:
 
@@ -474,7 +475,8 @@ The inheritance system works as follows:
 
 1. **Global defaults** are applied to all shells
 2. **Shell-specific overrides** replace or extend global settings
-3. **Array settings** (like `blockedCommands`) override defaults when provided
+3. **Array settings** (like `blockedCommands`) override defaults when provided.
+   Specifying an empty array removes all default entries for that setting.
 4. **Object settings** are deep-merged
 5. **Primitive settings** are replaced
 
@@ -502,6 +504,28 @@ Results in PowerShell having:
 
 - `commandTimeout`: 45 (overridden)
 - `blockedCommands`: ["Remove-Item"] (overrides defaults)
+
+To completely remove defaults for a given restriction, provide an empty array:
+
+```json
+{
+  "global": {
+    "restrictions": {
+      "blockedCommands": [],
+      "blockedArguments": [],
+      "blockedOperators": []
+    }
+  },
+  "shells": {
+    "powershell": {
+      "type": "powershell",
+      "overrides": {
+        "restrictions": { "blockedCommands": [] }
+      }
+    }
+  }
+}
+```
 
 ## API
 
