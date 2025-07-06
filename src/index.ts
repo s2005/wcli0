@@ -377,6 +377,7 @@ class CLIServer {
           `Command execution timed out after ${shellConfig.security.commandTimeout} seconds in ${shellName}`
         ));
       }, shellConfig.security.commandTimeout * 1000);
+      timeout.unref();
     });
   }
 

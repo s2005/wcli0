@@ -11,6 +11,9 @@ describe('Test Suite Cleanup Verification', () => {
     if (global.gc) {
       global.gc();
     }
-    return new Promise(resolve => setTimeout(resolve, 100));
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, 100);
+      timer.unref();
+    });
   });
 });
