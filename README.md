@@ -475,8 +475,11 @@ The inheritance system works as follows:
 1. **Global defaults** are applied to all shells
 2. **Shell-specific overrides** replace or extend global settings
 3. **Array settings** (like `blockedCommands`) are merged, not replaced
-4. **Object settings** are deep-merged
-5. **Primitive settings** are replaced
+4. **Empty arrays disable defaults** – specifying an empty array for a field
+   such as `blockedCommands`, `blockedArguments`, or `blockedOperators`
+   results in no defaults being applied for that setting
+5. **Object settings** are deep-merged
+6. **Primitive settings** are replaced
 
 Example of inheritance in action:
 

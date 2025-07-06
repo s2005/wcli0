@@ -200,15 +200,14 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
         ...(userConfig.global?.security || {})
       },
       restrictions: {
-        // Merge arrays properly - only use user config arrays if they have content,
-        // otherwise keep defaults
-        blockedCommands: (userConfig.global?.restrictions?.blockedCommands && userConfig.global.restrictions.blockedCommands.length > 0) 
-          ? userConfig.global.restrictions.blockedCommands 
+        // Use user-provided arrays whenever defined, even if empty
+        blockedCommands: (userConfig.global?.restrictions?.blockedCommands !== undefined)
+          ? userConfig.global.restrictions.blockedCommands
           : defaultConfig.global.restrictions.blockedCommands,
-        blockedArguments: (userConfig.global?.restrictions?.blockedArguments && userConfig.global.restrictions.blockedArguments.length > 0)
+        blockedArguments: (userConfig.global?.restrictions?.blockedArguments !== undefined)
           ? userConfig.global.restrictions.blockedArguments
           : defaultConfig.global.restrictions.blockedArguments,
-        blockedOperators: (userConfig.global?.restrictions?.blockedOperators && userConfig.global.restrictions.blockedOperators.length > 0)
+        blockedOperators: (userConfig.global?.restrictions?.blockedOperators !== undefined)
           ? userConfig.global.restrictions.blockedOperators
           : defaultConfig.global.restrictions.blockedOperators
       },
