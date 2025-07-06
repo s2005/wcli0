@@ -154,10 +154,17 @@ To get started with configuration:
 
    For WSL shells, you can specify a custom mount location:
 
-   ```bash
-   npx wcli0 --shell wsl \
-     --wslMountPoint /windows/
-   ```
+  ```bash
+  npx wcli0 --shell wsl \
+    --wslMountPoint /windows/
+  ```
+
+  To disable directory restrictions entirely when no allowed paths are
+  configured, start the server with:
+
+  ```bash
+  npx wcli0 --allowAllDirs
+  ```
 
    When started this way, `restrictWorkingDirectory` is forced on and
    `enableInjectionProtection` is disabled to ensure the allowed paths apply
@@ -384,6 +391,8 @@ If the `allowedPaths` array is omitted from your configuration file, no default
 directories are automatically allowed. When `restrictWorkingDirectory` is
 enabled, only the `initialDir` (if specified) will be added to the allowed paths
 list.
+Use the `--allowAllDirs` flag when launching the server to automatically
+disable `restrictWorkingDirectory` if no allowed paths or `initialDir` are set.
 
 #### Shell Configuration
 

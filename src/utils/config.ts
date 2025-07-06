@@ -101,7 +101,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
   }
 };
 
-export function loadConfig(configPath?: string): ServerConfig {
+export function loadConfig(configPath?: string, disableIfEmpty = false): ServerConfig {
   // If no config path provided, look in default locations
   const configLocations = [
     configPath,
@@ -134,6 +134,15 @@ export function loadConfig(configPath?: string): ServerConfig {
 
   if (!config.global.paths.allowedPaths) {
     config.global.paths.allowedPaths = [];
+  }
+
+  if (
+    disableIfEmpty &&
+    config.global.security.restrictWorkingDirectory &&
+    config.global.paths.allowedPaths.length === 0 &&
+    !config.global.paths.initialDir
+  ) {
+    config.global.security.restrictWorkingDirectory = false;
   }
   
   // Validate and process initialDir if provided
