@@ -27,7 +27,7 @@ import {
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
 import { z } from 'zod';
-import { readFileSync } from 'fs';
+import { readFileSync, realpathSync } from 'fs';
 import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
@@ -952,6 +952,16 @@ const main = async () => {
 // This avoids starting the server when the module is imported in tests
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
+} else if (process.argv[1]) {
+  // Handle case where the script is run via symlink (e.g., global npm install)
+  try {
+    const resolvedPath = realpathSync(process.argv[1]);
+    if (import.meta.url === pathToFileURL(resolvedPath).href) {
+      main();
+    }
+  } catch {
+    // If symlink resolution fails, don't run main()
+  }
 }
 
 export { CLIServer, main };
