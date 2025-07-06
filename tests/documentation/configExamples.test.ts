@@ -7,8 +7,11 @@ describe('Configuration Examples', () => {
   const examplesDir = path.join(process.cwd(), 'config.examples');
   
   // Get all example files
-  const exampleFiles = fs.existsSync(examplesDir) 
-    ? fs.readdirSync(examplesDir).filter(f => f.endsWith('.json'))
+  const exampleFiles = fs.existsSync(examplesDir)
+    ? fs.readdirSync(examplesDir)
+        .filter(f => f.endsWith('.json'))
+        // Ignore empty placeholder files that may be generated during docs build
+        .filter(f => fs.statSync(path.join(examplesDir, f)).size > 0)
     : [];
 
   test.each(exampleFiles)('example %s is valid', (filename) => {
