@@ -104,31 +104,25 @@ describe('get_config tool', () => {
     
     // Check shells configuration
     if (testConfig.shells.powershell) {
-      expect(safeConfig.shells.powershell.enabled).toBe(testConfig.shells.powershell.enabled);
-      expect(safeConfig.shells.powershell.executable.command).toBe(testConfig.shells.powershell.executable?.command);
-      expect(safeConfig.shells.powershell.executable.args).toEqual(testConfig.shells.powershell.executable?.args || []);
-      expect(safeConfig.shells.powershell.overrides?.restrictions?.blockedOperators)
-        .toEqual(testConfig.shells.powershell.overrides?.restrictions?.blockedOperators || []);
+      expect(safeConfig.shells.powershell.type).toBe('powershell');
+      expect(safeConfig.shells.powershell.restrictions?.blockedOperators)
+        .toEqual(testConfig.shells.powershell.overrides?.restrictions?.blockedOperators || undefined);
     }
-    
+
     if (testConfig.shells.cmd) {
-      expect(safeConfig.shells.cmd.enabled).toBe(testConfig.shells.cmd.enabled);
+      expect(safeConfig.shells.cmd.type).toBe('cmd');
     }
-    
+
     if (testConfig.shells.gitbash) {
       expect(safeConfig.shells.gitbash).toBeUndefined();
     }
-    
-    // Verify that function properties are not included in the serializable config
-    // We now look for overrides.validatePath property which shouldn't be included in serialized output
+
+    // Verify that executable information is not included
     if (safeConfig.shells.powershell) {
-      expect(safeConfig.shells.powershell.validatePath).toBeUndefined();
+      expect((safeConfig.shells.powershell as any).executable).toBeUndefined();
     }
     if (safeConfig.shells.cmd) {
-      expect(safeConfig.shells.cmd.validatePath).toBeUndefined();
-    }
-    if (safeConfig.shells.gitbash) {
-      expect(safeConfig.shells.gitbash.validatePath).toBeUndefined();
+      expect((safeConfig.shells.cmd as any).executable).toBeUndefined();
     }
 
   });
@@ -158,13 +152,7 @@ describe('get_config tool', () => {
       const shell = testConfig.shells[shellName as keyof typeof testConfig.shells];
       if (shell && shell.enabled) {
         expect(safeConfig.shells).toHaveProperty(shellName);
-        expect(safeConfig.shells[shellName]).toHaveProperty('enabled');
-        expect(safeConfig.shells[shellName]).toHaveProperty('executable');
-        expect(safeConfig.shells[shellName].executable).toHaveProperty('command');
-        expect(safeConfig.shells[shellName].executable).toHaveProperty('args');
-        if (safeConfig.shells[shellName].overrides && safeConfig.shells[shellName].overrides.restrictions) {
-          expect(safeConfig.shells[shellName].overrides.restrictions).toHaveProperty('blockedOperators');
-        }
+        expect(safeConfig.shells[shellName]).toHaveProperty('type');
       }
     });
 

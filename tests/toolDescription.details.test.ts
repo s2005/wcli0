@@ -67,7 +67,7 @@ describe('Detailed Tool Descriptions', () => {
   test('buildGetConfigDescription outlines return fields', () => {
     const result = buildGetConfigDescription();
     expect(result).toContain('Get the windows CLI server configuration');
-    expect(result).toContain('`configuration`');
-    expect(result).toContain('`resolvedShells`');
+    expect(result).toContain('`global`');
+    expect(result).toContain('`shells`');
   });
 });

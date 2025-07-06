@@ -30,35 +30,27 @@ export function createSerializableConfig(config: ServerConfig): any {
     if (!shellConfig || !shellConfig.enabled) continue;
 
     const shellInfo: any = {
-      type: shellConfig.type,
-      enabled: shellConfig.enabled,
-      executable: {
-        command: shellConfig.executable.command,
-        args: [...shellConfig.executable.args]
-      }
+      type: shellConfig.type
     };
 
     if (shellConfig.overrides) {
-      shellInfo.overrides = {};
       if (shellConfig.overrides.security) {
-        shellInfo.overrides.security = { ...shellConfig.overrides.security };
+        shellInfo.security = { ...shellConfig.overrides.security };
       }
-      if (shellConfig.overrides.restrictions) {
-        shellInfo.overrides.restrictions = {
-          blockedCommands: shellConfig.overrides.restrictions.blockedCommands ?
-            [...shellConfig.overrides.restrictions.blockedCommands] : undefined,
-          blockedArguments: shellConfig.overrides.restrictions.blockedArguments ?
-            [...shellConfig.overrides.restrictions.blockedArguments] : undefined,
-          blockedOperators: shellConfig.overrides.restrictions.blockedOperators ?
-            [...shellConfig.overrides.restrictions.blockedOperators] : undefined
-        };
+
+      const r = shellConfig.overrides.restrictions;
+      if (r && (r.blockedCommands || r.blockedArguments || r.blockedOperators)) {
+        shellInfo.restrictions = {};
+        if (r.blockedCommands) shellInfo.restrictions.blockedCommands = [...r.blockedCommands];
+        if (r.blockedArguments) shellInfo.restrictions.blockedArguments = [...r.blockedArguments];
+        if (r.blockedOperators) shellInfo.restrictions.blockedOperators = [...r.blockedOperators];
       }
-      if (shellConfig.overrides.paths) {
-        shellInfo.overrides.paths = {
-          allowedPaths: shellConfig.overrides.paths.allowedPaths ?
-            [...shellConfig.overrides.paths.allowedPaths] : undefined,
-          initialDir: shellConfig.overrides.paths.initialDir
-        };
+
+      const p = shellConfig.overrides.paths;
+      if (p && (p.allowedPaths || p.initialDir !== undefined)) {
+        shellInfo.paths = {};
+        if (p.allowedPaths) shellInfo.paths.allowedPaths = [...p.allowedPaths];
+        if (p.initialDir !== undefined) shellInfo.paths.initialDir = p.initialDir;
       }
     }
 

@@ -849,20 +849,10 @@ class CLIServer {
       case "get_config": {
         const safeConfig = createSerializableConfig(this.config);
 
-        const resolvedConfigs: any = {};
-        for (const [shellName, resolved] of this.resolvedConfigs.entries()) {
-          resolvedConfigs[shellName] = createResolvedConfigSummary(shellName, resolved);
-        }
-
-        const fullConfig = {
-          configuration: safeConfig,
-          resolvedShells: resolvedConfigs
-        };
-
         return {
           content: [{
             type: "text",
-            text: JSON.stringify(fullConfig, null, 2)
+            text: JSON.stringify(safeConfig, null, 2)
           }],
           isError: false,
           metadata: {}
