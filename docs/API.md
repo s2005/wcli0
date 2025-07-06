@@ -28,11 +28,11 @@ Execute a command in the specified shell with shell-specific validation and sett
 ```
 
 ### get_config Tool
-Get the complete configuration including resolved settings for each shell.
+Return the current server configuration.
 
 **Returns:**
-- `configuration`: The raw configuration structure
-- `resolvedShells`: Effective settings for each enabled shell
+- `global`: The default configuration applied to all shells
+- `shells`: Enabled shells with any security, restriction or path overrides
 
 ### validate_directories Tool
 Check if directories are valid for global or shell-specific contexts.

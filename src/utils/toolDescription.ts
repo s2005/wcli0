@@ -229,15 +229,14 @@ export function buildValidateDirectoriesDescription(
  */
 export function buildGetConfigDescription(): string {
   const lines: string[] = [];
-  
+
   lines.push('Get the windows CLI server configuration');
   lines.push('');
   lines.push('**Returns:**');
-  lines.push('- `configuration`: The server configuration with global and shell-specific settings');
-  lines.push('- `resolvedShells`: Effective configuration for each enabled shell after merging');
+  lines.push('- `global`: Default settings applied to all shells');
+  lines.push('- `shells`: Enabled shells with any overrides applied');
   lines.push('');
-  lines.push('The resolved configuration shows what settings are actually used for each shell,');
-  lines.push('including inherited global settings and shell-specific overrides.');
-  
+  lines.push('Only enabled shells are included and technical fields like executables are omitted.');
+
   return lines.join('\n');
 }

@@ -6,7 +6,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 describe('Tool Handlers', () => {
   describe('get_config tool', () => {
-    test('returns both configuration and resolved settings', async () => {
+    test('returns configuration summary', async () => {
       const config = buildTestConfig({
         global: {
           security: { commandTimeout: 30 },
@@ -29,11 +29,10 @@ describe('Tool Handlers', () => {
 
       const configData = JSON.parse(result.content[0].text as string);
 
-      expect(configData.configuration.global.security.commandTimeout).toBe(30);
-      expect(configData.configuration.shells.cmd.overrides.security.commandTimeout).toBe(60);
-      expect(configData.resolvedShells.cmd.effectiveSettings.security.commandTimeout).toBe(60);
-      expect(configData.resolvedShells.cmd.effectiveSettings.restrictions.blockedCommands)
-        .toEqual(['global-blocked', 'cmd-specific']);
+      expect(configData.global.security.commandTimeout).toBe(30);
+      expect(configData.shells.cmd.security.commandTimeout).toBe(60);
+      expect(configData.shells.cmd.restrictions.blockedCommands)
+        .toEqual(['cmd-specific']);
     });
   });
 
