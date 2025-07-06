@@ -252,11 +252,7 @@ Configuration optimized for WSL development:
       },
       "wslConfig": {
         "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true,
-        "pathMapping": {
-          "enabled": true,
-          "windowsToWsl": true
-        }
+        "inheritGlobalPaths": true
       },
       "overrides": {
         "security": {
@@ -350,11 +346,7 @@ Configuration supporting different environments with shell-specific overrides:
       },
       "wslConfig": {
         "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true,
-        "pathMapping": {
-          "enabled": true,
-          "windowsToWsl": true
-        }
+        "inheritGlobalPaths": true
       }
     }
   }

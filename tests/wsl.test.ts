@@ -38,11 +38,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
         },
         wslConfig: {
           mountPoint: '/mnt/',
-          inheritGlobalPaths: true,
-          pathMapping: {
-            enabled: true,
-            windowsToWsl: true
-          }
+          inheritGlobalPaths: true
         }
       };
       
@@ -180,11 +176,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
         },
         wslConfig: {
           mountPoint: '/mnt/',
-          inheritGlobalPaths: true,
-          pathMapping: {
-            enabled: true,
-            windowsToWsl: true
-          }
+          inheritGlobalPaths: true
         }
       };
       

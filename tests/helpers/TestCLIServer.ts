@@ -41,11 +41,7 @@ export class TestCLIServer {
       },
       wslConfig: {
         mountPoint: '/mnt/',
-        inheritGlobalPaths: true,
-        pathMapping: {
-          enabled: true,
-          windowsToWsl: true
-        }
+        inheritGlobalPaths: true
       }
     };
     

@@ -138,7 +138,6 @@ A: When enabled, it limits command execution to directories listed in `allowedPa
 A: WSL configuration includes special options:
 - `inheritGlobalPaths`: Convert Windows paths to WSL format
 - `mountPoint`: Where Windows drives are mounted (default: `/mnt/`)
-- `pathMapping`: Enable automatic path conversion
 
 Example:
 ```json
@@ -146,11 +145,7 @@ Example:
   "wsl": {
     "wslConfig": {
       "mountPoint": "/mnt/",
-      "inheritGlobalPaths": true,
-      "pathMapping": {
-        "enabled": true,
-        "windowsToWsl": true
-      }
+      "inheritGlobalPaths": true
     }
   }
 }

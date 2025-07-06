@@ -68,11 +68,7 @@
       },
       "wslConfig": {
         "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true,
-        "pathMapping": {
-          "enabled": true,
-          "windowsToWsl": true
-        }
+        "inheritGlobalPaths": true
       }
     },
     "wsl": {
@@ -84,11 +80,7 @@
       },
       "wslConfig": {
         "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true,
-        "pathMapping": {
-          "enabled": true,
-          "windowsToWsl": true
-        }
+        "inheritGlobalPaths": true
       }
     }
   }

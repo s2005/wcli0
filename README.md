@@ -231,11 +231,7 @@ The server uses an inheritance-based configuration system where global defaults 
       },
       "wslConfig": {
         "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true,
-        "pathMapping": {
-          "enabled": true,
-          "windowsToWsl": true
-        }
+        "inheritGlobalPaths": true
       }
     }
   }
@@ -444,11 +440,7 @@ WSL shells have additional configuration options for path mapping:
       },
       "wslConfig": {
         "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true,
-        "pathMapping": {
-          "enabled": true,
-          "windowsToWsl": true
-        }
+        "inheritGlobalPaths": true
       }
     }
   }
