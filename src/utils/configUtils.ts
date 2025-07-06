@@ -12,11 +12,6 @@ export function createSerializableConfig(config: ServerConfig): any {
         enableInjectionProtection: config.global.security.enableInjectionProtection,
         restrictWorkingDirectory: config.global.security.restrictWorkingDirectory
       },
-      restrictions: {
-        blockedCommands: [...config.global.restrictions.blockedCommands],
-        blockedArguments: [...config.global.restrictions.blockedArguments],
-        blockedOperators: [...config.global.restrictions.blockedOperators]
-      },
       paths: {
         allowedPaths: [...config.global.paths.allowedPaths],
         initialDir: config.global.paths.initialDir
@@ -24,6 +19,14 @@ export function createSerializableConfig(config: ServerConfig): any {
     },
     shells: {}
   };
+
+  if (config.global.security.enableInjectionProtection) {
+    serializable.global.restrictions = {
+      blockedCommands: [...config.global.restrictions.blockedCommands],
+      blockedArguments: [...config.global.restrictions.blockedArguments],
+      blockedOperators: [...config.global.restrictions.blockedOperators]
+    };
+  }
 
   // Add shell configurations for enabled shells only
   for (const [shellName, shellConfig] of Object.entries(config.shells)) {
@@ -38,8 +41,13 @@ export function createSerializableConfig(config: ServerConfig): any {
         shellInfo.security = { ...shellConfig.overrides.security };
       }
 
+      const effectiveInjection =
+        shellConfig.overrides.security?.enableInjectionProtection !== undefined
+          ? shellConfig.overrides.security.enableInjectionProtection
+          : config.global.security.enableInjectionProtection;
+
       const r = shellConfig.overrides.restrictions;
-      if (r && (r.blockedCommands || r.blockedArguments || r.blockedOperators)) {
+      if (effectiveInjection && r && (r.blockedCommands || r.blockedArguments || r.blockedOperators)) {
         shellInfo.restrictions = {};
         if (r.blockedCommands) shellInfo.restrictions.blockedCommands = [...r.blockedCommands];
         if (r.blockedArguments) shellInfo.restrictions.blockedArguments = [...r.blockedArguments];
