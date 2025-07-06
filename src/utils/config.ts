@@ -462,3 +462,21 @@ export function applyCliSecurityOverrides(
     debugWarn(`WARN: Invalid commandTimeout '${commandTimeout}', ignoring.`);
   }
 }
+
+export function applyCliWslMountPoint(
+  config: ServerConfig,
+  mountPoint?: string
+): void {
+  if (!mountPoint) return;
+
+  const normalized = mountPoint.endsWith('/') ? mountPoint : mountPoint + '/';
+  const shells: (keyof ServerConfig['shells'])[] = ['wsl', 'bash'];
+
+  for (const name of shells) {
+    const shell = config.shells[name] as WslShellConfig | undefined;
+    if (shell) {
+      shell.wslConfig = shell.wslConfig || {};
+      shell.wslConfig.mountPoint = normalized;
+    }
+  }
+}

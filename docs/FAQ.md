@@ -138,6 +138,7 @@ A: When enabled, it limits command execution to directories listed in `allowedPa
 A: WSL configuration includes special options:
 - `inheritGlobalPaths`: Convert Windows paths to WSL format
 - `mountPoint`: Where Windows drives are mounted (default: `/mnt/`)
+  You can override the mount point on startup with the `--wslMountPoint` flag.
 
 Example:
 ```json

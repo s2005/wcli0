@@ -152,6 +152,13 @@ To get started with configuration:
      --allowedDir C:\safe --allowedDir D:\projects
    ```
 
+   For WSL shells, you can specify a custom mount location:
+
+   ```bash
+   npx wcli0 --shell wsl \
+     --wslMountPoint /windows/
+   ```
+
    When started this way, `restrictWorkingDirectory` is forced on and
    `enableInjectionProtection` is disabled to ensure the allowed paths apply
    without shell injection checks.
@@ -446,6 +453,8 @@ WSL shells have additional configuration options for path mapping:
   }
 }
 ```
+
+You can override the mount point at startup using the `--wslMountPoint` CLI flag.
 
 ### Configuration Inheritance
 
