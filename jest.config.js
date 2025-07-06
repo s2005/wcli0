@@ -21,11 +21,13 @@ export default {
   },
   testTimeout: 10000,
   verbose: true,
+  forceExit: true,
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
     '/scripts/wsl.sh'
   ],
+  globalTeardown: './tests/jest/globalTeardown.js',
   resolver: undefined,
   globals: {}
 };
