@@ -1,0 +1,19 @@
+{
+  "global": {
+    "restrictions": {
+      "blockedCommands": [],
+      "blockedArguments": [],
+      "blockedOperators": []
+    }
+  },
+  "shells": {
+    "cmd": {
+      "type": "cmd",
+      "enabled": true,
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      }
+    }
+  }
+}

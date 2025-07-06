@@ -32,7 +32,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -94,6 +94,21 @@ const parseArgs = async () => {
     .option('wslMountPoint', {
       type: 'string',
       description: 'Mount point for Windows drives in WSL (default: /mnt/)'
+    })
+    .option('blockedCommand', {
+      type: 'string',
+      array: true,
+      description: 'Override blocked commands; use empty string to allow all'
+    })
+    .option('blockedArgument', {
+      type: 'string',
+      array: true,
+      description: 'Override blocked arguments; use empty string to allow all'
+    })
+    .option('blockedOperator', {
+      type: 'string',
+      array: true,
+      description: 'Override blocked operators; use empty string to allow all'
     })
     .option('allowAllDirs', {
       type: 'boolean',
@@ -937,6 +952,12 @@ const main = async () => {
       config,
       args.maxCommandLength as number | undefined,
       args.commandTimeout as number | undefined
+    );
+    applyCliRestrictions(
+      config,
+      args.blockedCommand as string[] | undefined,
+      args.blockedArgument as string[] | undefined,
+      args.blockedOperator as string[] | undefined
     );
     applyCliWslMountPoint(config, args.wslMountPoint as string | undefined);
 

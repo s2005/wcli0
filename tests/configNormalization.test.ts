@@ -83,8 +83,8 @@ describe('Config Normalization', () => {
     expect(cfg.global.security.maxCommandLength).toBe(500);
     expect(cfg.global.paths.allowedPaths).toContain('c:\\custom\\path');
 
-    // Check that there are some blockedCommands (we don't need to check exact values)
-    expect(cfg.global.restrictions.blockedCommands.length).toBeGreaterThan(0);
+    // User provided empty arrays should override defaults
+    expect(cfg.global.restrictions.blockedCommands).toEqual([]);
     expect(cfg.global.security.commandTimeout).toBe(DEFAULT_CONFIG.global.security.commandTimeout);
     expect(cfg.global.security.enableInjectionProtection).toBe(DEFAULT_CONFIG.global.security.enableInjectionProtection);
 

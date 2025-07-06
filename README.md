@@ -119,6 +119,7 @@ To get started with configuration:
    - Copy `config.examples/config.sample.json` for basic setup
    - Copy `config.examples/config.development.json` for development environments
    - Copy `config.examples/config.secure.json` for high-security environments
+   - Copy `config.examples/emptyRestrictions.json` to remove all default restrictions
 
 2. **Create your own configuration**:
 
@@ -142,6 +143,19 @@ To get started with configuration:
     ```bash
     npx wcli0 --config ./my-config.json \
       --maxCommandLength 5000 --commandTimeout 60
+    ```
+
+   You can override blocked restrictions directly from the CLI. Pass the option with
+   an empty string to clear defaults:
+
+    ```bash
+    npx wcli0 --blockedCommand "" --blockedArgument "" --blockedOperator ""
+    ```
+
+   Provide the flag multiple times to specify values:
+
+    ```bash
+    npx wcli0 --blockedCommand rm --blockedCommand del
     ```
 
    You can also start the server with a specific shell and allowed directories
@@ -474,7 +488,8 @@ The inheritance system works as follows:
 
 1. **Global defaults** are applied to all shells
 2. **Shell-specific overrides** replace or extend global settings
-3. **Array settings** (like `blockedCommands`) are merged, not replaced
+3. **Array settings** (like `blockedCommands`) override defaults when provided.
+   Specifying an empty array removes all default entries for that setting.
 4. **Object settings** are deep-merged
 5. **Primitive settings** are replaced
 
@@ -501,7 +516,29 @@ Example of inheritance in action:
 Results in PowerShell having:
 
 - `commandTimeout`: 45 (overridden)
-- `blockedCommands`: ["rm", "format", "Remove-Item"] (merged)
+- `blockedCommands`: ["Remove-Item"] (overrides defaults)
+
+To completely remove defaults for a given restriction, provide an empty array:
+
+```json
+{
+  "global": {
+    "restrictions": {
+      "blockedCommands": [],
+      "blockedArguments": [],
+      "blockedOperators": []
+    }
+  },
+  "shells": {
+    "powershell": {
+      "type": "powershell",
+      "overrides": {
+        "restrictions": { "blockedCommands": [] }
+      }
+    }
+  }
+}
+```
 
 ## API
 

@@ -12,7 +12,7 @@ A: The configuration uses a two-level system:
 1. **Global settings** define defaults for all shells
 2. **Shell-specific overrides** modify or extend global settings
 
-Array values (like `blockedCommands`) are merged, while object values are deep-merged, and primitive values are replaced.
+Array values (like `blockedCommands`) replace the defaults when provided. Supplying an empty array removes the defaults entirely. Object values are deep-merged and primitive values are replaced.
 
 ### Q: Which shells are supported?
 

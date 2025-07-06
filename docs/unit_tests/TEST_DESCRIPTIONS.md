@@ -86,6 +86,11 @@ This document summarizes the purpose of each unit test in the project.
 - **overrides mount point for WSL and Bash shells** – applying the CLI option changes the `mountPoint` for both WSL and Bash shell configurations.
 - **ignores when mount point is undefined** – omitting the value leaves existing mount points unchanged.
 
+## tests/restrictionCliOverride.test.ts
+
+- **overrides restriction arrays from CLI** – passing values replaces the default lists for commands, arguments, and operators.
+- **empty strings clear defaults entirely** – providing an empty string results in no restrictions for that category.
+
 ## tests/serverCwdInitialization.test.ts
 
 - **launch outside allowed paths leaves cwd undefined** – starting the server in a disallowed directory results in no active working directory.
@@ -225,6 +230,11 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 - **handles user config enabling subset of shells** – merging honours explicit enable/disable flags while keeping defaults for others.
 - **uses defaults when sections omitted** – missing global sections retain default values during merge.
 - **omitted shells retain defaults** – unspecified shells are included with default configuration.
+
+## tests/emptyRestrictions.test.ts
+
+- **global empty arrays remove all restrictions** – specifying empty arrays removes all default blocked commands, arguments, and operators.
+- **shell config without restriction overrides** – default shell restrictions are not inherited when overrides omit them.
 
 ## tests/integration/endToEnd.test.ts
 

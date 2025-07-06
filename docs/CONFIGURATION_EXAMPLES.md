@@ -412,6 +412,29 @@ Configuration suitable for automated testing:
 }
 ```
 
+### No Restrictions Example
+
+Demonstrates using empty arrays to remove all default command, argument, and operator blocks.
+
+```json
+{
+  "global": {
+    "restrictions": {
+      "blockedCommands": [],
+      "blockedArguments": [],
+      "blockedOperators": []
+    }
+  },
+  "shells": {
+    "cmd": {
+      "type": "cmd",
+      "enabled": true,
+      "executable": { "command": "cmd.exe", "args": ["/c"] }
+    }
+  }
+}
+```
+
 ## Configuration Validation
 
 ### Valid Configuration Checklist
