@@ -481,6 +481,23 @@ The inheritance system works as follows:
 5. **Object settings** are deep-merged
 6. **Primitive settings** are replaced
 
+For instance, you can disable the default command, argument, and operator
+restrictions by providing empty arrays:
+
+```json
+{
+  "global": {
+    "restrictions": {
+      "blockedCommands": [],
+      "blockedArguments": [],
+      "blockedOperators": []
+    }
+  }
+}
+```
+
+With these arrays defined as empty, no defaults will apply for those fields.
+
 Example of inheritance in action:
 
 ```json
