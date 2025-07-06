@@ -333,7 +333,8 @@ export function normalizeWindowsPath(inputPath: string): string {
     let tempPath = inputPath.trim();
 
     // Priority 1: Git Bash paths like /c/foo -> C:\foo
-    const gitBashMatch = tempPath.match(/^\/([a-zA-Z])(\/.*)?$/);
+    // Match Git Bash drive paths like /c/foo or /d
+    const gitBashMatch = tempPath.match(/^\/([a-zA-Z])(?:\/(.*))?$/);
     if (gitBashMatch) {
         const drive = gitBashMatch[1].toUpperCase();
         const pathPart = gitBashMatch[2] || '';

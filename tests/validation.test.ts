@@ -263,6 +263,7 @@ describe('Path Normalization', () => {
     ['/mnt/d/', '/mnt/d/'],
     ['/home/user/documents', '/home/user/documents'],
     ['/usr/local/bin', '/usr/local/bin'],
+    ['/workspaces/wcli0/dist/index.js', '/workspaces/wcli0/dist/index.js'],
     ['/', '/'],
 
     // Redundant separators
