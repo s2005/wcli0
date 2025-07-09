@@ -365,6 +365,14 @@ export class TestCLIServer {
   }
 
   /**
+   * Implementation of the list resource templates handler for testing
+   * @returns An empty array of resource templates
+   */
+  async listResourceTemplates(): Promise<{ resourceTemplates: any[] }> {
+    return { resourceTemplates: [] };
+  }
+
+  /**
    * Implementation of the read resource handler for testing
    * @param uri The resource URI to read
    * @returns The content of the requested resource
