@@ -4,7 +4,7 @@
   "description": "Enhanced MCP server for Windows CLI interactions with advanced configuration and security features",
   "type": "module",
   "bin": {
-    "wcli0": "./dist/index.js"
+    "wcli0": "dist/index.js"
   },
   "files": [
     "dist"
