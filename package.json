@@ -1,6 +1,6 @@
 {
   "name": "wcli0",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Enhanced MCP server for Windows CLI interactions with advanced configuration and security features",
   "type": "module",
   "bin": {

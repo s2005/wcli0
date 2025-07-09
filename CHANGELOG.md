@@ -1,7 +1,15 @@
 # Changelog
+
+## [1.0.8] - 2025-07-09
+
+### Fixed
+
+- Updated bin path for wcli0 in package.json to ensure proper executable resolution
+
 ## [1.0.7] - 2025-07-09
 
 ### Added
+
 - CLI restriction override flags
 - WSL mount point flag
 - Option to disable default directory restriction
