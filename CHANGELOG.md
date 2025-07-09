@@ -1,4 +1,23 @@
 # Changelog
+## [1.0.7] - 2025-07-09
+
+### Added
+- CLI restriction override flags
+- WSL mount point flag
+- Option to disable default directory restriction
+- Bash shell support
+- Resource templates handler
+
+### Changed
+- Simplified `get_config` output with enabled shells
+- Improved configuration merging behavior
+
+### Fixed
+- Resolved script execution via symlink
+- Corrected extra allowed path handling
+- Improved Git Bash path detection
+- CLI no longer auto-starts when imported
+
 
 ## [1.0.6] - 2025-07-04
 

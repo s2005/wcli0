@@ -250,3 +250,7 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 - **should reject commands with blocked operators** – executing a command containing `;` results in an `McpError`.
 - **should enforce working directory restrictions** – commands fail when executed from disallowed directories.
 - **should execute when working directory allowed** – succeeds when the directory is permitted by the configuration.
+
+## tests/handlers/resourceTemplatesHandler.test.ts
+
+- **returns empty template list** – verifies that the ListResourceTemplates handler responds with an empty array.
