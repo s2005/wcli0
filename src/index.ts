@@ -5,6 +5,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   CallToolResult, // Changed from CallToolResultPayload
   ErrorCode,
@@ -452,6 +453,11 @@ class CLIServer {
       });
 
       return { resources };
+    });
+
+    // Provide an empty list of resource templates for now
+    this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+      return { resourceTemplates: [] };
     });
 
     // Read resource content

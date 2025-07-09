@@ -8,3 +8,4 @@
 - **returns security information summary** – tests that `cli://info/security` summarizes enabled shells and key security settings.
 - **returns error for unknown resource** – ensures an unknown URI is rejected with an error.
 - **returns error for disabled shell resource** – verifies that requesting configuration for a disabled shell produces an error.
+- **returns no resource templates by default** – checks that listing resource templates yields an empty array.

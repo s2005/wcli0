@@ -98,6 +98,20 @@ export async function executeListResources(server: CLIServer): Promise<any> {
 }
 
 /**
+ * Execute the list resource templates request handler
+ * @param server - The server to use
+ * @returns The list of resource templates
+ */
+export async function executeListResourceTemplates(server: CLIServer): Promise<any> {
+  if (server instanceof TestCLIServer) {
+    return (server as TestCLIServer).listResourceTemplates();
+  }
+
+  const testServer = new TestCLIServer((server as any).config);
+  return await testServer.listResourceTemplates();
+}
+
+/**
  * Execute the read resource request handler
  * @param server - The server to use
  * @param uri - The resource URI
