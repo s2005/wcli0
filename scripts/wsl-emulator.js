@@ -68,12 +68,29 @@ if (args[0] === '-e') {
       const pathArg = commandArgs.find(arg => arg.startsWith('/'));
 
       if (pathArg) {
-        // Path argument provided, use mockFileSystem
-        if (mockFileSystem.hasOwnProperty(pathArg)) {
-          mockFileSystem[pathArg].forEach(item => console.log(item));
+        // Support redirecting /mnt/c to another location for testing misconfigured mounts
+        let effectivePath = pathArg;
+        const redirectC = process.env.WSL_REDIRECT_MNT_C;
+        if (redirectC && pathArg.startsWith('/mnt/c')) {
+          const relative = pathArg.slice('/mnt/c'.length);
+          effectivePath = path.posix.join(redirectC, relative);
+          if (process.env.WSL_EMULATOR_DEBUG) {
+            console.error(`[wsl-emulator] redirecting ${pathArg} -> ${effectivePath}`);
+          }
+        }
+
+        // Path argument provided, use mockFileSystem or real fs
+        if (mockFileSystem.hasOwnProperty(effectivePath)) {
+          mockFileSystem[effectivePath].forEach(item => console.log(item));
           process.exit(0);
-        } else {
-          console.error(`ls: cannot access '${pathArg}': No such file or directory`);
+        }
+
+        try {
+          const files = fs.readdirSync(effectivePath);
+          files.forEach(file => console.log(file));
+          process.exit(0);
+        } catch (e) {
+          console.error(`ls: cannot access '${effectivePath}': ${e.message}`);
           process.exit(2);
         }
       } else {
