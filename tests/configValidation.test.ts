@@ -18,6 +18,7 @@ describe('validateConfig helper', () => {
 
   test('throws for enabled shell missing executable fields', () => {
     const cfg = cloneDefault();
+    if (cfg.shells.powershell) cfg.shells.powershell.enabled = true;
     cfg.shells.powershell!.executable.command = '' as any;
     expect(() => validateConfig(cfg)).toThrow(/Invalid configuration for powershell/);
   });

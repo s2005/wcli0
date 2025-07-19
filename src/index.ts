@@ -33,7 +33,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliDeveloperMode } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -120,6 +120,11 @@ const parseArgs = async () => {
       type: 'boolean',
       default: false,
       description: 'Enable debug logging'
+    })
+    .option('dev', {
+      type: 'boolean',
+      default: false,
+      description: 'Enable developer mode (allow PowerShell, Bash, and WSL shells)'
     })
     .help()
     .parse();
@@ -954,6 +959,7 @@ const main = async () => {
       args.shell as string | undefined,
       args.allowedDir as string[] | undefined
     );
+    applyCliDeveloperMode(config, args.dev as boolean | undefined);
     applyCliSecurityOverrides(
       config,
       args.maxCommandLength as number | undefined,

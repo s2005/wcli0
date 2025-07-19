@@ -3,7 +3,7 @@
 [![NPM Downloads](https://img.shields.io/npm/dt/wcli0.svg?style=flat)](https://www.npmjs.com/package/wcli0)
 [![NPM Version](https://img.shields.io/npm/v/wcli0.svg?style=flat)](https://www.npmjs.com/package/wcli0?activeTab=versions)
 
-[MCP server](https://modelcontextprotocol.io/introduction) for secure command-line interactions on Windows systems, enabling controlled access to PowerShell, CMD, Git Bash, and Bash shells.
+[MCP server](https://modelcontextprotocol.io/introduction) for secure command-line interactions on Windows systems. CMD and Git Bash are enabled by default, while PowerShell, Bash, and WSL shells require developer mode.
 It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to perform operations on your system, similar to [Open Interpreter](https://github.com/OpenInterpreter/open-interpreter).
 
 This enhanced version includes advanced configuration management, improved security features, and comprehensive testing capabilities.
@@ -183,6 +183,12 @@ To get started with configuration:
    When started this way, `restrictWorkingDirectory` is forced on and
    `enableInjectionProtection` is disabled to ensure the allowed paths apply
    without shell injection checks.
+
+  To enable PowerShell, Bash, and WSL shells, start the server in developer mode:
+
+  ```bash
+  npx wcli0 --dev
+  ```
 
 3. **Update your Claude Desktop configuration** to use your config file:
 

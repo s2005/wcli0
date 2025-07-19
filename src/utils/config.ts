@@ -37,7 +37,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
   shells: {
     powershell: {
       type: 'powershell',
-      enabled: true,
+      enabled: false,
       executable: {
         command: 'powershell.exe',
         args: ['-NoProfile', '-NonInteractive', '-Command']
@@ -74,7 +74,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
     },
     bash: {
       type: 'bash',
-      enabled: true,
+      enabled: false,
       executable: {
         command: 'bash',
         args: ['-c']
@@ -87,7 +87,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
     },
     wsl: {
       type: 'wsl',
-      enabled: true,
+      enabled: false,
       executable: {
         command: 'wsl.exe',
         args: ['-e']
@@ -602,5 +602,26 @@ export function applyCliRestrictions(
       ? []
       : blockedOperators;
     config.global.restrictions.blockedOperators = list;
+  }
+}
+
+export function applyCliDeveloperMode(
+  config: ServerConfig,
+  developerMode?: boolean
+): void {
+  if (developerMode) {
+    const shells: (keyof ServerConfig['shells'])[] = ['powershell', 'bash', 'wsl'];
+    for (const name of shells) {
+      if (config.shells[name]) {
+        config.shells[name]!.enabled = true;
+      }
+    }
+  } else {
+    const shells: (keyof ServerConfig['shells'])[] = ['powershell', 'bash', 'wsl'];
+    for (const name of shells) {
+      if (config.shells[name]) {
+        config.shells[name]!.enabled = false;
+      }
+    }
   }
 }
