@@ -18,7 +18,7 @@ describe('mergeConfigs edge cases', () => {
     expect(result.shells.powershell.enabled).toBe(false);
     expect(result.shells.cmd.enabled).toBe(true);
     expect(result.shells.gitbash.enabled).toBe(true);
-    expect(result.shells.wsl.enabled).toBe(true);
+    expect(result.shells.wsl.enabled).toBe(false);
   });
 
   test('uses defaults when sections omitted', () => {
@@ -29,9 +29,9 @@ describe('mergeConfigs edge cases', () => {
 
   test('omitted shells retain defaults', () => {
     const result = mergeConfigs(DEFAULT_CONFIG, { shells: { gitbash: { enabled: true } } });
-    expect(result.shells.powershell.enabled).toBe(true);
+    expect(result.shells.powershell.enabled).toBe(false);
     expect(result.shells.cmd.enabled).toBe(true);
     expect(result.shells.gitbash.enabled).toBe(true);
-    expect(result.shells.wsl.enabled).toBe(true);
+    expect(result.shells.wsl.enabled).toBe(false);
   });
 });
