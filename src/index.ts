@@ -41,6 +41,7 @@ import { dirname } from 'path';
 import { setDebugLogging, debugLog, debugWarn, errorLog } from './utils/log.js';
 import { truncateOutput, formatTruncatedOutput } from './utils/truncation.js';
 import { LogStorageManager } from './utils/logStorage.js';
+import { LogResourceHandler } from './utils/logResourceHandler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -514,6 +515,36 @@ class CLIServer {
         mimeType: "application/json"
       });
 
+      // Add log resources if enabled
+      if (this.config.global.logging?.enableLogResources && this.logStorage) {
+        // List resource
+        resources.push({
+          uri: 'cli://logs/list',
+          name: 'Command Execution Logs List',
+          description: 'List all stored command execution logs with metadata',
+          mimeType: 'application/json'
+        });
+
+        // Recent resource
+        resources.push({
+          uri: 'cli://logs/recent',
+          name: 'Recent Command Logs',
+          description: 'Get most recent command execution logs (supports ?n=<count> and ?shell=<shell>)',
+          mimeType: 'application/json'
+        });
+
+        // Add individual log resources
+        const logs = this.logStorage.listLogs();
+        logs.forEach(log => {
+          resources.push({
+            uri: `cli://logs/commands/${log.id}`,
+            name: `Log: ${log.command.substring(0, 50)}${log.command.length > 50 ? '...' : ''}`,
+            description: `Full output from: ${log.command} (${log.shell}, exit code: ${log.exitCode})`,
+            mimeType: 'text/plain'
+          });
+        });
+      }
+
       return { resources };
     });
 
@@ -593,7 +624,7 @@ class CLIServer {
           enabledShells: this.getEnabledShells(),
           shellSpecificSettings: {}
         };
-        
+
         // Add shell-specific security settings
         for (const [shellName, config] of this.resolvedConfigs.entries()) {
           securityInfo.shellSpecificSettings[shellName] = {
@@ -604,7 +635,7 @@ class CLIServer {
             blockedOperators: config.restrictions.blockedOperators
           };
         }
-        
+
         return {
           contents: [{
             uri,
@@ -613,7 +644,41 @@ class CLIServer {
           }]
         };
       }
-      
+
+      // Handle log resources
+      if (uri.startsWith('cli://logs/')) {
+        if (!this.config.global.logging?.enableLogResources) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            'Log resources are disabled in configuration'
+          );
+        }
+
+        if (!this.logStorage) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            'Log storage not initialized'
+          );
+        }
+
+        const handler = new LogResourceHandler(
+          this.logStorage,
+          this.config.global.logging
+        );
+
+        try {
+          return await handler.handleRead(uri);
+        } catch (error) {
+          if (error instanceof Error) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              error.message
+            );
+          }
+          throw error;
+        }
+      }
+
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Unknown resource URI: ${uri}`
