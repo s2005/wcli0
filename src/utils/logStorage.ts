@@ -217,7 +217,7 @@ export class LogStorageManager {
     const intervalMs = this.config.cleanupIntervalMinutes * 60 * 1000;
     this.cleanupTimer = setInterval(() => {
       this.cleanup();
-    }, intervalMs);
+    }, intervalMs).unref();
   }
 
   /**
