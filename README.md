@@ -78,6 +78,54 @@ See the [API](#api) section for more details on the tools and resources the serv
 
 **Note**: The server will only allow operations within configured directories, with allowed commands.
 
+## Log Management
+
+wcli0 automatically stores command execution logs and provides MCP resources for querying historical output with advanced filtering capabilities.
+
+### Output Truncation
+
+By default, command responses show only the last 20 lines to prevent overwhelming long outputs. Full output is always stored and accessible via log resources. Configure truncation settings:
+
+```json
+{
+  "global": {
+    "logging": {
+      "maxOutputLines": 20,
+      "enableTruncation": true
+    }
+  }
+}
+```
+
+### Log Resources
+
+Access stored command output via MCP resources:
+
+- `cli://logs/list` - List all stored command execution logs
+- `cli://logs/recent?n=10` - Get the N most recent logs
+- `cli://logs/commands/{id}` - Access full output from a specific command
+- `cli://logs/commands/{id}/range?start=1&end=100` - Query specific line ranges
+- `cli://logs/commands/{id}/search?q=error&context=3` - Search logs with context
+
+See [API Documentation](docs/API.md) for detailed resource specifications and query parameters.
+
+### Configuration
+
+```json
+{
+  "global": {
+    "logging": {
+      "maxOutputLines": 20,
+      "enableTruncation": true,
+      "maxStoredLogs": 50,
+      "maxLogSize": 1048576,
+      "enableLogResources": true,
+      "logRetentionMinutes": 60
+    }
+  }
+}
+```
+
 ## Usage with Claude Desktop
 
 Add this to your `claude_desktop_config.json`:
@@ -579,6 +627,21 @@ To completely remove defaults for a given restriction, provide an empty array:
 
 - **cli://config**
   - Returns the main CLI server configuration (excluding sensitive data like blocked command details if security requires it).
+
+- **cli://logs/list**
+  - List all stored command execution logs with metadata
+
+- **cli://logs/recent?n={count}**
+  - Get the N most recent command logs (default: 5)
+
+- **cli://logs/commands/{id}**
+  - Access full output from a specific command execution
+
+- **cli://logs/commands/{id}/range?start={n}&end={m}**
+  - Query specific line ranges from a log (supports negative indices)
+
+- **cli://logs/commands/{id}/search?q={pattern}&context={n}&occurrence={n}**
+  - Search logs with regex patterns and context lines
 
 ## Security Considerations
 
