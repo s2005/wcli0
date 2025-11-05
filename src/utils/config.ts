@@ -231,10 +231,10 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
         ...defaultConfig.global.paths,
         ...(userConfig.global?.paths || {})
       },
-      logging: {
+      logging: defaultConfig.global.logging ? {
         ...defaultConfig.global.logging,
         ...(userConfig.global?.logging || {})
-      }
+      } : undefined
     },
     shells: {}
   };

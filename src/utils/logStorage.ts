@@ -16,7 +16,7 @@ import { LoggingConfig } from '../types/config.js';
 export class LogStorageManager {
   private storage: LogStorage;
   private config: LoggingConfig;
-  private cleanupTimer?: NodeJS.Timer;
+  private cleanupTimer?: NodeJS.Timeout;
 
   constructor(config: LoggingConfig) {
     this.config = config;
