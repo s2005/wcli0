@@ -320,7 +320,6 @@ describe('Log Performance Tests', () => {
         storage.storeLog(`cmd${i}`, 'bash', '/', generateLargeOutput(1000), '', 0);
       }
 
-      const beforeClear = process.memoryUsage().heapUsed;
       storage.clear();
 
       // Force garbage collection if available
@@ -328,10 +327,7 @@ describe('Log Performance Tests', () => {
         global.gc();
       }
 
-      // Give some time for GC
-      const afterClear = process.memoryUsage().heapUsed;
-
-      // Storage should be empty
+      // Storage should be empty after clear
       expect(storage.getStats().totalLogs).toBe(0);
       expect(storage.getStats().totalSize).toBe(0);
     });
