@@ -9,17 +9,6 @@ import { LineRangeProcessor } from './lineRangeProcessor.js';
 import { SearchProcessor } from './searchProcessor.js';
 
 /**
- * Result of reading a resource
- */
-export interface ReadResourceResult {
-  contents: Array<{
-    uri: string;
-    mimeType: string;
-    text: string;
-  }>;
-}
-
-/**
  * Handles all log resource requests
  */
 export class LogResourceHandler {
@@ -31,7 +20,7 @@ export class LogResourceHandler {
   /**
    * Handle a resource read request
    */
-  public async handleRead(uri: string): Promise<ReadResourceResult> {
+  public async handleRead(uri: string) {
     const parsed = this.parseLogUri(uri);
 
     switch (parsed.type) {
@@ -59,34 +48,36 @@ export class LogResourceHandler {
   private parseLogUri(uri: string): ParsedLogUri {
     try {
       const url = new URL(uri);
-      const pathParts = url.pathname.split('/').filter(p => p);
 
-      // cli://logs/...
-      if (pathParts[0] !== 'logs') {
+      // For custom protocols like cli://, the hostname becomes the first part
+      // e.g., cli://logs/recent -> hostname: 'logs', pathname: '/recent'
+      if (url.protocol !== 'cli:' || url.hostname !== 'logs') {
         throw new Error('Invalid log URI - must start with cli://logs/');
       }
 
+      const pathParts = url.pathname.split('/').filter(p => p);
+
       // cli://logs/list
-      if (pathParts[1] === 'list') {
+      if (pathParts[0] === 'list') {
         return { type: 'list', params: url.searchParams };
       }
 
       // cli://logs/recent
-      if (pathParts[1] === 'recent') {
+      if (pathParts[0] === 'recent') {
         return { type: 'recent', params: url.searchParams };
       }
 
       // cli://logs/commands/{id}
-      if (pathParts[1] === 'commands' && pathParts[2]) {
-        const id = pathParts[2];
+      if (pathParts[0] === 'commands' && pathParts[1]) {
+        const id = pathParts[1];
 
         // cli://logs/commands/{id}/range
-        if (pathParts[3] === 'range') {
+        if (pathParts[2] === 'range') {
           return { type: 'range', id, params: url.searchParams };
         }
 
         // cli://logs/commands/{id}/search
-        if (pathParts[3] === 'search') {
+        if (pathParts[2] === 'search') {
           return { type: 'search', id, params: url.searchParams };
         }
 
@@ -106,7 +97,7 @@ export class LogResourceHandler {
   /**
    * Handle list resource - returns all stored logs with metadata
    */
-  private handleListResource(): Promise<ReadResourceResult> {
+  private handleListResource() {
     const logs = this.logStorage.listLogs();
     const stats = this.logStorage.getStats();
 
@@ -142,7 +133,7 @@ export class LogResourceHandler {
   /**
    * Handle recent resource - returns N most recent logs
    */
-  private handleRecentResource(params: URLSearchParams): Promise<ReadResourceResult> {
+  private handleRecentResource(params: URLSearchParams) {
     const n = parseInt(params.get('n') || '5', 10);
     const shell = params.get('shell') || undefined;
 
@@ -185,7 +176,7 @@ export class LogResourceHandler {
   /**
    * Handle full log resource - returns complete output from a specific execution
    */
-  private handleFullLogResource(id: string): Promise<ReadResourceResult> {
+  private handleFullLogResource(id: string) {
     const log = this.logStorage.getLog(id);
 
     if (!log) {
@@ -211,7 +202,7 @@ export class LogResourceHandler {
   private handleRangeResource(
     id: string,
     params: URLSearchParams
-  ): Promise<ReadResourceResult> {
+  ) {
     const log = this.logStorage.getLog(id);
 
     if (!log) {
@@ -271,7 +262,7 @@ export class LogResourceHandler {
   private handleSearchResource(
     id: string,
     params: URLSearchParams
-  ): Promise<ReadResourceResult> {
+  ) {
     const log = this.logStorage.getLog(id);
 
     if (!log) {
