@@ -1,12 +1,27 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig } from '../types/config.js';
+import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig, LoggingConfig } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 import { debugWarn, errorLog } from './log.js';
 
 const defaultValidatePathRegex = /^[a-zA-Z]:\\(?:[^<>:"/\\|?*]+\\)*[^<>:"/\\|?*]*$/;
+
+/**
+ * Default logging configuration
+ */
+const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
+  maxOutputLines: 20,
+  enableTruncation: true,
+  truncationMessage: '[Output truncated: Showing last {returnedLines} of {totalLines} lines]',
+  maxStoredLogs: 50,
+  maxLogSize: 1048576, // 1MB
+  maxTotalStorageSize: 52428800, // 50MB
+  enableLogResources: true,
+  logRetentionMinutes: 60,
+  cleanupIntervalMinutes: 5
+};
 
 export const DEFAULT_CONFIG: ServerConfig = {
   global: {
@@ -32,7 +47,8 @@ export const DEFAULT_CONFIG: ServerConfig = {
     paths: {
       allowedPaths: [],
       initialDir: undefined
-    }
+    },
+    logging: DEFAULT_LOGGING_CONFIG
   },
   shells: {
     powershell: {
@@ -214,6 +230,10 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
       paths: {
         ...defaultConfig.global.paths,
         ...(userConfig.global?.paths || {})
+      },
+      logging: {
+        ...defaultConfig.global.logging,
+        ...(userConfig.global?.logging || {})
       }
     },
     shells: {}
@@ -452,6 +472,49 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
   return merged;
 }
 
+/**
+ * Validates logging configuration values
+ */
+function validateLoggingConfig(config?: LoggingConfig): void {
+  if (!config) return;
+
+  if (config.maxOutputLines !== undefined) {
+    if (config.maxOutputLines < 1 || config.maxOutputLines > 10000) {
+      throw new Error('maxOutputLines must be between 1 and 10000');
+    }
+  }
+
+  if (config.maxStoredLogs !== undefined) {
+    if (config.maxStoredLogs < 1 || config.maxStoredLogs > 1000) {
+      throw new Error('maxStoredLogs must be between 1 and 1000');
+    }
+  }
+
+  if (config.maxLogSize !== undefined) {
+    if (config.maxLogSize < 1024 || config.maxLogSize > 10485760) {
+      throw new Error('maxLogSize must be between 1KB (1024 bytes) and 10MB (10485760 bytes)');
+    }
+  }
+
+  if (config.maxTotalStorageSize !== undefined) {
+    if (config.maxTotalStorageSize < 10240 || config.maxTotalStorageSize > 1073741824) {
+      throw new Error('maxTotalStorageSize must be between 10KB and 1GB');
+    }
+  }
+
+  if (config.logRetentionMinutes !== undefined) {
+    if (config.logRetentionMinutes < 1 || config.logRetentionMinutes > 10080) {
+      throw new Error('logRetentionMinutes must be between 1 and 10080 (1 week)');
+    }
+  }
+
+  if (config.cleanupIntervalMinutes !== undefined) {
+    if (config.cleanupIntervalMinutes < 1 || config.cleanupIntervalMinutes > 1440) {
+      throw new Error('cleanupIntervalMinutes must be between 1 and 1440 (1 day)');
+    }
+  }
+}
+
 export function validateConfig(config: ServerConfig): void {
   // Validate security settings
   if (config.global.security.maxCommandLength < 1) {
@@ -469,6 +532,9 @@ export function validateConfig(config: ServerConfig): void {
   if (config.global.security.commandTimeout < 1) {
     throw new Error('commandTimeout must be at least 1 second');
   }
+
+  // Validate logging configuration
+  validateLoggingConfig(config.global.logging);
 }
 
 // Helper function to create a default config file

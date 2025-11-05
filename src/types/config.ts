@@ -1,10 +1,43 @@
 /**
+ * Logging configuration for command output management
+ */
+export interface LoggingConfig {
+  /** Maximum number of lines to show in command output (rest is truncated) */
+  maxOutputLines: number;
+
+  /** Whether to enable output truncation */
+  enableTruncation: boolean;
+
+  /** Custom truncation message template */
+  truncationMessage: string;
+
+  /** Maximum number of logs to store */
+  maxStoredLogs: number;
+
+  /** Maximum size of a single log entry in bytes */
+  maxLogSize: number;
+
+  /** Maximum total storage size for all logs in bytes */
+  maxTotalStorageSize: number;
+
+  /** Whether to enable log resource endpoints */
+  enableLogResources: boolean;
+
+  /** How long to retain logs in minutes */
+  logRetentionMinutes: number;
+
+  /** How often to run cleanup in minutes */
+  cleanupIntervalMinutes: number;
+}
+
+/**
  * Global configuration that applies to all shells by default
  */
 export interface GlobalConfig {
   security: GlobalSecurityConfig;
   restrictions: GlobalRestrictionsConfig;
   paths: GlobalPathsConfig;
+  logging?: LoggingConfig;
 }
 
 /**

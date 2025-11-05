@@ -39,6 +39,8 @@ import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/co
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
 import { setDebugLogging, debugLog, debugWarn, errorLog } from './utils/log.js';
+import { truncateOutput, formatTruncatedOutput } from './utils/truncation.js';
+import { LogStorageManager } from './utils/logStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -137,6 +139,8 @@ class CLIServer {
   private serverActiveCwd: string | undefined;
   // Cache resolved configurations for performance
   private resolvedConfigs: Map<string, ResolvedShellConfig> = new Map();
+  // Log storage manager
+  private logStorage?: LogStorageManager;
 
   constructor(config: ServerConfig) {
     this.config = config;
@@ -155,6 +159,12 @@ class CLIServer {
 
     // Initialize server working directory
     this.initializeWorkingDirectory();
+
+    // Initialize log storage if enabled
+    if (this.config.global.logging?.enableLogResources) {
+      this.logStorage = new LogStorageManager(this.config.global.logging);
+      this.logStorage.startCleanup();
+    }
 
     this.setupHandlers();
   }
@@ -360,17 +370,65 @@ class CLIServer {
       shellProcess.on('close', (code) => {
         clearTimeout(timeout);
 
-        let resultMessage = '';
+        // Combine output for storage and truncation
+        const stdout = output;
+        const stderr = error;
+        let fullOutput = '';
+
         if (code === 0) {
-          resultMessage = output || 'Command completed successfully (no output)';
+          fullOutput = stdout || '';
         } else {
-          resultMessage = `Command failed with exit code ${code}\n`;
-          if (error) {
-            resultMessage += `Error output:\n${error}\n`;
+          const parts: string[] = [];
+          if (code !== null && code !== undefined) {
+            parts.push(`Command failed with exit code ${code}`);
           }
-          if (output) {
-            resultMessage += `Standard output:\n${output}`;
+          if (stderr) {
+            parts.push(`Error output:\n${stderr}`);
           }
+          if (stdout) {
+            parts.push(`Standard output:\n${stdout}`);
+          }
+          fullOutput = parts.join('\n');
+        }
+
+        // Handle empty output case
+        if (!fullOutput) {
+          fullOutput = 'Command completed successfully (no output)';
+        }
+
+        // Store log if enabled
+        let executionId: string | undefined;
+        if (this.config.global.logging?.enableLogResources && this.logStorage) {
+          executionId = this.logStorage.storeLog(command, shellName, workingDir, stdout, stderr, code ?? -1);
+        }
+
+        // Truncate output if enabled
+        let resultMessage: string;
+        let wasTruncated = false;
+        let totalLines = 0;
+        let returnedLines = 0;
+
+        if (this.config.global.logging?.enableTruncation) {
+          const truncated = truncateOutput(
+            fullOutput,
+            this.config.global.logging.maxOutputLines,
+            {
+              maxOutputLines: this.config.global.logging.maxOutputLines,
+              enableTruncation: true,
+              truncationMessage: this.config.global.logging.truncationMessage
+            },
+            executionId
+          );
+
+          resultMessage = formatTruncatedOutput(truncated);
+          wasTruncated = truncated.wasTruncated;
+          totalLines = truncated.totalLines;
+          returnedLines = truncated.returnedLines;
+        } else {
+          resultMessage = fullOutput;
+          const lines = fullOutput.split('\n');
+          totalLines = lines.length;
+          returnedLines = lines.length;
         }
 
         resolve({
@@ -382,7 +440,11 @@ class CLIServer {
           metadata: {
             exitCode: code ?? -1,
             shell: shellName,
-            workingDirectory: workingDir
+            workingDirectory: workingDir,
+            executionId: executionId,
+            totalLines: totalLines,
+            returnedLines: returnedLines,
+            wasTruncated: wasTruncated
           }
         });
       });
@@ -908,6 +970,11 @@ class CLIServer {
   }
 
   private async cleanup(): Promise<void> {
+    // Stop and clear log storage
+    if (this.logStorage) {
+      this.logStorage.stopCleanup();
+      this.logStorage.clear();
+    }
   }
 
   async run(): Promise<void> {
