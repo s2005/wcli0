@@ -49,15 +49,46 @@ export class LogStorageManager {
     // Generate unique ID
     const id = this.generateId();
 
-    // Combine outputs
-    const combinedOutput = this.combineOutput(stdout, stderr, exitCode);
+    // Calculate initial size
+    let currentStdout = stdout;
+    let currentStderr = stderr;
+    let currentCombined = this.combineOutput(stdout, stderr, exitCode);
+    let currentSize = this.calculateEntrySize(currentStdout, currentStderr, currentCombined);
 
-    // Calculate line counts
-    const stdoutLines = stdout ? stdout.split('\n').length : 0;
-    const stderrLines = stderr ? stderr.split('\n').length : 0;
-    const totalLines = combinedOutput.split('\n').length;
+    // If entry exceeds max size, truncate all output fields
+    if (currentSize > this.config.maxLogSize) {
+      // Calculate how much space we can allocate (leaving room for metadata overhead)
+      const maxOutputSize = this.config.maxLogSize - 200; // metadata overhead
+      const halfSize = Math.floor(maxOutputSize / 3); // Split between stdout, stderr, combined
 
-    // Create log entry
+      // Truncate stdout if needed
+      if (Buffer.byteLength(currentStdout, 'utf8') > halfSize) {
+        currentStdout = this.truncateEntryOutput(currentStdout, halfSize);
+      }
+
+      // Truncate stderr if needed
+      if (Buffer.byteLength(currentStderr, 'utf8') > halfSize) {
+        currentStderr = this.truncateEntryOutput(currentStderr, halfSize);
+      }
+
+      // Recombine from truncated outputs
+      currentCombined = this.combineOutput(currentStdout, currentStderr, exitCode);
+
+      // If still too large, truncate combined output as final safeguard
+      if (Buffer.byteLength(currentCombined, 'utf8') > halfSize) {
+        currentCombined = this.truncateEntryOutput(currentCombined, halfSize);
+      }
+
+      // Recalculate size with truncated fields
+      currentSize = this.calculateEntrySize(currentStdout, currentStderr, currentCombined);
+    }
+
+    // Calculate line counts from potentially truncated outputs
+    const stdoutLines = currentStdout ? currentStdout.split('\n').length : 0;
+    const stderrLines = currentStderr ? currentStderr.split('\n').length : 0;
+    const totalLines = currentCombined.split('\n').length;
+
+    // Create log entry with truncated data
     const entry: CommandLogEntry = {
       id,
       timestamp: new Date(),
@@ -65,22 +96,16 @@ export class LogStorageManager {
       shell,
       workingDirectory: workingDir,
       exitCode,
-      stdout,
-      stderr,
-      combinedOutput,
+      stdout: currentStdout,
+      stderr: currentStderr,
+      combinedOutput: currentCombined,
       totalLines,
       stdoutLines,
       stderrLines,
       wasTruncated: false, // Will be set when truncated for response
       returnedLines: totalLines,
-      size: this.calculateEntrySize(stdout, stderr, combinedOutput)
+      size: currentSize
     };
-
-    // Check if entry exceeds max size and truncate if needed
-    if (entry.size > this.config.maxLogSize) {
-      entry.combinedOutput = this.truncateEntryOutput(entry.combinedOutput, this.config.maxLogSize);
-      entry.size = this.calculateEntrySize(entry.stdout, entry.stderr, entry.combinedOutput);
-    }
 
     // Add to storage
     this.storage.entries.set(id, entry);
