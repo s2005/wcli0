@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.0.9] - 2025-11-06
+
+### Added
+
+- **Log Management System**: Automatic storage of command execution logs
+  - Output truncation showing last N lines (default: 20) for long-running commands
+  - Full log storage with configurable retention and size limits
+  - MCP resources for querying historical command output
+  - Advanced filtering: line ranges, search with context, recent logs
+- **Log Resources**:
+  - `cli://logs/list` - List all stored command execution logs with metadata
+  - `cli://logs/recent?n={count}` - Get the N most recent logs (default: 5)
+  - `cli://logs/commands/{id}` - Access full output from a specific command execution
+  - `cli://logs/commands/{id}/range?start={n}&end={m}` - Query specific line ranges (supports negative indices)
+  - `cli://logs/commands/{id}/search?q={pattern}&context={n}&occurrence={n}` - Search logs with regex patterns and context lines
+- **Logging Configuration**: New `global.logging` configuration section
+  - `maxOutputLines`: Number of lines to show in immediate response (default: 20)
+  - `enableTruncation`: Enable tail truncation for long outputs (default: true)
+  - `maxStoredLogs`: Maximum number of logs to store (default: 50)
+  - `maxLogSize`: Maximum size per log entry in bytes (default: 1MB)
+  - `maxTotalStorageSize`: Maximum total storage size (default: 50MB)
+  - `enableLogResources`: Enable log resource endpoints (default: true)
+  - `logRetentionMinutes`: How long to keep logs (default: 60 minutes)
+  - `cleanupIntervalMinutes`: Cleanup frequency (default: 5 minutes)
+- **Tail Functionality**: Smart truncation preserves the last N lines of output for long-running commands
+- **Line Range Processor**: Query specific line ranges from stored logs
+- **Search Processor**: Search logs with regex patterns, context lines, and occurrence selection
+
+### Changed
+
+- Command execution now returns truncated output with links to full logs when output exceeds configured line limit
+- Truncation messages include execution ID for accessing full output via log resources
+
 ## [1.0.8] - 2025-07-09
 
 ### Fixed
