@@ -92,21 +92,35 @@ export class TestCLIServer {
     this.server = new CLIServer(config);
   }
 
-  async executeCommand(options: { shell: keyof ServerConfig['shells']; command: string; workingDir?: string; }) {
+  async executeCommand(options: { shell: keyof ServerConfig['shells']; command: string; workingDir?: string; maxOutputLines?: number }) {
     const result = await this.server._executeTool({
       name: 'execute_command',
       arguments: {
         shell: options.shell as string,
         command: options.command,
-        workingDir: options.workingDir
+        workingDir: options.workingDir,
+        maxOutputLines: options.maxOutputLines
       }
     });
 
     const output = result.content[0]?.text ?? '';
     const exitCode = (result.metadata as any)?.exitCode ?? -1;
     const workingDirectory = (result.metadata as any)?.workingDirectory;
+    const totalLines = (result.metadata as any)?.totalLines;
+    const returnedLines = (result.metadata as any)?.returnedLines;
+    const wasTruncated = (result.metadata as any)?.wasTruncated;
+    const content = output;
 
-    return { ...result, output, exitCode, workingDirectory };
+    return {
+      ...result,
+      output,
+      exitCode,
+      workingDirectory,
+      totalLines,
+      returnedLines,
+      wasTruncated,
+      content
+    };
   }
 
   async callTool(name: string, args: Record<string, any>) {
@@ -183,6 +197,10 @@ export class TestCLIServer {
             workingDir: {
               type: 'string',
               description: 'Working directory (optional)'
+            },
+            maxOutputLines: {
+              type: 'number',
+              description: 'Maximum number of output lines to return (optional, overrides global setting). Must be a positive integer between 1 and 10,000.'
             }
           },
           required: ['shell', 'command'],

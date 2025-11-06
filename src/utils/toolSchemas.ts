@@ -57,6 +57,10 @@ export function buildExecuteCommandSchema(
                    "- Windows shells: Use C:\\Path\\Format\n" +
                    "- Unix/WSL shells: Use /unix/path/format\n" +
                    "- Mixed shells: Both formats accepted"
+      },
+      maxOutputLines: {
+        type: "number",
+        description: "Maximum number of output lines to return (optional, overrides global setting). Must be a positive integer between 1 and 10,000."
       }
     },
     required: ["shell", "command"],

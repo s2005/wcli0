@@ -303,7 +303,8 @@ class CLIServer {
     shellName: string,
     shellConfig: ResolvedShellConfig,
     command: string,
-    workingDir: string
+    workingDir: string,
+    maxOutputLines?: number
   ): Promise<CallToolResult> {
     return new Promise((resolve, reject) => {
       let shellProcess: ReturnType<typeof spawn>;
@@ -410,11 +411,20 @@ class CLIServer {
         let returnedLines = 0;
 
         if (this.config.global.logging?.enableTruncation) {
+          // Determine effective maxOutputLines with precedence:
+          // 1. Command-level parameter (if provided)
+          // 2. Global configuration (if set)
+          // 3. Default value (20)
+          const effectiveMaxOutputLines =
+            maxOutputLines ??
+            this.config.global.logging.maxOutputLines ??
+            20;
+
           const truncated = truncateOutput(
             fullOutput,
-            this.config.global.logging.maxOutputLines,
+            effectiveMaxOutputLines,
             {
-              maxOutputLines: this.config.global.logging.maxOutputLines,
+              maxOutputLines: effectiveMaxOutputLines,
               enableTruncation: true,
               truncationMessage: this.config.global.logging.truncationMessage
             },
@@ -769,8 +779,31 @@ class CLIServer {
           const args = z.object({
             shell: z.enum(enabledShells as [string, ...string[]]),
             command: z.string(),
-            workingDir: z.string().optional()
+            workingDir: z.string().optional(),
+            maxOutputLines: z.number().optional()
           }).parse(toolParams.arguments);
+
+          // Validate maxOutputLines if provided
+          if (args.maxOutputLines !== undefined) {
+            if (!Number.isInteger(args.maxOutputLines)) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `maxOutputLines must be an integer, got: ${typeof args.maxOutputLines}`
+              );
+            }
+            if (args.maxOutputLines < 1) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `maxOutputLines must be at least 1, got: ${args.maxOutputLines}`
+              );
+            }
+            if (args.maxOutputLines > 10000) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `maxOutputLines cannot exceed 10000, got: ${args.maxOutputLines}`
+              );
+            }
+          }
 
           const shellConfig = this.getShellConfig(args.shell);
           if (!shellConfig) {
@@ -826,7 +859,7 @@ class CLIServer {
 
           this.validateCommand(context, args.command, workingDir);
 
-          return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir);
+          return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir, args.maxOutputLines);
         }
 
         case "get_current_directory": {
