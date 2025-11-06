@@ -26,7 +26,7 @@ This document provides a detailed, step-by-step implementation plan for the MCP 
 **Duration**: 1 day
 **Goal**: Set up data structures, types, and configuration schema
 
-### Tasks
+### Phase 1 Tasks
 
 #### 1.1: Create Type Definitions
 
@@ -50,6 +50,7 @@ export class LogResourceError extends Error { ... }
 ```
 
 **Checklist**:
+
 - [ ] Define all interfaces from technical spec
 - [ ] Add JSDoc comments for each type
 - [ ] Export all types
@@ -83,6 +84,7 @@ export interface GlobalConfig {
 ```
 
 **Checklist**:
+
 - [ ] Add LoggingConfig interface
 - [ ] Update GlobalConfig interface
 - [ ] Update ServerConfig interface if needed
@@ -113,6 +115,7 @@ const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
 ```
 
 **Checklist**:
+
 - [ ] Define DEFAULT_LOGGING_CONFIG constant
 - [ ] Update DEFAULT_GLOBAL_CONFIG
 - [ ] Update loadServerConfig function to merge logging config
@@ -135,6 +138,7 @@ function validateLoggingConfig(config: Partial<LoggingConfig>): void {
 ```
 
 **Checklist**:
+
 - [ ] Implement validateLoggingConfig function
 - [ ] Add bounds checking for all numeric values
 - [ ] Add helpful error messages
@@ -163,6 +167,7 @@ function validateLoggingConfig(config: Partial<LoggingConfig>): void {
 ```
 
 **Checklist**:
+
 - [ ] Update config.sample.json
 - [ ] Update config.development.json
 - [ ] Update config.secure.json
@@ -176,7 +181,7 @@ function validateLoggingConfig(config: Partial<LoggingConfig>): void {
 **Duration**: 2 days
 **Goal**: Implement output truncation in execute_command
 
-### Tasks
+### Phase 2 Tasks
 
 #### 2.1: Create Truncation Utility
 
@@ -218,6 +223,7 @@ export function buildTruncationMessage(
 ```
 
 **Checklist**:
+
 - [ ] Implement truncateOutput function
 - [ ] Handle empty output edge case
 - [ ] Handle output shorter than maxLines
@@ -303,6 +309,7 @@ private async executeShellCommand(
 ```
 
 **Checklist**:
+
 - [ ] Import truncateOutput utility
 - [ ] Collect full output (stdout + stderr)
 - [ ] Add truncation logic with config check
@@ -328,6 +335,7 @@ describe('Output Truncation', () => {
 ```
 
 **Checklist**:
+
 - [ ] Write integration tests
 - [ ] Test with various output sizes
 - [ ] Test config variations
@@ -342,7 +350,7 @@ describe('Output Truncation', () => {
 **Duration**: 2 days
 **Goal**: Implement log storage system with lifecycle management
 
-### Tasks
+### Phase 3 Tasks
 
 #### 3.1: Create LogStorageManager
 
@@ -394,6 +402,7 @@ export class LogStorageManager {
 ```
 
 **Checklist**:
+
 - [ ] Implement constructor
 - [ ] Implement storeLog with size checking
 - [ ] Implement ID generation (timestamp + random)
@@ -427,6 +436,7 @@ class LogCleanupManager {
 ```
 
 **Checklist**:
+
 - [ ] Implement cleanup logic
 - [ ] Test FIFO eviction
 - [ ] Test size-based eviction
@@ -483,6 +493,7 @@ export class CLIServer {
 ```
 
 **Checklist**:
+
 - [ ] Add logStorage property
 - [ ] Initialize in constructor
 - [ ] Update executeShellCommand to store logs
@@ -526,6 +537,7 @@ describe('LogStorageManager', () => {
 ```
 
 **Checklist**:
+
 - [ ] Write comprehensive unit tests
 - [ ] Test all public methods
 - [ ] Test edge cases
@@ -539,7 +551,7 @@ describe('LogStorageManager', () => {
 **Duration**: 2 days
 **Goal**: Implement list and full log resources
 
-### Tasks
+### Phase 4 Tasks
 
 #### 4.1: Update Resource List Handler
 
@@ -593,6 +605,7 @@ this.server.setRequestHandler(
 ```
 
 **Checklist**:
+
 - [ ] Add log list resource
 - [ ] Add recent logs resource
 - [ ] Add individual log resources
@@ -716,6 +729,7 @@ export class LogResourceHandler {
 ```
 
 **Checklist**:
+
 - [ ] Implement URI parsing
 - [ ] Implement list resource handler
 - [ ] Implement recent resource handler
@@ -757,6 +771,7 @@ this.server.setRequestHandler(
 ```
 
 **Checklist**:
+
 - [ ] Add log resource routing
 - [ ] Add feature flag check
 - [ ] Add error handling
@@ -790,6 +805,7 @@ describe('Log Resources', () => {
 ```
 
 **Checklist**:
+
 - [ ] Write integration tests
 - [ ] Test all resource endpoints
 - [ ] Test error cases
@@ -803,7 +819,7 @@ describe('Log Resources', () => {
 **Duration**: 1-2 days
 **Goal**: Implement line range query functionality
 
-### Tasks
+### Phase 5 Tasks
 
 #### 5.1: Create LineRangeProcessor
 
@@ -903,6 +919,7 @@ export class LineRangeProcessor {
 ```
 
 **Checklist**:
+
 - [ ] Implement processRange
 - [ ] Handle negative indices
 - [ ] Add validation
@@ -975,6 +992,7 @@ private handleRangeResource(
 ```
 
 **Checklist**:
+
 - [ ] Add range handler
 - [ ] Parse query parameters
 - [ ] Validate parameters
@@ -1024,6 +1042,7 @@ private parseLogUri(uri: string): ParsedLogUri {
 ```
 
 **Checklist**:
+
 - [ ] Update URI parsing
 - [ ] Handle range URIs
 - [ ] Extract query parameters
@@ -1056,6 +1075,7 @@ describe('Log Range Queries', () => {
 ```
 
 **Checklist**:
+
 - [ ] Write unit tests
 - [ ] Write integration tests
 - [ ] Test all parameter combinations
@@ -1069,7 +1089,7 @@ describe('Log Range Queries', () => {
 **Duration**: 2-3 days
 **Goal**: Implement search with context and occurrence handling
 
-### Tasks
+### Phase 6 Tasks
 
 #### 6.1: Create SearchProcessor
 
@@ -1240,6 +1260,7 @@ export class SearchProcessor {
 ```
 
 **Checklist**:
+
 - [ ] Implement search method
 - [ ] Implement findMatches with regex
 - [ ] Handle case sensitivity
@@ -1305,6 +1326,7 @@ private handleSearchResource(
 ```
 
 **Checklist**:
+
 - [ ] Add search handler
 - [ ] Parse query parameters
 - [ ] Validate pattern parameter
@@ -1354,6 +1376,7 @@ describe('Log Search Queries', () => {
 ```
 
 **Checklist**:
+
 - [ ] Write unit tests
 - [ ] Write integration tests
 - [ ] Test all search options
@@ -1367,7 +1390,7 @@ describe('Log Search Queries', () => {
 **Duration**: 2 days
 **Goal**: Comprehensive testing and documentation
 
-### Tasks
+### Phase 7 Tasks
 
 #### 7.1: End-to-End Tests
 
@@ -1393,6 +1416,7 @@ describe('Log Feature End-to-End', () => {
 ```
 
 **Checklist**:
+
 - [ ] Write end-to-end tests
 - [ ] Test full workflows
 - [ ] Test configuration variations
@@ -1414,6 +1438,7 @@ describe('Log Performance', () => {
 ```
 
 **Checklist**:
+
 - [ ] Write performance tests
 - [ ] Set performance benchmarks
 - [ ] Test with large outputs
@@ -1423,12 +1448,14 @@ describe('Log Performance', () => {
 #### 7.3: Update Documentation
 
 **Files to Update**:
+
 - `README.md`
 - `docs/API.md`
 - `docs/ARCHITECTURE.md`
 - `docs/CONFIGURATION_EXAMPLES.md`
 
 **README.md additions**:
+
 ```markdown
 ## Log Management
 
@@ -1460,26 +1487,29 @@ Access full command output via MCP resources:
 - `cli://logs/commands/{id}/search?q=error&context=3` - Search
 
 See [API.md](docs/API.md) for details.
-```
 
 **API.md additions**:
+
 - Full resource URI reference
 - Query parameter documentation
 - Example requests and responses
 - Error codes and messages
 
 **ARCHITECTURE.md additions**:
+
 - Log storage system design
 - Storage lifecycle
 - Cleanup policies
 - Performance characteristics
 
 **CONFIGURATION_EXAMPLES.md additions**:
+
 - Logging configuration section
 - Example configurations
 - Best practices
 
 **Checklist**:
+
 - [ ] Update README
 - [ ] Update API documentation
 - [ ] Update architecture docs
@@ -1533,6 +1563,7 @@ Create `docs/tasks/mcp_log_resource/REVIEW_CHECKLIST.md`:
 ```
 
 **Checklist**:
+
 - [ ] Create review checklist
 - [ ] Complete self-review
 - [ ] Fix all issues
@@ -1545,48 +1576,52 @@ Create `docs/tasks/mcp_log_resource/REVIEW_CHECKLIST.md`:
 **Duration**: 1 day
 **Goal**: Optimize performance and polish user experience
 
-### Tasks
+### Phase 8 Tasks
 
 #### 8.1: Performance Optimization
 
 **Areas to optimize**:
 
 1. **Line splitting caching**:
-```typescript
-class CachedLogEntry extends CommandLogEntry {
-  private _lines?: string[];
 
-  get lines(): string[] {
-    if (!this._lines) {
-      this._lines = this.combinedOutput.split('\n');
+    ```typescript
+    class CachedLogEntry extends CommandLogEntry {
+      private _lines?: string[];
+
+      get lines(): string[] {
+        if (!this._lines) {
+          this._lines = this.combinedOutput.split('\n');
+        }
+        return this._lines;
+      }
     }
-    return this._lines;
-  }
-}
-```
+    ```
 
 2. **Regex compilation caching**:
-```typescript
-private regexCache = new Map<string, RegExp>();
 
-private getRegex(pattern: string, flags: string): RegExp {
-  const key = `${pattern}|${flags}`;
-  if (!this.regexCache.has(key)) {
-    this.regexCache.set(key, new RegExp(pattern, flags));
-  }
-  return this.regexCache.get(key)!;
-}
-```
+    ```typescript
+    private regexCache = new Map<string, RegExp>();
+
+    private getRegex(pattern: string, flags: string): RegExp {
+      const key = `${pattern}|${flags}`;
+      if (!this.regexCache.has(key)) {
+        this.regexCache.set(key, new RegExp(pattern, flags));
+      }
+      return this.regexCache.get(key)!;
+    }
+    ```
 
 3. **Search early termination**:
-```typescript
-// Stop after finding requested occurrence
-if (matches.length >= options.occurrence) {
-  break;
-}
-```
+
+    ```typescript
+    // Stop after finding requested occurrence
+    if (matches.length >= options.occurrence) {
+      break;
+    }
+    ```
 
 **Checklist**:
+
 - [ ] Implement caching strategies
 - [ ] Optimize hot paths
 - [ ] Reduce allocations
@@ -1596,6 +1631,7 @@ if (matches.length >= options.occurrence) {
 #### 8.2: Error Message Polish
 
 Review all error messages:
+
 - [ ] Clear and actionable
 - [ ] Include examples
 - [ ] Suggest fixes
@@ -1604,6 +1640,7 @@ Review all error messages:
 #### 8.3: Resource URI Validation
 
 Add comprehensive URI validation:
+
 - [ ] Validate all parameters
 - [ ] Helpful error for invalid URIs
 - [ ] Suggest correct format
@@ -1612,6 +1649,7 @@ Add comprehensive URI validation:
 #### 8.4: Final Testing
 
 Run full test suite:
+
 - [ ] All unit tests pass
 - [ ] All integration tests pass
 - [ ] All e2e tests pass
@@ -1630,49 +1668,57 @@ Run full test suite:
 
 ## Summary Checklist
 
-### Phase 1: Foundation
+### Phase 1 Foundation Status
+
 - [ ] Type definitions created
 - [ ] Configuration extended
 - [ ] Defaults defined
 - [ ] Validation implemented
 
-### Phase 2: Output Truncation
+### Phase 2 Output Truncation Status
+
 - [ ] Truncation utility created
 - [ ] executeShellCommand updated
 - [ ] Tests passing
 
-### Phase 3: Log Storage
+### Phase 3 Log Storage Status
+
 - [ ] LogStorageManager implemented
 - [ ] Cleanup logic working
 - [ ] Integration complete
 - [ ] Tests passing
 
-### Phase 4: Basic Resources
+### Phase 4 Basic Resources Status
+
 - [ ] Resource list updated
 - [ ] List resource working
 - [ ] Recent resource working
 - [ ] Full log resource working
 - [ ] Tests passing
 
-### Phase 5: Range Queries
+### Phase 5 Range Queries Status
+
 - [ ] LineRangeProcessor implemented
 - [ ] Range resource working
 - [ ] Negative indices supported
 - [ ] Tests passing
 
-### Phase 6: Search Functionality
+### Phase 6 Search Functionality Status
+
 - [ ] SearchProcessor implemented
 - [ ] Search resource working
 - [ ] Occurrence navigation working
 - [ ] Tests passing
 
-### Phase 7: Testing & Documentation
+### Phase 7 Testing & Documentation Status
+
 - [ ] E2E tests complete
 - [ ] Performance tests passing
 - [ ] Documentation updated
 - [ ] Code review done
 
-### Phase 8: Optimization & Polish
+### Phase 8 Optimization & Polish Status
+
 - [ ] Performance optimized
 - [ ] Error messages polished
 - [ ] Final testing complete

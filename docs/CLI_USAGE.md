@@ -358,6 +358,7 @@ When workingDir is omitted, the command uses the server's current directory:
 **Problem**: Command execution is blocked
 
 **Solutions**:
+
 1. Check global and shell-specific blocked commands with `get_config`
 2. Verify the command isn't in the `blockedCommands` array
 3. Check if the command contains blocked arguments or operators
@@ -368,6 +369,7 @@ When workingDir is omitted, the command uses the server's current directory:
 **Problem**: Directory access denied
 
 **Solutions**:
+
 1. Use `validate_directories` to check path permissions
 2. Verify path format matches shell type (Windows vs Unix paths)
 3. Check `allowedPaths` in configuration
@@ -378,6 +380,7 @@ When workingDir is omitted, the command uses the server's current directory:
 **Problem**: Commands taking too long to execute
 
 **Solutions**:
+
 1. Check timeout settings with `get_config`
 2. Consider shell-specific timeout overrides for long-running operations
 3. Break down complex operations into smaller commands
@@ -388,6 +391,7 @@ When workingDir is omitted, the command uses the server's current directory:
 **Problem**: Commands failing due to directory problems
 
 **Solutions**:
+
 1. Use `get_current_directory` to check current location
 2. Use `set_current_directory` to change to allowed directory
 3. Always specify `workingDir` in commands when possible
@@ -398,6 +402,7 @@ When workingDir is omitted, the command uses the server's current directory:
 **Problem**: Specified shell not found or disabled
 
 **Solutions**:
+
 1. Check shell configuration with `get_config`
 2. Verify shell is enabled in configuration
 3. Check executable path is correct
@@ -406,24 +411,28 @@ When workingDir is omitted, the command uses the server's current directory:
 ## Best Practices
 
 ### Security
+
 - Always use the minimum required permissions
 - Regularly review allowed paths and blocked commands
 - Test commands in safe environments first
 - Monitor command execution logs
 
 ### Performance
+
 - Use appropriate shell for each task
 - Specify working directories to avoid path resolution overhead  
 - Break complex operations into smaller commands
 - Consider command timeout implications
 
 ### Portability
+
 - Use relative paths when possible
 - Account for different path formats between shells
 - Test commands across different shell environments
 - Document shell-specific requirements
 
 ### Error Handling
+
 - Always check command output for errors
 - Use `validate_directories` before executing commands
 - Handle timeout scenarios gracefully

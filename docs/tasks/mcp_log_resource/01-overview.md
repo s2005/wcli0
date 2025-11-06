@@ -12,6 +12,7 @@ This document outlines the plan for implementing a comprehensive logging and out
 ### Current State
 
 Currently, when executing commands via `execute_command` tool:
+
 - All stdout/stderr output is captured and returned in full
 - Large outputs (e.g., verbose builds, extensive file listings) can overwhelm the response
 - No mechanism to paginate or search through previous command outputs
@@ -31,12 +32,14 @@ Currently, when executing commands via `execute_command` tool:
 **Objective**: Return only the tail of command output by default, with full output stored for later access.
 
 **Key Requirements**:
+
 - Default to last 20 lines of output (configurable)
 - Store complete output in memory/disk for resource access
 - Include metadata indicating truncation (e.g., "Showing last 20 of 1,247 lines")
 - Allow configuration per shell or globally
 
 **User Benefits**:
+
 - Faster responses for commands with verbose output
 - Reduced token consumption
 - Better context management
@@ -65,7 +68,8 @@ Currently, when executing commands via `execute_command` tool:
    - Provide occurrence count in response
 
 4. **Resource URI Structure**:
-   ```
+
+   ```text
    cli://logs/commands/{execution_id}
    cli://logs/commands/{execution_id}/search?q={pattern}&context={n}&occurrence={m}
    cli://logs/commands/{execution_id}/range?start={n}&end={m}

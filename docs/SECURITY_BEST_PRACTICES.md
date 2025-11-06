@@ -453,6 +453,7 @@ grep -E "(\\\\|/)+(windows|system|etc|bin)" mcp-commands.log
 ### Automated Monitoring
 
 Set up alerts for:
+
 - Commands hitting blocked lists
 - Path access violations
 - Timeout events
@@ -533,6 +534,7 @@ Set up alerts for:
 ### PCI DSS
 
 If handling payment data:
+
 - Use strongest restriction levels
 - Log all commands with timestamps
 - Restrict network access
@@ -541,6 +543,7 @@ If handling payment data:
 ### HIPAA
 
 If handling health data:
+
 - Implement access controls
 - Audit all file access
 - Encrypt sensitive directories
@@ -549,6 +552,7 @@ If handling health data:
 ### SOX
 
 If handling financial data:
+
 - Immutable audit logs
 - Separation of duties
 - Change control processes

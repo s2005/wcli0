@@ -15,6 +15,7 @@ The server uses an inheritance-based configuration system where global defaults 
 ### Validation Context
 
 Each command execution creates a validation context that includes:
+
 - Shell name and type
 - Resolved configuration for that shell
 - Path format expectations
@@ -52,18 +53,22 @@ ServerConfig
 ## Tool Handlers
 
 ### execute_command
+
 - Resolves shell configuration
 - Creates validation context
 - Validates and executes with shell-specific settings
 
 ### get_config
+
 - Returns both raw configuration and resolved settings
 - Shows effective configuration for each shell
 
 ### validate_directories
+
 - Supports global validation against global paths
 - Supports shell-specific validation with shell parameter
 
 ### set_current_directory
+
 - Always validates against global allowed paths
 - Updates server's active working directory

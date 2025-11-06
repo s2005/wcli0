@@ -41,7 +41,7 @@
 
 ## [1.0.7] - 2025-07-09
 
-### Added
+### CLI Features Added
 
 - CLI restriction override flags
 - WSL mount point flag
@@ -49,26 +49,27 @@
 - Bash shell support
 - Resource templates handler
 
-### Changed
+### Configuration Changes
+
 - Simplified `get_config` output with enabled shells
 - Improved configuration merging behavior
 
-### Fixed
+### Bug Fixes
+
 - Resolved script execution via symlink
 - Corrected extra allowed path handling
 - Improved Git Bash path detection
 - CLI no longer auto-starts when imported
 
-
 ## [1.0.6] - 2025-07-04
 
-### Added
+### Debug Features Added
 
 - Added comprehensive manual debug documentation (MANUAL_DEBUG.md)
 - Enhanced debug commands and testing instructions
 - Debug logging toggle functionality
 
-### Changed
+### Implementation Changes
 
 - Implement initialDir CLI override
 - Fix gitbash Windows working directory handling
@@ -76,7 +77,7 @@
 
 ## [1.0.5] - 2025-06-29
 
-### Changed
+### General Improvements
 
 - Updated package dependencies and minor bug fixes
 - Improved test coverage and stability
@@ -84,14 +85,14 @@
 
 ## [1.0.0] - Enhanced Fork
 
-### Added
+### Package Enhancements
 
 - Comprehensive acknowledgment of SimonB97's original work
 - Enhanced package description and branding
 - Publishing guide and documentation
 - Extended feature documentation
 
-### Changed
+### Package Changes
 
 - Package name changed to `wcli0`
 - Updated all installation and usage instructions
@@ -100,7 +101,7 @@
 
 ## [Previous History - Based on SimonB97's work]
 
-### Fixed
+### Legacy Fixes
 
 - Fixed path normalization for single backslash paths (e.g., `\\Users\\test`)
 - Replaced bash-based WSL emulator with Node.js implementation for cross-platform compatibility

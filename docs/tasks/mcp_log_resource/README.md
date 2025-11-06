@@ -10,9 +10,11 @@ This directory contains comprehensive planning documentation for implementing th
 ## Document Structure
 
 ### [01-overview.md](./01-overview.md)
+
 **Purpose**: High-level feature overview and business context
 
 **Contents**:
+
 - Executive summary
 - Problem statement and motivation
 - Proposed solution overview
@@ -25,9 +27,11 @@ This directory contains comprehensive planning documentation for implementing th
 ---
 
 ### [02-technical-specification.md](./02-technical-specification.md)
+
 **Purpose**: Detailed technical design and architecture
 
 **Contents**:
+
 - Data structures and interfaces
 - Storage system design
 - Output truncation algorithm
@@ -42,9 +46,11 @@ This directory contains comprehensive planning documentation for implementing th
 ---
 
 ### [03-implementation-plan.md](./03-implementation-plan.md)
+
 **Purpose**: Step-by-step implementation roadmap
 
 **Contents**:
+
 - 8 implementation phases with detailed tasks
 - Phase 1: Foundation (types, config)
 - Phase 2: Output Truncation
@@ -60,9 +66,11 @@ This directory contains comprehensive planning documentation for implementing th
 ---
 
 ### [04-api-design.md](./04-api-design.md)
+
 **Purpose**: Complete API specification and examples
 
 **Contents**:
+
 - Tool response format changes
 - Resource URI patterns
 - Query parameter specifications
@@ -76,9 +84,11 @@ This directory contains comprehensive planning documentation for implementing th
 ---
 
 ### [05-testing-strategy.md](./05-testing-strategy.md)
+
 **Purpose**: Comprehensive testing approach
 
 **Contents**:
+
 - Testing levels (unit, integration, E2E, performance)
 - Test specifications for each component
 - Edge cases and error scenarios
@@ -121,12 +131,14 @@ This directory contains comprehensive planning documentation for implementing th
 ### What's Being Built
 
 #### 1. Output Truncation
+
 - Command responses show last N lines (configurable, default: 20)
 - Full output stored for later access
 - Truncation message includes resource URI for full output
 - Can be disabled via configuration
 
 #### 2. Log Storage
+
 - Stores command execution history
 - Includes stdout, stderr, metadata
 - Automatic cleanup based on age and size limits
@@ -143,6 +155,7 @@ This directory contains comprehensive planning documentation for implementing th
 | `cli://logs/commands/{id}/search?q=error&context=3` | Search with context |
 
 #### 4. Query Features
+
 - **Line ranges**: Positive and negative indices (e.g., `-10` for last 10 lines)
 - **Search**: Regex patterns with case-sensitive/insensitive options
 - **Occurrence navigation**: Navigate between multiple search matches
@@ -185,26 +198,31 @@ This directory contains comprehensive planning documentation for implementing th
 ## Key Design Decisions
 
 ### 1. In-Memory Storage
+
 - **Decision**: Store logs in memory with size limits
 - **Rationale**: Simpler implementation, faster access, automatic cleanup on restart
 - **Trade-off**: Logs lost on server restart (acceptable for this use case)
 
 ### 2. Tail-based Truncation
+
 - **Decision**: Show last N lines instead of first N
 - **Rationale**: Most relevant information (results, errors) typically at end
 - **Trade-off**: Need full log resource for complete context
 
 ### 3. Regex Search
+
 - **Decision**: Support full regex patterns in search
 - **Rationale**: Maximum flexibility for users
 - **Trade-off**: Potential performance impact (mitigated with optimizations)
 
 ### 4. URI-based Query Interface
+
 - **Decision**: Use query parameters for filtering instead of separate resources
 - **Rationale**: RESTful design, flexible, extensible
 - **Trade-off**: More complex URI parsing
 
 ### 5. Occurrence-based Navigation
+
 - **Decision**: Support occurrence parameter to navigate between matches
 - **Rationale**: Better UX for multiple matches
 - **Trade-off**: Requires finding all matches first
@@ -212,9 +230,11 @@ This directory contains comprehensive planning documentation for implementing th
 ## Dependencies
 
 ### Required
+
 - None (uses existing MCP SDK, Node.js built-ins)
 
 ### Optional
+
 - None
 
 ## Risks and Mitigations
@@ -257,6 +277,7 @@ For questions, clarifications, or feedback on these plans:
 ## Document Maintenance
 
 These documents are living artifacts and should be updated as:
+
 - Design decisions change
 - Implementation reveals new requirements
 - Testing uncovers issues

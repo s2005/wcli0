@@ -13,6 +13,7 @@
 ## Overview
 
 This document defines the complete API surface for the MCP log resource feature, including:
+
 - Enhanced `execute_command` tool responses
 - New MCP resource URIs for accessing logs
 - Query parameter specifications
@@ -107,6 +108,7 @@ This document defines the complete API surface for the MCP log resource feature,
 **Response Type**: JSON
 
 **Example Response**:
+
 ```json
 {
   "logs": [
@@ -151,17 +153,20 @@ This document defines the complete API surface for the MCP log resource feature,
 **Description**: Returns the N most recent command execution logs.
 
 **Query Parameters**:
+
 - `n` (optional, default: 5): Number of recent logs to return
 - `shell` (optional): Filter by shell type
 
 **Response Type**: JSON
 
 **Examples**:
+
 - `cli://logs/recent` - Last 5 logs
 - `cli://logs/recent?n=10` - Last 10 logs
 - `cli://logs/recent?n=5&shell=bash` - Last 5 bash logs
 
 **Example Response**:
+
 ```json
 {
   "logs": [
@@ -191,10 +196,12 @@ This document defines the complete API surface for the MCP log resource feature,
 **Response Type**: Plain text
 
 **Example**:
+
 - `cli://logs/commands/20251105-143022-a8f3`
 
 **Example Response**:
-```
+
+```text
 PASS src/components/Button.test.tsx
 PASS src/components/Input.test.tsx
 FAIL src/components/Form.test.tsx
@@ -220,6 +227,7 @@ Tests:       1 failed, 15 passed, 16 total
 **Description**: Returns a specific range of lines from a log.
 
 **Query Parameters**:
+
 - `start` (required): Start line number (1-based, supports negative)
 - `end` (required): End line number (1-based, supports negative)
 - `lineNumbers` (optional, default: true): Include line numbers in output
@@ -227,6 +235,7 @@ Tests:       1 failed, 15 passed, 16 total
 **Response Type**: Plain text
 
 **Examples**:
+
 - `cli://logs/commands/{id}/range?start=1&end=100` - First 100 lines
 - `cli://logs/commands/{id}/range?start=100&end=200` - Lines 100-200
 - `cli://logs/commands/{id}/range?start=-50&end=-1` - Last 50 lines
@@ -234,7 +243,8 @@ Tests:       1 failed, 15 passed, 16 total
 - `cli://logs/commands/{id}/range?start=1&end=50&lineNumbers=false` - Without line numbers
 
 **Example Response**:
-```
+
+```text
 Lines 1-100 of 1247:
 
 1: PASS src/components/Button.test.tsx
@@ -255,6 +265,7 @@ Lines 1-100 of 1247:
 **Description**: Search for a pattern in the log and return matches with surrounding context.
 
 **Query Parameters**:
+
 - `q` (required): Search pattern (regex supported)
 - `context` (optional, default: 3): Number of lines before/after match
 - `occurrence` (optional, default: 1): Which match to return (1-based)
@@ -264,6 +275,7 @@ Lines 1-100 of 1247:
 **Response Type**: Plain text
 
 **Examples**:
+
 - `cli://logs/commands/{id}/search?q=error` - Find "error"
 - `cli://logs/commands/{id}/search?q=error&context=5` - With 5 lines context
 - `cli://logs/commands/{id}/search?q=error&occurrence=2` - Second occurrence
@@ -271,7 +283,8 @@ Lines 1-100 of 1247:
 - `cli://logs/commands/{id}/search?q=FAIL.*test` - Regex pattern
 
 **Example Response**:
-```
+
+```text
 Search: "FAIL" found 3 occurrence(s)
 Showing occurrence 1 of 3 at line 145:
 
@@ -305,10 +318,12 @@ To see next match, use occurrence=2
 ### Parameter Validation
 
 #### n (recent logs count)
+
 - Must be integer between 1 and 100
 - Error if out of range: "Parameter 'n' must be between 1 and 100"
 
 #### start/end (line range)
+
 - Must be valid integers
 - Positive: 1-based line numbers from start
 - Negative: Lines from end (-1 is last line)
@@ -319,15 +334,18 @@ To see next match, use occurrence=2
   - "Start line 100 must be <= end line 50"
 
 #### q (search pattern)
+
 - Must be non-empty string
 - Interpreted as JavaScript regex
 - Invalid regex will throw error: "Invalid regex pattern: {details}"
 
 #### context (context lines)
+
 - Must be integer between 0 and 20
 - Error if out of range: "Context lines must be between 0 and 20"
 
 #### occurrence (search occurrence)
+
 - Must be positive integer
 - Must be <= total occurrences found
 - Error example: "Occurrence 5 out of range (1-3)"
@@ -376,6 +394,7 @@ interface RecentLogsResponse {
 ### Text Response Formats
 
 #### Full Log Output
+
 - Raw text output
 - Combined stdout and stderr in execution order
 - No modifications or formatting
@@ -383,7 +402,8 @@ interface RecentLogsResponse {
 #### Range Query Output
 
 **With line numbers** (default):
-```
+
+```text
 Lines {start}-{end} of {total}:
 
 {lineNum}: {line content}
@@ -392,7 +412,8 @@ Lines {start}-{end} of {total}:
 ```
 
 **Without line numbers**:
-```
+
+```text
 Lines {start}-{end} of {total}:
 
 {line content}
@@ -402,7 +423,7 @@ Lines {start}-{end} of {total}:
 
 #### Search Result Output
 
-```
+```text
 Search: "{pattern}" found {totalOccurrences} occurrence(s)
 Showing occurrence {occurrenceNum} of {totalOccurrences} at line {lineNum}:
 
@@ -439,6 +460,7 @@ All errors follow this structure:
 **Trigger**: Requested log ID doesn't exist
 
 **Response**:
+
 ```json
 {
   "error": {
@@ -457,6 +479,7 @@ All errors follow this structure:
 **Trigger**: Invalid line range parameters
 
 **Examples**:
+
 ```json
 {
   "error": {
@@ -490,6 +513,7 @@ All errors follow this structure:
 **Trigger**: Invalid search parameters
 
 **Examples**:
+
 ```json
 {
   "error": {
@@ -519,6 +543,7 @@ All errors follow this structure:
 **Trigger**: Search pattern found no matches
 
 **Response**:
+
 ```json
 {
   "error": {
@@ -538,6 +563,7 @@ All errors follow this structure:
 **Trigger**: Requested occurrence out of range
 
 **Response**:
+
 ```json
 {
   "error": {
@@ -557,6 +583,7 @@ All errors follow this structure:
 **Trigger**: Log resources are disabled in configuration
 
 **Response**:
+
 ```json
 {
   "error": {
@@ -573,6 +600,7 @@ All errors follow this structure:
 **Trigger**: Log storage limits reached
 
 **Response**:
+
 ```json
 {
   "error": {
@@ -695,13 +723,14 @@ read_resource("cli://logs/commands/{id}/range?start=-20&end=-1")
 
 ## Backward Compatibility
 
-### execute_command Tool
+### execute_command Tool - Compatibility Notes
 
 **Breaking Changes**: None
 
 **New Fields**: All new metadata fields are additions. Existing fields remain unchanged.
 
 **Behavior Changes**:
+
 - Output may be truncated (configurable)
 - New executionId in metadata
 - Truncation can be disabled in config for full backward compatibility

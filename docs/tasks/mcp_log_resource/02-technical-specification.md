@@ -171,6 +171,7 @@ class LogStorageManager {
 ### Storage Lifecycle
 
 1. **Insertion**:
+
    ```typescript
    storeLog() {
      1. Generate unique ID (timestamp + random)
@@ -184,6 +185,7 @@ class LogStorageManager {
    ```
 
 2. **Cleanup Policy**:
+
    ```typescript
    cleanup() {
      while (needsCleanup()) {
@@ -195,6 +197,7 @@ class LogStorageManager {
    ```
 
 3. **Size Calculation**:
+
    ```typescript
    calculateEntrySize(entry) {
      return entry.stdout.length +
@@ -249,7 +252,7 @@ function truncateOutput(
 
 ### Truncation Message Format
 
-```
+```text
 [Output truncated: Showing last {maxLines} of {totalLines} lines]
 [{omittedLines} lines omitted]
 [Access full output: cli://logs/commands/{executionId}]
@@ -326,9 +329,11 @@ async executeShellCommand() {
 #### List Resource (`cli://logs/list`)
 
 **Query Parameters**:
+
 - None
 
 **Response Format**:
+
 ```json
 {
   "logs": [
@@ -350,6 +355,7 @@ async executeShellCommand() {
 #### Recent Resource (`cli://logs/recent`)
 
 **Query Parameters**:
+
 - `n` (optional, default: 5): Number of recent logs to return
 - `shell` (optional): Filter by shell type
 
@@ -358,6 +364,7 @@ async executeShellCommand() {
 #### Full Log Resource (`cli://logs/commands/{id}`)
 
 **Query Parameters**:
+
 - None
 
 **Response Format**: Full combined output as text
@@ -365,18 +372,21 @@ async executeShellCommand() {
 #### Range Resource (`cli://logs/commands/{id}/range`)
 
 **Query Parameters**:
+
 - `start` (required): Start line number (1-based, negative supported)
 - `end` (required): End line number (1-based, negative supported)
 - `lineNumbers` (optional, default: true): Include line numbers
 
 **Examples**:
+
 - `?start=1&end=100` - First 100 lines
 - `?start=-50&end=-1` - Last 50 lines
 - `?start=100&end=200` - Lines 100-200
 - `?start=-100&end=-50` - 100th to 50th from end
 
 **Response Format**:
-```
+
+```text
 Lines 1-100 of 1247:
 
 1: output line 1
@@ -388,6 +398,7 @@ Lines 1-100 of 1247:
 #### Search Resource (`cli://logs/commands/{id}/search`)
 
 **Query Parameters**:
+
 - `q` (required): Search pattern (regex)
 - `context` (optional, default: 3): Lines before/after match
 - `occurrence` (optional, default: 1): Which match to return
@@ -395,7 +406,8 @@ Lines 1-100 of 1247:
 - `caseInsensitive` (optional, default: false): Case-insensitive search
 
 **Response Format**:
-```
+
+```text
 Search: "error" found 5 occurrences
 Showing occurrence 1 of 5 at line 145:
 

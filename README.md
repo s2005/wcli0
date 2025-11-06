@@ -109,7 +109,7 @@ Access stored command output via MCP resources:
 
 See [API Documentation](docs/API.md) for detailed resource specifications and query parameters.
 
-### Configuration
+### Example Configuration
 
 ```json
 {
@@ -232,7 +232,7 @@ To get started with configuration:
    `enableInjectionProtection` is disabled to ensure the allowed paths apply
    without shell injection checks.
 
-3. **Update your Claude Desktop configuration** to use your config file:
+1. **Update your Claude Desktop configuration** to use your config file:
 
    ```json
    {

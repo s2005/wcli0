@@ -18,6 +18,7 @@
 This document outlines the comprehensive testing strategy for the MCP log resource feature. The strategy covers multiple testing levels to ensure correctness, performance, and reliability.
 
 **Testing Philosophy**:
+
 - Test-driven development where practical
 - High coverage (>85%) for new code
 - Focus on edge cases and error conditions
@@ -29,7 +30,7 @@ This document outlines the comprehensive testing strategy for the MCP log resour
 
 ### Test Pyramid
 
-```
+```text
         /\
        /E2E\        End-to-End Tests (5%)
       /------\      - Full workflows
