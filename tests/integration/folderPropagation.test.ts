@@ -45,7 +45,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');
 
-      const config = JSON.parse(result.content[0].text);
+      const config = JSON.parse(result.content[0].text as string);
 
       // Global paths should be present
       expect(config.global.paths.allowedPaths).toEqual(['/home/user/projects', '/tmp/workspace']);
@@ -95,7 +95,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
       const result = await server.callTool('get_config', {});
 
       expect(result.isError).toBe(false);
-      const config = JSON.parse(result.content[0].text);
+      const config = JSON.parse(result.content[0].text as string);
 
       // WSL shell should show converted paths (will FAIL with current bug)
       expect(config.shells.wsl.paths).toBeDefined();
@@ -157,7 +157,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
       const result = await server.callTool('get_config', {});
 
       expect(result.isError).toBe(false);
-      const config = JSON.parse(result.content[0].text);
+      const config = JSON.parse(result.content[0].text as string);
 
       // Bash with overrides should show override paths (works already)
       expect(config.shells.bash.paths).toBeDefined();
@@ -207,7 +207,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
       const result = await server.callTool('get_config', {});
 
       expect(result.isError).toBe(false);
-      const config = JSON.parse(result.content[0].text);
+      const config = JSON.parse(result.content[0].text as string);
 
       // Global should have initialDir
       expect(config.global.paths.initialDir).toBe('/home/user/workspace');
@@ -263,7 +263,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
       const result = await server.callTool('get_config', {});
 
       expect(result.isError).toBe(false);
-      const config = JSON.parse(result.content[0].text);
+      const config = JSON.parse(result.content[0].text as string);
 
       // Both shells should show the global paths (FAILS with bug)
       expect(config.shells.wsl.paths).toBeDefined();
@@ -317,7 +317,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
       const result = await server.callTool('get_config', {});
 
       expect(result.isError).toBe(false);
-      const config = JSON.parse(result.content[0].text);
+      const config = JSON.parse(result.content[0].text as string);
 
       // Should work correctly when overrides exist
       expect(config.shells.wsl.paths).toBeDefined();
@@ -347,7 +347,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
       const result = await server.callTool('get_config', {});
 
       expect(result.isError).toBe(false);
-      const config = JSON.parse(result.content[0].text);
+      const config = JSON.parse(result.content[0].text as string);
 
       // Global paths should always be visible
       expect(config.global.paths.allowedPaths).toEqual(['/app/data', '/var/logs']);

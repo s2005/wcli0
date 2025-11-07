@@ -72,11 +72,11 @@ describe('Folder Propagation in createSerializableConfig', () => {
               args: ['-c']
             }
           },
-          zsh: {
-            type: 'zsh',
+          gitbash: {
+            type: 'gitbash',
             enabled: true,
             executable: {
-              command: 'zsh',
+              command: 'bash.exe',
               args: ['-c']
             }
           }
@@ -89,8 +89,8 @@ describe('Folder Propagation in createSerializableConfig', () => {
       expect(safeConfig.shells.bash.paths).toBeDefined();
       expect(safeConfig.shells.bash.paths.allowedPaths).toEqual(['/var/www', '/opt/data']);
 
-      expect(safeConfig.shells.zsh.paths).toBeDefined();
-      expect(safeConfig.shells.zsh.paths.allowedPaths).toEqual(['/var/www', '/opt/data']);
+      expect(safeConfig.shells.gitbash.paths).toBeDefined();
+      expect(safeConfig.shells.gitbash.paths.allowedPaths).toEqual(['/var/www', '/opt/data']);
     });
 
     test('should prefer shell-specific paths over global paths when overrides exist', () => {
@@ -125,11 +125,11 @@ describe('Folder Propagation in createSerializableConfig', () => {
               }
             }
           },
-          zsh: {
-            type: 'zsh',
+          gitbash: {
+            type: 'gitbash',
             enabled: true,
             executable: {
-              command: 'zsh',
+              command: 'bash.exe',
               args: ['-c']
             }
             // No overrides - should show global paths
@@ -143,9 +143,9 @@ describe('Folder Propagation in createSerializableConfig', () => {
       expect(safeConfig.shells.bash.paths).toBeDefined();
       expect(safeConfig.shells.bash.paths.allowedPaths).toEqual(['/custom/bash/path']);
 
-      // zsh should show global paths (this will FAIL with current bug)
-      expect(safeConfig.shells.zsh.paths).toBeDefined();
-      expect(safeConfig.shells.zsh.paths.allowedPaths).toEqual(['/home/user/projects']);
+      // gitbash should show global paths (this will FAIL with current bug)
+      expect(safeConfig.shells.gitbash.paths).toBeDefined();
+      expect(safeConfig.shells.gitbash.paths.allowedPaths).toEqual(['/home/user/projects']);
     });
 
     test('should handle shells with WSL config and no path overrides', () => {
