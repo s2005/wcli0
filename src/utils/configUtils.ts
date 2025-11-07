@@ -59,6 +59,22 @@ export function createSerializableConfig(config: ServerConfig): any {
         shellInfo.paths = {};
         if (p.allowedPaths) shellInfo.paths.allowedPaths = [...p.allowedPaths];
         if (p.initialDir !== undefined) shellInfo.paths.initialDir = p.initialDir;
+      } else {
+        // No path overrides - inherit from global config
+        shellInfo.paths = {
+          allowedPaths: [...config.global.paths.allowedPaths]
+        };
+        if (config.global.paths.initialDir !== undefined) {
+          shellInfo.paths.initialDir = config.global.paths.initialDir;
+        }
+      }
+    } else {
+      // No overrides at all - inherit global paths
+      shellInfo.paths = {
+        allowedPaths: [...config.global.paths.allowedPaths]
+      };
+      if (config.global.paths.initialDir !== undefined) {
+        shellInfo.paths.initialDir = config.global.paths.initialDir;
       }
     }
 
