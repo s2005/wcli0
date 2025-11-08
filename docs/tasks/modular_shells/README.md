@@ -50,6 +50,28 @@ Each phase includes:
 
 **Who should read this**: Developers implementing the changes, project managers tracking progress.
 
+### 3. [TESTING_GUIDE.md](./TESTING_GUIDE.md)
+
+**Comprehensive testing strategy and migration guide.**
+
+Detailed testing documentation covering:
+- Current test structure and target organization
+- Test migration strategy (extracting shell-specific tests)
+- Testing individual shell modules with examples
+- Integration and build-specific testing
+- Test utilities and helpers
+- Performance testing approaches
+- CI/CD integration with GitHub Actions
+- Coverage requirements (≥95% for modules)
+
+Each shell gets dedicated test files:
+- Implementation tests
+- Validation tests
+- Path handling tests
+- Integration tests
+
+**Who should read this**: Developers writing tests, QA engineers, anyone implementing the modular architecture.
+
 ## Quick Start
 
 ### For Architects/Reviewers
@@ -62,8 +84,9 @@ Each phase includes:
 
 1. Skim [ARCHITECTURE.md](./ARCHITECTURE.md) for context
 2. Follow [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) phase by phase
-3. Implement each phase with the provided code examples
-4. Complete deliverables checklist for each phase
+3. Reference [TESTING_GUIDE.md](./TESTING_GUIDE.md) when writing tests
+4. Implement each phase with the provided code examples
+5. Complete deliverables checklist for each phase
 
 ### For Project Managers
 
