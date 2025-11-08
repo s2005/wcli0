@@ -3,33 +3,33 @@
 ## 1. Shell-Specific Code Locations
 
 ### Core Shell Implementation Files:
-- **/home/user/wcli0/src/index.ts** (Main server entry point - 1160 lines)
+- **src/index.ts** (Main server entry point - 1160 lines)
   - `executeShellCommand()` method (lines 302-479) - Core shell execution logic
   - Shell type-specific handling for execution
   - Dynamic tool listing and resource exposure based on enabled shells
 
-- **/home/user/wcli0/src/types/config.ts** (Config type definitions)
+- **src/types/config.ts** (Config type definitions)
   - `ShellType` type definition (line 141): `'cmd' | 'powershell' | 'gitbash' | 'wsl' | 'bash'`
   - `BaseShellConfig` interface (lines 146-170)
   - `WslShellConfig` interface (lines 190-196) - WSL/Bash specific config
 
-- **/home/user/wcli0/src/utils/config.ts** (Configuration management)
+- **src/utils/config.ts** (Configuration management)
   - `DEFAULT_CONFIG` with all 5 shell definitions (lines 26-118)
   - `getResolvedShellConfig()` - Resolves individual shell configuration
   - `loadConfig()` - Loads and merges configurations
   - Shell-specific overrides handling
 
-- **/home/user/wcli0/src/utils/configMerger.ts** (Configuration merging logic)
+- **src/utils/configMerger.ts** (Configuration merging logic)
   - `resolveShellConfiguration()` - Merges global + shell-specific settings
   - `applyWslPathInheritance()` - WSL-specific path conversion (lines 132-159)
   - Separate merge functions for each shell type in `mergeConfigs()`
 
-- **/home/user/wcli0/src/utils/validation.ts** (Command validation)
+- **src/utils/validation.ts** (Command validation)
   - `extractCommandName()` - Shell-agnostic command name extraction
   - `isCommandBlocked()`, `isArgumentBlocked()`, `validateShellOperators()` - Shell-agnostic validation
   - Uses validation context to apply shell-specific rules
 
-- **/home/user/wcli0/src/utils/validationContext.ts** (Shell context)
+- **src/utils/validationContext.ts** (Shell context)
   - `ValidationContext` interface (lines 6-12)
   - `createValidationContext()` - Creates context based on shell type
   - Shell type classification (lines 21-23):
@@ -37,7 +37,7 @@
     - Unix shells: gitbash, wsl, bash
     - WSL-specific: wsl, bash
 
-- **/home/user/wcli0/src/utils/pathValidation.ts** (Path handling)
+- **src/utils/pathValidation.ts** (Path handling)
   - `normalizePathForShell()` - Shell-specific path normalization
   - `validateWorkingDirectory()` - Shell-aware directory validation
   - Shell-specific validation functions:
@@ -45,11 +45,11 @@
     - `validateWindowsPath()` - For Windows shells
     - `validateUnixPath()` - For Unix-like shells
 
-- **/home/user/wcli0/src/utils/toolSchemas.ts** (Tool schema generation)
+- **src/utils/toolSchemas.ts** (Tool schema generation)
   - `buildExecuteCommandSchema()` - Dynamically builds schema based on enabled shells
   - Shell type detection for description generation (lines 29-35)
 
-- **/home/user/wcli0/src/utils/toolDescription.ts** (Tool descriptions)
+- **src/utils/toolDescription.ts** (Tool descriptions)
   - `buildExecuteCommandDescription()` - Dynamic descriptions per shell
   - Shell-specific examples for each supported shell
   - `buildToolDescription()` - Alternative description builder
@@ -147,12 +147,12 @@
 ## 4. Build Configuration and Entry Points
 
 ### Package Configuration:
-- **File**: `/home/user/wcli0/package.json`
+- **File**: `package.json`
 - **Bin entry** (line 7): `"wcli0": "dist/index.js"`
 - **Type**: ES Module (`"type": "module"`)
 
 ### Build Configuration:
-- **File**: `/home/user/wcli0/tsconfig.json`
+- **File**: `tsconfig.json`
 - **Target**: ES2020
 - **Module**: NodeNext
 - **Output**: `./dist` directory
@@ -165,13 +165,13 @@
 - `start`: `node dist/index.js`
 
 ### Jest Configuration:
-- **File**: `/home/user/wcli0/jest.config.js`
+- **File**: `jest.config.js`
 - **Preset**: `ts-jest/presets/default-esm`
 - **Test environment**: Node.js
 - **Test timeout**: 10000ms
 
 ### CLI Entry Point:
-- **File**: `/home/user/wcli0/src/index.ts`
+- **File**: `src/index.ts`
 - **Main function** (lines 1093-1141): `main()`
   - Parses command-line args via yargs
   - Handles `--init-config` flag for config generation

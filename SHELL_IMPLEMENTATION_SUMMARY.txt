@@ -2,30 +2,30 @@ SHELL-SPECIFIC CODE FILES AND LOCATIONS
 ========================================
 
 KEY SOURCE FILES:
-- /home/user/wcli0/src/index.ts
+- src/index.ts
   * CLIServer class
   * executeShellCommand() - Shell execution logic (lines 302-479)
   * Shell registration and initialization (lines 173-182)
   * Dynamic tool generation (lines 698-757)
 
-- /home/user/wcli0/src/types/config.ts
+- src/types/config.ts
   * ShellType definition (line 141): 'cmd' | 'powershell' | 'gitbash' | 'wsl' | 'bash'
   * BaseShellConfig (lines 146-170)
   * WslShellConfig (lines 190-196)
   * ResolvedShellConfig (lines 223-259)
 
-- /home/user/wcli0/src/utils/config.ts
+- src/utils/config.ts
   * DEFAULT_CONFIG with all 5 shell definitions (lines 26-118)
   * getResolvedShellConfig() function
   * loadConfig() and mergeConfigs() functions
   * Shell-specific CLI override functions
 
-- /home/user/wcli0/src/utils/configMerger.ts
+- src/utils/configMerger.ts
   * resolveShellConfiguration() - Merges global + shell overrides
   * applyWslPathInheritance() - WSL path conversion (lines 132-159)
   * Shell-specific merge logic
 
-- /home/user/wcli0/src/utils/validationContext.ts
+- src/utils/validationContext.ts
   * ValidationContext interface (lines 6-12)
   * createValidationContext() - Creates context from shell config
   * Shell type classification:
@@ -33,20 +33,20 @@ KEY SOURCE FILES:
     - isUnixShell: gitbash, wsl, bash
     - isWslShell: wsl, bash
 
-- /home/user/wcli0/src/utils/pathValidation.ts
+- src/utils/pathValidation.ts
   * normalizePathForShell() - Shell-specific path normalization
   * validateWorkingDirectory() - Shell-aware validation
   * validateWslPath(), validateWindowsPath(), validateUnixPath()
 
-- /home/user/wcli0/src/utils/validation.ts
+- src/utils/validation.ts
   * extractCommandName()
   * isCommandBlocked(), isArgumentBlocked(), validateShellOperators()
 
-- /home/user/wcli0/src/utils/toolSchemas.ts
+- src/utils/toolSchemas.ts
   * buildExecuteCommandSchema() - Dynamic schema generation (lines 13-69)
   * buildValidateDirectoriesSchema() (lines 74-100)
 
-- /home/user/wcli0/src/utils/toolDescription.ts
+- src/utils/toolDescription.ts
   * buildExecuteCommandDescription() - Dynamic tool descriptions
   * buildToolDescription() - Alternative descriptions
 
@@ -122,7 +122,7 @@ Integration Tests:
 BUILD & ENTRY POINTS:
 ====================
 
-Entry Point: /home/user/wcli0/src/index.ts
+Entry Point: src/index.ts
 - main() function (lines 1093-1141)
 - main() runs: CLIServer created and started
 - Output: dist/index.js
@@ -230,7 +230,7 @@ Tool generation:
 CONFIGURATION EXAMPLE STRUCTURE:
 ================================
 
-/home/user/wcli0/config.examples/:
+config.examples/:
 - config.sample.json - Standard setup
 - config.development.json - Dev environment
 - config.secure.json - High security

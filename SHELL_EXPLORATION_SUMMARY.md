@@ -225,25 +225,25 @@ WSL-Specific   → wsl, bash
 ## 7. File Locations Reference
 
 ### Essential Files
-- `/home/user/wcli0/src/index.ts` - Main server
-- `/home/user/wcli0/src/types/config.ts` - Type definitions
-- `/home/user/wcli0/src/utils/config.ts` - Configuration
-- `/home/user/wcli0/src/utils/configMerger.ts` - Merging logic
-- `/home/user/wcli0/src/utils/validationContext.ts` - Shell context
-- `/home/user/wcli0/src/utils/pathValidation.ts` - Path handling
-- `/home/user/wcli0/src/utils/toolSchemas.ts` - Schema generation
-- `/home/user/wcli0/src/utils/toolDescription.ts` - Descriptions
+- `src/index.ts` - Main server
+- `src/types/config.ts` - Type definitions
+- `src/utils/config.ts` - Configuration
+- `src/utils/configMerger.ts` - Merging logic
+- `src/utils/validationContext.ts` - Shell context
+- `src/utils/pathValidation.ts` - Path handling
+- `src/utils/toolSchemas.ts` - Schema generation
+- `src/utils/toolDescription.ts` - Descriptions
 
 ### Configuration Examples
-- `/home/user/wcli0/config.examples/config.sample.json`
-- `/home/user/wcli0/config.examples/config.development.json`
-- `/home/user/wcli0/config.examples/config.secure.json`
+- `config.examples/config.sample.json`
+- `config.examples/config.development.json`
+- `config.examples/config.secure.json`
 
 ### Test Directories
-- `/home/user/wcli0/tests/bash/` - Bash tests
-- `/home/user/wcli0/tests/wsl/` - WSL tests
-- `/home/user/wcli0/tests/validation/` - Validation tests
-- `/home/user/wcli0/tests/integration/` - Integration tests
+- `tests/bash/` - Bash tests
+- `tests/wsl/` - WSL tests
+- `tests/validation/` - Validation tests
+- `tests/integration/` - Integration tests
 
 ## 8. Documentation Generated
 
