@@ -15,6 +15,7 @@ export abstract class BaseShell implements ShellPlugin {
    * Validate a command for this shell
    *
    * Default implementation checks against blocked commands.
+   * Supports both command name matching and full command pattern matching.
    * Override for shell-specific validation logic.
    */
   validateCommand(command: string, context: ValidationContext): ValidationResult {
@@ -26,9 +27,21 @@ export abstract class BaseShell implements ShellPlugin {
       ...(context.blockedCommands || [])
     ];
 
-    const commandName = command.trim().split(/\s+/)[0].toLowerCase();
-    if (blockedCommands.some(blocked => commandName === blocked.toLowerCase())) {
-      errors.push(`Command '${commandName}' is blocked for ${this.shellType}`);
+    const trimmedCommand = command.trim().toLowerCase();
+    const commandName = trimmedCommand.split(/\s+/)[0];
+
+    for (const blocked of blockedCommands) {
+      const blockedLower = blocked.toLowerCase();
+
+      // Check if the blocked entry matches:
+      // 1. The full command (for patterns like "rm -rf /")
+      // 2. The command name (for simple blocks like "del")
+      if (trimmedCommand === blockedLower ||
+          trimmedCommand.startsWith(blockedLower + ' ') ||
+          commandName === blockedLower) {
+        errors.push(`Command '${blocked}' is blocked for ${this.shellType}`);
+        break;
+      }
     }
 
     return {
