@@ -42,6 +42,10 @@ import { setDebugLogging, debugLog, debugWarn, errorLog } from './utils/log.js';
 import { truncateOutput, formatTruncatedOutput } from './utils/truncation.js';
 import { LogStorageManager } from './utils/logStorage.js';
 import { LogResourceHandler } from './utils/logResourceHandler.js';
+// Import modular shell system
+import { loadShells } from './shells/loader.js';
+import { shellRegistry } from './core/registry.js';
+import { getBuildConfig } from './build/shell-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -236,7 +240,18 @@ class CLIServer {
   }
 
   private getEnabledShells(): string[] {
-    return Array.from(this.resolvedConfigs.keys());
+    // Return shells that are both loaded in the registry AND enabled in config
+    const configShells = Array.from(this.resolvedConfigs.keys());
+    const loadedShells = shellRegistry.getShellTypes();
+
+    // If registry is empty, return all config shells (backward compatibility)
+    // Once fully migrated, this will enforce that shells must be in registry
+    if (loadedShells.length === 0) {
+      return configShells;
+    }
+
+    // Intersection: shells that are in both lists
+    return configShells.filter(shell => loadedShells.includes(shell));
   }
 
   private validateSingleCommand(context: ValidationContext, command: string): void {
@@ -1096,7 +1111,15 @@ const main = async () => {
 
     // Set debug logging based on CLI argument
     setDebugLogging(Boolean(args.debug));
-    
+
+    // Initialize modular shell system
+    const buildConfig = getBuildConfig();
+    await loadShells({
+      shells: buildConfig.includedShells,
+      verbose: buildConfig.verbose || Boolean(args.debug)
+    });
+    debugLog(`Loaded ${shellRegistry.getCount()} shell modules: ${shellRegistry.getShellTypes().join(', ')}`);
+
     // Handle --init-config flag
     if (args['init-config']) {
       try {

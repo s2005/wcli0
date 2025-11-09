@@ -1,0 +1,249 @@
+SHELL-SPECIFIC CODE FILES AND LOCATIONS
+========================================
+
+KEY SOURCE FILES:
+- src/index.ts
+  * CLIServer class
+  * executeShellCommand() - Shell execution logic (lines 302-479)
+  * Shell registration and initialization (lines 173-182)
+  * Dynamic tool generation (lines 698-757)
+
+- src/types/config.ts
+  * ShellType definition (line 141): 'cmd' | 'powershell' | 'gitbash' | 'wsl' | 'bash'
+  * BaseShellConfig (lines 146-170)
+  * WslShellConfig (lines 190-196)
+  * ResolvedShellConfig (lines 223-259)
+
+- src/utils/config.ts
+  * DEFAULT_CONFIG with all 5 shell definitions (lines 26-118)
+  * getResolvedShellConfig() function
+  * loadConfig() and mergeConfigs() functions
+  * Shell-specific CLI override functions
+
+- src/utils/configMerger.ts
+  * resolveShellConfiguration() - Merges global + shell overrides
+  * applyWslPathInheritance() - WSL path conversion (lines 132-159)
+  * Shell-specific merge logic
+
+- src/utils/validationContext.ts
+  * ValidationContext interface (lines 6-12)
+  * createValidationContext() - Creates context from shell config
+  * Shell type classification:
+    - isWindowsShell: cmd, powershell
+    - isUnixShell: gitbash, wsl, bash
+    - isWslShell: wsl, bash
+
+- src/utils/pathValidation.ts
+  * normalizePathForShell() - Shell-specific path normalization
+  * validateWorkingDirectory() - Shell-aware validation
+  * validateWslPath(), validateWindowsPath(), validateUnixPath()
+
+- src/utils/validation.ts
+  * extractCommandName()
+  * isCommandBlocked(), isArgumentBlocked(), validateShellOperators()
+
+- src/utils/toolSchemas.ts
+  * buildExecuteCommandSchema() - Dynamic schema generation (lines 13-69)
+  * buildValidateDirectoriesSchema() (lines 74-100)
+
+- src/utils/toolDescription.ts
+  * buildExecuteCommandDescription() - Dynamic tool descriptions
+  * buildToolDescription() - Alternative descriptions
+
+
+SUPPORTED SHELLS:
+=================
+
+1. POWERSHELL (Windows)
+   - Type: 'powershell'
+   - Exe: powershell.exe, args: ["-NoProfile", "-NonInteractive", "-Command"]
+   - Path format: Windows (C:\Path\Format)
+   - Classification: Windows shell
+
+2. CMD (Windows)
+   - Type: 'cmd'
+   - Exe: cmd.exe, args: ["/c"]
+   - Path format: Windows (C:\Path\Format)
+   - Classification: Windows shell
+   - Default blocked: ['del', 'rd', 'rmdir']
+
+3. GIT BASH (Unix on Windows)
+   - Type: 'gitbash'
+   - Exe: C:\Program Files\Git\bin\bash.exe, args: ["-c"]
+   - Path format: Mixed (C:\Path or /c/path)
+   - Classification: Unix shell
+   - Default blocked: ['rm']
+
+4. BASH (Unix)
+   - Type: 'bash'
+   - Exe: bash, args: ["-c"]
+   - Path format: Unix (/mnt/c/path, /home/user)
+   - Classification: Unix + WSL-specific
+   - WSL Config: mount point '/mnt/', inherit paths
+
+5. WSL (Windows Subsystem for Linux)
+   - Type: 'wsl'
+   - Exe: wsl.exe, args: ["-e"]
+   - Path format: Unix (/mnt/c/path, /)
+   - Classification: Unix + WSL-specific
+   - WSL Config: mount point '/mnt/', inherit paths
+
+
+TEST FILES (56 total):
+====================
+
+Shell-Specific Tests:
+- tests/bash/bashShell.test.ts
+- tests/gitbashWorkingDir.test.ts
+- tests/wsl/pathConversion.test.ts
+- tests/wsl/pathResolution.test.ts
+- tests/wsl/validateWslWorkingDirectory.test.ts
+- tests/wsl/isWslPathAllowed.test.ts
+- tests/wslMountPointCliOverride.test.ts
+
+Validation Tests:
+- tests/validation/shellSpecific.test.ts
+- tests/validation/context.test.ts
+- tests/validation/pathValidation.test.ts
+- tests/validation.test.ts
+
+Configuration Tests:
+- tests/configMerge.test.ts
+- tests/configNormalization.test.ts
+- tests/configValidation.test.ts
+- tests/conditionalShells.test.ts
+- tests/shellCliOverride.test.ts
+
+Integration Tests:
+- tests/integration/shellExecution.test.ts
+- tests/integration/endToEnd.test.ts
+
+
+BUILD & ENTRY POINTS:
+====================
+
+Entry Point: src/index.ts
+- main() function (lines 1093-1141)
+- main() runs: CLIServer created and started
+- Output: dist/index.js
+
+Package Config: package.json
+- type: "module" (ES modules)
+- bin: "wcli0": "dist/index.js"
+
+Build Scripts:
+- build: tsc && shx chmod +x dist/index.js
+- clean: shx rm -rf dist
+- start: node dist/index.js
+
+TypeScript Config:
+- tsconfig.json
+- target: ES2020
+- module: NodeNext
+- output: ./dist
+- source: ./src
+
+Jest Config:
+- jest.config.js
+- preset: ts-jest/presets/default-esm
+- test timeout: 10000ms
+
+
+SHELL INITIALIZATION FLOW:
+==========================
+
+1. main() parses CLI args
+2. loadConfig() loads from file or defaults
+3. CLI overrides applied
+4. CLIServer constructor called
+5. initializeShellConfigs() iterates enabled shells
+6. getResolvedShellConfig() resolves each shell
+7. resolvedConfigs Map populated with enabled shells
+8. setupHandlers() registers MCP handlers
+9. ListToolsRequestSchema generates dynamic schemas
+10. execute_command schema has enum of enabled shells only
+
+
+SHELL REGISTRATION:
+===================
+
+All shells defined in DEFAULT_CONFIG.shells:
+- powershell: enabled=true by default
+- cmd: enabled=true by default
+- gitbash: enabled=true by default
+- bash: enabled=true by default
+- wsl: enabled=true by default
+
+Each shell can be disabled via:
+1. Config file: set enabled=false
+2. CLI --shell flag: enables only specified shell
+3. CLI overrides: specific shell configurations
+
+
+SHELL EXECUTION SPECIAL HANDLING:
+=================================
+
+Location: src/index.ts, executeShellCommand() (lines 302-479)
+
+WSL/Bash shells (wsl, bash):
+- Parse command into args
+- Pass separately to spawn
+- Convert /mnt/ paths to Windows for spawn cwd
+- Handle WSL path emulation via environment variable
+
+Git Bash:
+- Pass full command string
+- Normalize paths for spawn
+
+Windows shells (cmd, powershell):
+- Pass full command string
+- Use Windows paths directly
+
+
+KEY INTERDEPENDENCIES:
+======================
+
+config.ts imports:
+  -> types/config.ts (ShellType, BaseShellConfig, etc.)
+  -> configMerger.ts (merging logic)
+  -> validation.ts (path normalization)
+
+index.ts imports:
+  -> types/config.ts (ServerConfig, ResolvedShellConfig)
+  -> utils/config.ts (loadConfig, createDefaultConfig)
+  -> utils/validationContext.ts (createValidationContext)
+  -> utils/pathValidation.ts (validateWorkingDirectory)
+  -> utils/validation.ts (parseCommand, isCommandBlocked, etc.)
+  -> utils/toolSchemas.ts (buildExecuteCommandSchema)
+  -> utils/toolDescription.ts (buildExecuteCommandDescription)
+
+pathValidation.ts imports:
+  -> validationContext.ts (ValidationContext, getExpectedPathFormat)
+  -> validation.ts (normalizeWindowsPath, convertWindowsToWslPath)
+
+Tool generation:
+  -> shellConfig.type determines path format descriptions
+  -> Only enabled shells appear in schema
+  -> Different examples shown per shell type
+
+
+CONFIGURATION EXAMPLE STRUCTURE:
+================================
+
+config.examples/:
+- config.sample.json - Standard setup
+- config.development.json - Dev environment
+- config.secure.json - High security
+- emptyRestrictions.json - No restrictions
+- minimal.json - Minimal config
+- production.json - Production setup
+
+Each config has:
+- global.security (maxCommandLength, commandTimeout, etc.)
+- global.restrictions (blockedCommands, blockedArguments, blockedOperators)
+- global.paths (allowedPaths, initialDir)
+- shells.powershell (enabled, executable)
+- shells.cmd (enabled, executable)
+- shells.gitbash (enabled, executable)
+- shells.bash (enabled, executable, wslConfig)
+- shells.wsl (enabled, executable, wslConfig)
