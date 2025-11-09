@@ -57,6 +57,7 @@ This enhanced version includes advanced configuration management, improved secur
 ## Features
 
 - **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), Git Bash, Bash, and WSL
+- **Modular Architecture**: Build only the shells you need for smaller bundle sizes (30-65% reduction)
 - **Inheritance-Based Configuration**: Global defaults with shell-specific overrides
 - **Shell-Specific Validation**: Each shell can have its own security settings and path formats
 - **Flexible Path Management**: Different shells support different path formats (Windows/Unix/Mixed)
@@ -77,6 +78,73 @@ This enhanced version includes advanced configuration management, improved secur
 See the [API](#api) section for more details on the tools and resources the server provides to MCP clients.
 
 **Note**: The server will only allow operations within configured directories, with allowed commands.
+
+## Modular Shell Architecture
+
+WCLI0 now supports a modular architecture that allows you to build specialized versions containing only the shells you need. This results in significantly smaller bundle sizes and faster startup times.
+
+### Build Options
+
+Choose from several pre-configured builds:
+
+```bash
+# Full build (all shells) - default
+npm run build
+
+# Windows-only shells (PowerShell, CMD, Git Bash)
+npm run build:windows
+
+# Git Bash only (smallest Windows build)
+npm run build:gitbash
+
+# CMD only
+npm run build:cmd
+
+# Unix/Linux only (Bash)
+npm run build:unix
+
+# Custom combination
+INCLUDED_SHELLS=gitbash,powershell npm run build:custom
+```
+
+### Bundle Size Comparison
+
+| Build | Size Reduction | Shells Included |
+|-------|---------------|-----------------|
+| Full | Baseline | All 5 shells |
+| Windows | ~40% smaller | PowerShell, CMD, Git Bash |
+| Git Bash Only | ~60% smaller | Git Bash |
+| CMD Only | ~65% smaller | CMD |
+| Unix | ~60% smaller | Bash |
+
+### Documentation
+
+For detailed information about the modular architecture:
+
+- **[Architecture Overview](docs/tasks/modular_shells/ARCHITECTURE.md)** - System design and module structure
+- **[User Guide](docs/tasks/modular_shells/USER_GUIDE.md)** - How to build and use specialized versions
+- **[API Documentation](docs/tasks/modular_shells/API.md)** - Complete API reference for shell plugins
+- **[Migration Guide](docs/tasks/modular_shells/MIGRATION_GUIDE.md)** - Upgrading from previous versions
+- **[Testing Guide](docs/tasks/modular_shells/TESTING_GUIDE.md)** - Testing strategies for modular shells
+
+### Quick Start with Specialized Builds
+
+If you only need Git Bash:
+
+```bash
+# Build
+npm run build:gitbash
+
+# Use in Claude Desktop config
+{
+  "mcpServers": {
+    "windows-cli": {
+      "command": "node",
+      "args": ["/path/to/wcli0/dist/index.gitbash-only.js"]
+    }
+  }
+}
+```
 
 ## Log Management
 
