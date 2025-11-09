@@ -242,7 +242,7 @@ To get started with configuration:
    ```bash
    # Copy and customize a sample
    cp config.examples/config.sample.json my-config.json
-   
+
    # Or generate a default config
    npx wcli0 --init-config ./my-config.json
    ```
@@ -465,13 +465,13 @@ Global settings provide defaults that apply to all shells unless overridden.
     "security": {
       // Maximum allowed length for any command
       "maxCommandLength": 2000,
-      
+
       // Command execution timeout in seconds
       "commandTimeout": 30,
-      
+
       // Enable protection against command injection
       "enableInjectionProtection": true,
-      
+
       // Restrict commands to allowed working directories
       "restrictWorkingDirectory": true
     }
@@ -487,10 +487,10 @@ Global settings provide defaults that apply to all shells unless overridden.
     "restrictions": {
       // Commands to block - blocks both direct use and full paths
       "blockedCommands": ["rm", "format", "shutdown"],
-      
+
       // Arguments to block across all commands
       "blockedArguments": ["--exec", "-e", "/c"],
-      
+
       // Operators to block in commands
       "blockedOperators": ["&", "|", ";", "`"]
     }
@@ -506,10 +506,10 @@ Global settings provide defaults that apply to all shells unless overridden.
     "paths": {
       // Directories where commands can be executed
       "allowedPaths": ["/home/user", "/tmp", "C:\\Users\\username"],
-      
+
       // Initial working directory (null = use launch directory)
       "initialDir": "/home/user",
-      
+
       // Whether to restrict working directories
       "restrictWorkingDirectory": true
     }
