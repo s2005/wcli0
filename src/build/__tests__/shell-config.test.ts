@@ -103,7 +103,7 @@ describe('Build Configuration', () => {
     it('should warn for unknown preset and use default', () => {
       process.env.SHELL_BUILD_PRESET = 'unknown-preset';
 
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       const config = getBuildConfig();
 

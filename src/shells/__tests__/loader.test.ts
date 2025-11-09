@@ -43,7 +43,7 @@ describe('Shell Loader', () => {
   });
 
   it('should handle invalid shell types gracefully', async () => {
-    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     await loadShells({
       shells: ['gitbash', 'invalid-shell', 'powershell'],
@@ -128,7 +128,7 @@ describe('Shell Loader', () => {
   });
 
   it('should support verbose mode', async () => {
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+    const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
     await loadShells({
       shells: ['gitbash'],
@@ -143,7 +143,7 @@ describe('Shell Loader', () => {
   });
 
   it('should handle loading errors gracefully', async () => {
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     // This should not throw even if there's an error
     await loadShells({

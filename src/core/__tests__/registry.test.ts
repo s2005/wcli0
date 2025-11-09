@@ -10,7 +10,7 @@ class MockShellA implements ShellPlugin {
   validateCommand = jest.fn(() => ({ valid: true }));
   validatePath = jest.fn(() => ({ valid: true }));
   getBlockedCommands = jest.fn(() => []);
-  mergeConfig = jest.fn((base, override) => ({ ...base, ...override }));
+  mergeConfig = jest.fn((base: ShellConfig, override: Partial<ShellConfig>) => ({ ...base, ...override } as ShellConfig));
 }
 
 class MockShellB implements ShellPlugin {
@@ -20,7 +20,7 @@ class MockShellB implements ShellPlugin {
   validateCommand = jest.fn(() => ({ valid: true }));
   validatePath = jest.fn(() => ({ valid: true }));
   getBlockedCommands = jest.fn(() => []);
-  mergeConfig = jest.fn((base, override) => ({ ...base, ...override }));
+  mergeConfig = jest.fn((base: ShellConfig, override: Partial<ShellConfig>) => ({ ...base, ...override } as ShellConfig));
 }
 
 describe('ShellRegistry', () => {
@@ -53,7 +53,7 @@ describe('ShellRegistry', () => {
       const shell1 = new MockShellA();
       const shell2 = new MockShellA();
 
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       registry.register(shell1);
       registry.register(shell2);
@@ -79,7 +79,7 @@ describe('ShellRegistry', () => {
     });
 
     it('should log when registering shell', () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       const shell = new MockShellA();
 
       registry.register(shell);
