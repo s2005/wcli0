@@ -74,6 +74,7 @@ interface ShellPlugin {
 Unique identifier for the shell. Must be lowercase and match the directory name.
 
 **Examples**:
+
 - `'powershell'`
 - `'cmd'`
 - `'gitbash'`
@@ -85,6 +86,7 @@ Unique identifier for the shell. Must be lowercase and match the directory name.
 Human-readable name for the shell, used in documentation and UI.
 
 **Examples**:
+
 - `'PowerShell'`
 - `'Command Prompt (CMD)'`
 - `'Git Bash'`
@@ -102,12 +104,14 @@ Default configuration object for the shell. See [ShellConfig](#shellconfig) for 
 Validates a command string according to the shell's security rules.
 
 **Parameters**:
+
 - `command`: The command string to validate
 - `context`: Validation context containing shell type and optional constraints
 
 **Returns**: `ValidationResult` object with `valid` flag and optional `errors`/`warnings` arrays
 
 **Example**:
+
 ```typescript
 const result = shell.validateCommand('rm -rf /', {
   shellType: 'bash',
@@ -121,12 +125,14 @@ const result = shell.validateCommand('rm -rf /', {
 Validates a file system path according to the shell's path conventions.
 
 **Parameters**:
+
 - `path`: The path string to validate
 - `context`: Validation context
 
 **Returns**: `ValidationResult` object
 
 **Example**:
+
 ```typescript
 const result = shell.validatePath('C:\\Users\\test', {
   shellType: 'powershell'
@@ -141,6 +147,7 @@ Returns an array of commands that are blocked by default for this shell.
 **Returns**: Array of blocked command names
 
 **Example**:
+
 ```typescript
 const blocked = shell.getBlockedCommands();
 // ['rm -rf /', 'mkfs', 'dd', 'wget', 'curl']
@@ -151,12 +158,14 @@ const blocked = shell.getBlockedCommands();
 Merges a base configuration with override values, applying shell-specific logic.
 
 **Parameters**:
+
 - `base`: Base configuration object
 - `override`: Partial configuration to merge
 
 **Returns**: Merged configuration object
 
 **Example**:
+
 ```typescript
 const merged = shell.mergeConfig(shell.defaultConfig, {
   timeout: 60000,
@@ -253,16 +262,18 @@ class ShellRegistry {
 }
 ```
 
-#### Methods
+#### Registry Methods
 
 ##### `register(shell: ShellPlugin): void`
 
 Registers a shell plugin with the registry. If a shell with the same type is already registered, it will be skipped with a warning.
 
 **Parameters**:
+
 - `shell`: The shell plugin instance to register
 
 **Example**:
+
 ```typescript
 import { shellRegistry } from './core/registry';
 import { GitBashPlugin } from './shells/gitbash';
@@ -276,11 +287,13 @@ shellRegistry.register(gitBash);
 Unregisters a shell plugin from the registry.
 
 **Parameters**:
+
 - `shellType`: The shell type identifier to unregister
 
 **Returns**: `true` if shell was unregistered, `false` if it wasn't registered
 
 **Example**:
+
 ```typescript
 const wasRemoved = shellRegistry.unregister('gitbash');
 ```
@@ -290,11 +303,13 @@ const wasRemoved = shellRegistry.unregister('gitbash');
 Retrieves a registered shell plugin by its type.
 
 **Parameters**:
+
 - `shellType`: The shell type identifier
 
 **Returns**: The shell plugin instance, or `undefined` if not registered
 
 **Example**:
+
 ```typescript
 const gitBash = shellRegistry.getShell('gitbash');
 if (gitBash) {
@@ -309,6 +324,7 @@ Gets an array of all registered shell plugins.
 **Returns**: Array of shell plugin instances
 
 **Example**:
+
 ```typescript
 const allShells = shellRegistry.getAllShells();
 allShells.forEach(shell => {
@@ -323,6 +339,7 @@ Gets an array of all registered shell type identifiers.
 **Returns**: Array of shell type strings
 
 **Example**:
+
 ```typescript
 const types = shellRegistry.getShellTypes();
 // ['gitbash', 'powershell', 'cmd']
@@ -333,11 +350,13 @@ const types = shellRegistry.getShellTypes();
 Checks if a shell type is registered.
 
 **Parameters**:
+
 - `shellType`: The shell type identifier to check
 
 **Returns**: `true` if registered, `false` otherwise
 
 **Example**:
+
 ```typescript
 if (shellRegistry.hasShell('gitbash')) {
   // Git Bash is available
@@ -351,6 +370,7 @@ Gets the number of registered shells.
 **Returns**: Count of registered shells
 
 **Example**:
+
 ```typescript
 const count = shellRegistry.getCount();
 console.log(`${count} shell(s) registered`);
@@ -361,6 +381,7 @@ console.log(`${count} shell(s) registered`);
 Removes all registered shells. Primarily used for testing.
 
 **Example**:
+
 ```typescript
 // In test setup
 beforeEach(() => {
@@ -401,11 +422,13 @@ Retrieves the build configuration from environment variables or returns default.
 **Returns**: `BuildConfig` object
 
 **Environment Variables**:
+
 - `SHELL_BUILD_PRESET`: Name of a preset configuration (e.g., 'gitbash-only', 'windows')
 - `INCLUDED_SHELLS`: Comma-separated list of shell types (e.g., 'gitbash,powershell')
 - `BUILD_VERBOSE`: Set to 'true' to enable verbose logging
 
 **Example**:
+
 ```typescript
 import { getBuildConfig } from './build/shell-config';
 
@@ -415,6 +438,7 @@ console.log(`Shells: ${config.includedShells.join(', ')}`);
 ```
 
 **Default Configuration**:
+
 ```javascript
 {
   includedShells: ['powershell', 'cmd', 'gitbash', 'bash', 'wsl'],
@@ -428,7 +452,9 @@ console.log(`Shells: ${config.includedShells.join(', ')}`);
 Pre-configured build settings available in `src/build/presets/`:
 
 #### `full.ts`
+
 All shells included (default)
+
 ```javascript
 {
   buildName: 'full',
@@ -438,7 +464,9 @@ All shells included (default)
 ```
 
 #### `windows.ts`
+
 Windows shells only
+
 ```javascript
 {
   buildName: 'windows',
@@ -447,7 +475,9 @@ Windows shells only
 ```
 
 #### `unix.ts`
+
 Unix/Linux shells only
+
 ```javascript
 {
   buildName: 'unix',
@@ -456,7 +486,9 @@ Unix/Linux shells only
 ```
 
 #### `gitbash-only.ts`
+
 Git Bash only
+
 ```javascript
 {
   buildName: 'gitbash-only',
@@ -465,7 +497,9 @@ Git Bash only
 ```
 
 #### `cmd-only.ts`
+
 CMD only
+
 ```javascript
 {
   buildName: 'cmd-only',
@@ -493,10 +527,12 @@ async function loadShells(config: LoaderConfig): Promise<void>
 ```
 
 **Parameters**:
+
 - `config.shells`: Array of shell type identifiers to load
 - `config.verbose`: Optional flag to enable verbose logging
 
 **Example**:
+
 ```typescript
 import { loadShells } from './shells/loader';
 
@@ -513,6 +549,7 @@ await loadShells({
 ```
 
 **Behavior**:
+
 - Dynamically imports only the specified shell modules
 - Registers each shell with the `shellRegistry`
 - Skips unknown shell types with a warning
@@ -531,6 +568,7 @@ await loadShells({
 **Display Name**: `'PowerShell'`
 
 **Default Configuration**:
+
 ```javascript
 {
   enabled: true,
@@ -559,6 +597,7 @@ await loadShells({
 ```
 
 **Blocked Commands**:
+
 - `Invoke-WebRequest`
 - `Invoke-RestMethod`
 - `Start-Process`
@@ -581,6 +620,7 @@ await loadShells({
 **Display Name**: `'Command Prompt (CMD)'`
 
 **Default Configuration**:
+
 ```javascript
 {
   enabled: true,
@@ -609,6 +649,7 @@ await loadShells({
 ```
 
 **Blocked Commands**:
+
 - `del`, `erase`
 - `rd`, `rmdir`
 - `format`
@@ -628,6 +669,7 @@ await loadShells({
 **Display Name**: `'Git Bash'`
 
 **Default Configuration**:
+
 ```javascript
 {
   enabled: true,
@@ -656,6 +698,7 @@ await loadShells({
 ```
 
 **Blocked Commands**:
+
 - `rm -rf /`
 - `mkfs`
 - `dd`
@@ -675,6 +718,7 @@ await loadShells({
 **Display Name**: `'Bash'`
 
 **Default Configuration**:
+
 ```javascript
 {
   enabled: true,
@@ -703,6 +747,7 @@ await loadShells({
 ```
 
 **Blocked Commands**:
+
 - `rm -rf /`
 - `mkfs`
 - `dd`
@@ -723,6 +768,7 @@ await loadShells({
 **Display Name**: `'WSL (Windows Subsystem for Linux)'`
 
 **Default Configuration**:
+
 ```javascript
 {
   enabled: true,
@@ -752,6 +798,7 @@ await loadShells({
 ```
 
 **Blocked Commands**:
+
 - `rm -rf /`
 - `mkfs`
 - `dd`
@@ -1005,6 +1052,7 @@ const results = validateCommandForAllShells('rm -rf /');
 **API Version**: 1.0.0
 
 **Compatibility**:
+
 - Node.js >= 16.0.0
 - TypeScript >= 4.5.0
 
