@@ -5,9 +5,14 @@
  * Measures startup time, memory usage, and shell loading performance
  */
 
-const { performance } = require('perf_hooks');
-const fs = require('fs');
-const path = require('path');
+import { performance } from 'perf_hooks';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ANSI color codes
 const colors = {
@@ -57,12 +62,10 @@ async function measureStartupTime(buildName) {
   for (let i = 0; i < iterations; i++) {
     const start = performance.now();
 
-    // Clear require cache
-    delete require.cache[require.resolve(buildPath)];
-
     // Load the module (but don't execute server)
+    // Note: ESM modules are cached, so we add a cache-busting query parameter
     try {
-      require(buildPath);
+      await import(`${buildPath}?t=${Date.now()}`);
     } catch (e) {
       // Expected - server tries to start
     }
@@ -90,7 +93,7 @@ async function measureStartupTime(buildName) {
 /**
  * Measure memory usage for a build
  */
-function measureMemoryUsage(buildName) {
+async function measureMemoryUsage(buildName) {
   const buildPath = path.join(__dirname, '..', 'dist', `index.${buildName}.js`);
 
   if (!fs.existsSync(buildPath)) {
@@ -106,7 +109,7 @@ function measureMemoryUsage(buildName) {
 
   // Load the module
   try {
-    require(buildPath);
+    await import(buildPath);
   } catch (e) {
     // Expected - server tries to start
   }
@@ -159,7 +162,7 @@ async function runTests() {
     results[buildName] = {
       fileSize: getFileSize(buildName),
       startupTime: await measureStartupTime(buildName),
-      memory: measureMemoryUsage(buildName)
+      memory: await measureMemoryUsage(buildName)
     };
 
     console.log(`  ✓ Completed\n`);
@@ -282,8 +285,8 @@ function displayResults() {
 }
 
 // Run tests
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   runTests().catch(console.error);
 }
 
-module.exports = { runTests, measureStartupTime, measureMemoryUsage, getFileSize };
+export { runTests, measureStartupTime, measureMemoryUsage, getFileSize };
