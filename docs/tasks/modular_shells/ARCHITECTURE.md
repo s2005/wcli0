@@ -11,6 +11,7 @@ This document outlines a modular architecture for the WCLI0 MCP server that enab
 The current implementation is already configuration-driven with strong separation of concerns:
 
 **Supported Shells:**
+
 - PowerShell (Windows)
 - CMD (Windows)
 - Git Bash (Windows/Unix hybrid)
@@ -18,6 +19,7 @@ The current implementation is already configuration-driven with strong separatio
 - WSL (Windows Subsystem for Linux)
 
 **Key Architectural Elements:**
+
 - **Configuration-driven**: All shells defined in `DEFAULT_CONFIG` (src/utils/config.ts:26-118)
 - **Type-safe**: Strong TypeScript typing throughout
 - **Dynamic registration**: Only enabled shells appear in MCP tools
@@ -61,18 +63,21 @@ While the architecture is modular at the configuration level, it has these limit
 ### Benefits
 
 **For End Users:**
+
 - Smaller bundle sizes (potentially 30-50% reduction for single-shell builds)
 - Faster startup times
 - Reduced memory footprint
 - Simpler configuration (no unused shell options)
 
 **For Developers:**
+
 - Clearer separation of concerns
 - Easier testing of specific shells
 - Ability to deprecate shells without breaking existing deployments
 - Better code organization
 
 **For Maintenance:**
+
 - Isolated shell implementations
 - Easier to add new shells
 - Reduced coupling between shells
@@ -90,7 +95,7 @@ While the architecture is modular at the configuration level, it has these limit
 
 ### Module Structure
 
-```
+```text
 src/
 ├── core/                          # Core functionality (always included)
 │   ├── server.ts                  # MCP server implementation
@@ -406,6 +411,7 @@ export default defineConfig({
 ## Build Presets
 
 ### Full Build (Default)
+
 ```bash
 SHELL_BUILD_PRESET=full npm run build
 # Includes: PowerShell, CMD, Git Bash, Bash, WSL
@@ -413,6 +419,7 @@ SHELL_BUILD_PRESET=full npm run build
 ```
 
 ### Windows Build
+
 ```bash
 SHELL_BUILD_PRESET=windows npm run build
 # Includes: PowerShell, CMD, Git Bash
@@ -420,6 +427,7 @@ SHELL_BUILD_PRESET=windows npm run build
 ```
 
 ### Unix Build
+
 ```bash
 SHELL_BUILD_PRESET=unix npm run build
 # Includes: Bash
@@ -427,6 +435,7 @@ SHELL_BUILD_PRESET=unix npm run build
 ```
 
 ### Git Bash Only
+
 ```bash
 SHELL_BUILD_PRESET=gitbash-only npm run build
 # Includes: Git Bash
@@ -434,6 +443,7 @@ SHELL_BUILD_PRESET=gitbash-only npm run build
 ```
 
 ### CMD Only
+
 ```bash
 SHELL_BUILD_PRESET=cmd-only npm run build
 # Includes: CMD
@@ -441,6 +451,7 @@ SHELL_BUILD_PRESET=cmd-only npm run build
 ```
 
 ### Custom Build
+
 ```bash
 INCLUDED_SHELLS=gitbash,powershell npm run build
 # Includes: Git Bash, PowerShell
@@ -458,7 +469,7 @@ INCLUDED_SHELLS=gitbash,powershell npm run build
 | Git Bash only | ~40% | 60% |
 | CMD only | ~35% | 65% |
 
-*Note: Actual sizes depend on shared code and dependencies*
+#### Note: Actual sizes depend on shared code and dependencies
 
 ### Performance Improvements
 
@@ -469,16 +480,19 @@ INCLUDED_SHELLS=gitbash,powershell npm run build
 ## Testing Strategy
 
 ### Unit Tests
+
 - Each shell module has its own test suite
 - Tests run only for included shells
 - Shared utilities tested independently
 
 ### Integration Tests
+
 - Test different build configurations
 - Verify registry system works correctly
 - Ensure tool schemas generate properly
 
 ### Build Tests
+
 - Verify tree-shaking works
 - Test all preset configurations
 - Measure bundle sizes
@@ -486,16 +500,19 @@ INCLUDED_SHELLS=gitbash,powershell npm run build
 ## Risk Mitigation
 
 ### Backward Compatibility
+
 - Keep existing full build as default
 - Gradual migration path
 - Clear deprecation notices
 
 ### Type Safety
+
 - Generate types at build time
 - Strict TypeScript configuration
 - Comprehensive type tests
 
 ### Documentation
+
 - Clear migration guide
 - Updated API documentation
 - Build configuration examples
@@ -503,16 +520,19 @@ INCLUDED_SHELLS=gitbash,powershell npm run build
 ## Future Extensions
 
 ### Plugin System
+
 - External shell plugins
 - Community-contributed shells
 - Dynamic plugin loading
 
 ### Per-Shell Features
+
 - Shell-specific MCP tools
 - Advanced shell capabilities
 - Custom validation rules
 
 ### Build Optimization
+
 - Lazy loading of shells
 - Runtime plugin system
 - Hybrid builds (core + plugins)

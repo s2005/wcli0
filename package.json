@@ -42,6 +42,8 @@
     "build:gitbash": "cross-env SHELL_BUILD_PRESET=gitbash-only npm run build",
     "build:cmd": "cross-env SHELL_BUILD_PRESET=cmd-only npm run build",
     "build:powershell": "cross-env SHELL_BUILD_PRESET=powershell-only npm run build",
+    "build:all": "npm run build:full && npm run build:windows && npm run build:unix && npm run build:gitbash && npm run build:cmd",
+    "build:analyze": "npm run build:all && bash scripts/analyze-builds.sh",
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
@@ -54,7 +56,9 @@
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration/",
     "test:async": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/asyncOperations.test.ts",
     "test:directory": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/directoryValidator.test.ts",
-    "test:debug": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles"
+    "test:debug": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles",
+    "perf": "npm run build:all && node scripts/performance-test.js",
+    "perf:quick": "npm run build:gitbash && node scripts/performance-test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.0.1",

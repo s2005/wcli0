@@ -10,7 +10,7 @@ This document provides comprehensive guidance on how to modify and organize test
 2. [Target Test Structure](#target-test-structure)
 3. [Test Migration Strategy](#test-migration-strategy)
 4. [Testing Individual Shell Modules](#testing-individual-shell-modules)
-5. [Integration Testing](#integration-testing)
+5. [Integration Testing](#phase-3-integration-tests)
 6. [Build-Specific Testing](#build-specific-testing)
 7. [Test Utilities and Helpers](#test-utilities-and-helpers)
 8. [Performance Testing](#performance-testing)
@@ -24,7 +24,7 @@ This document provides comprehensive guidance on how to modify and organize test
 
 Based on the current codebase:
 
-```
+```text
 src/
 ├── __tests__/
 │   ├── config.test.ts              # Configuration tests
@@ -50,7 +50,7 @@ src/
 
 ### Proposed Test Organization
 
-```
+```text
 src/
 ├── shells/
 │   ├── base/
@@ -916,7 +916,7 @@ describe('Git Bash Only Build', () => {
 
 Each shell should have these test files:
 
-```
+```text
 shells/{shell-name}/__tests__/
 ├── {ShellName}Impl.test.ts     # Core implementation
 ├── validation.test.ts          # Command validation

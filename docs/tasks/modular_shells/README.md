@@ -18,6 +18,7 @@ The modular shell architecture enables build-time inclusion/exclusion of specifi
 **Start here for the big picture.**
 
 Comprehensive architecture document covering:
+
 - Current state analysis of the WCLI0 codebase
 - Goals and objectives of the modular approach
 - Proposed modular architecture with plugin system
@@ -34,6 +35,7 @@ Comprehensive architecture document covering:
 **Step-by-step implementation guide.**
 
 Detailed implementation plan organized into 7 phases:
+
 - **Phase 1**: Foundation & Infrastructure (1 week)
 - **Phase 2**: Shell Module Extraction (2-3 weeks)
 - **Phase 3**: Registry & Dynamic Loading (1 week)
@@ -43,6 +45,7 @@ Detailed implementation plan organized into 7 phases:
 - **Phase 7**: Cleanup & Optimization (1 week)
 
 Each phase includes:
+
 - Specific tasks with code examples
 - Test requirements
 - Deliverables checklist
@@ -55,6 +58,7 @@ Each phase includes:
 **Comprehensive testing strategy and migration guide.**
 
 Detailed testing documentation covering:
+
 - Current test structure and target organization
 - Test migration strategy (extracting shell-specific tests)
 - Testing individual shell modules with examples
@@ -65,6 +69,7 @@ Detailed testing documentation covering:
 - Coverage requirements (≥95% for modules)
 
 Each shell gets dedicated test files:
+
 - Implementation tests
 - Validation tests
 - Path handling tests
@@ -113,7 +118,7 @@ The implementation is designed to be incremental with no breaking changes until 
 | Linux/WSL User | `unix` | ~60% | Bash |
 | General Purpose | `full` | - | All shells |
 
-### For Developers
+### Developer Benefits
 
 - **Clearer code organization**: Each shell is self-contained
 - **Easier testing**: Test shells independently
