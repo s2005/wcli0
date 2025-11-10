@@ -33,6 +33,7 @@ mkdir -p docs/tasks/modular_shells
 ```
 
 **Files to create:**
+
 - `src/shells/base/` - Base shell interfaces and types
 - `src/core/` - Core server functionality
 - `src/build/` - Build configuration system
@@ -247,6 +248,7 @@ export const shellRegistry = ShellRegistry.getInstance();
 **Tests**: `src/core/__tests__/registry.test.ts`
 
 **Deliverables**:
+
 - [ ] Directory structure created
 - [ ] ShellInterface defined and documented
 - [ ] BaseShell implementation complete
@@ -265,6 +267,7 @@ export const shellRegistry = ShellRegistry.getInstance();
 **File**: `src/shells/powershell/PowerShellImpl.ts`
 
 Extract PowerShell-specific code from:
+
 - `src/utils/config.ts` (lines 26-41 - PowerShell config)
 - `src/utils/validation.ts` (PowerShell validation logic)
 - `src/utils/pathValidation.ts` (Windows path handling)
@@ -342,6 +345,7 @@ export type { ShellPlugin } from '../base/ShellInterface';
 **File**: `src/shells/cmd/CmdImpl.ts`
 
 Extract CMD-specific code from:
+
 - `src/utils/config.ts` (lines 42-57 - CMD config)
 - CMD-specific validation logic
 
@@ -410,6 +414,7 @@ export class CmdPlugin extends BaseShell {
 **File**: `src/shells/gitbash/GitBashImpl.ts`
 
 Extract Git Bash-specific code:
+
 - `src/utils/config.ts` (lines 58-73 - Git Bash config)
 - Git Bash path handling (mixed Windows/Unix paths)
 - Git Bash validation logic
@@ -479,6 +484,7 @@ export class GitBashPlugin extends BaseShell {
 **File**: `src/shells/bash/BashImpl.ts`
 
 Extract Bash/WSL-specific code:
+
 - `src/utils/config.ts` (lines 74-89 - Bash config)
 - Unix path validation
 
@@ -548,6 +554,7 @@ export class BashPlugin extends BaseShell {
 **File**: `src/shells/wsl/WslImpl.ts`
 
 Extract WSL-specific code:
+
 - `src/utils/config.ts` (lines 90-118 - WSL config)
 - WSL path handling
 
@@ -612,6 +619,7 @@ export class WslPlugin extends BaseShell {
 **Tests**: `src/shells/wsl/__tests__/WslImpl.test.ts`
 
 **Deliverables**:
+
 - [ ] All 5 shell modules extracted
 - [ ] Each module has complete implementation
 - [ ] All module tests passing
@@ -750,6 +758,7 @@ export function generateToolSchemas() {
 ```
 
 **Deliverables**:
+
 - [ ] Shell loader implemented
 - [ ] Main entry point updated
 - [ ] Tool schemas use dynamic shell list
@@ -933,6 +942,7 @@ export default {
 ```
 
 **Deliverables**:
+
 - [ ] Build configuration system complete
 - [ ] All presets created
 - [ ] Build scripts added to package.json
@@ -1103,6 +1113,7 @@ npm run test:e2e
 ```
 
 **Deliverables**:
+
 - [ ] Unit tests for all shell modules (100% coverage)
 - [ ] Integration tests passing
 - [ ] Build tests for all presets
@@ -1121,6 +1132,7 @@ npm run test:e2e
 **File**: `docs/tasks/modular_shells/API.md`
 
 Document:
+
 - ShellPlugin interface
 - Shell registry API
 - Build configuration options
@@ -1131,6 +1143,7 @@ Document:
 **File**: `docs/tasks/modular_shells/USER_GUIDE.md`
 
 Document:
+
 - How to build for specific shells
 - Available presets
 - Custom build configurations
@@ -1141,6 +1154,7 @@ Document:
 **File**: `docs/tasks/modular_shells/MIGRATION_GUIDE.md`
 
 Document:
+
 - Breaking changes (if any)
 - How to migrate existing configurations
 - Compatibility notes
@@ -1149,11 +1163,13 @@ Document:
 ### Task 6.4: Update Main README
 
 Update main README.md with:
+
 - New build options
 - Link to modular shells documentation
 - Quick start for different builds
 
 **Deliverables**:
+
 - [ ] Complete API documentation
 - [ ] User guide with examples
 - [ ] Migration guide
@@ -1170,6 +1186,7 @@ Update main README.md with:
 ### Task 7.1: Remove Deprecated Code
 
 Identify and remove:
+
 - Old monolithic shell configuration
 - Unused validation functions
 - Deprecated imports
@@ -1195,6 +1212,7 @@ Identify and remove:
 - Documentation review
 
 **Deliverables**:
+
 - [ ] Old code removed
 - [ ] Bundle sizes optimized
 - [ ] Performance metrics documented

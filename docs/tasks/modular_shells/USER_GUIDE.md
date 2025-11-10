@@ -28,6 +28,7 @@ npm run build
 ```
 
 This creates a full-featured build with:
+
 - PowerShell
 - CMD
 - Git Bash
@@ -94,6 +95,7 @@ dist/
 **Shells**: PowerShell, CMD, Git Bash, Bash, WSL
 
 **Usage**:
+
 ```bash
 npm run build:full
 # or
@@ -101,6 +103,7 @@ SHELL_BUILD_PRESET=full npm run build
 ```
 
 **When to use**:
+
 - Development
 - General-purpose deployments
 - When you need maximum flexibility
@@ -117,11 +120,13 @@ SHELL_BUILD_PRESET=full npm run build
 **Shells**: PowerShell, CMD, Git Bash
 
 **Usage**:
+
 ```bash
 npm run build:windows
 ```
 
 **When to use**:
+
 - Windows-only environments
 - Enterprise Windows deployments
 - Windows developer workstations
@@ -137,11 +142,13 @@ npm run build:windows
 **Shells**: Bash
 
 **Usage**:
+
 ```bash
 npm run build:unix
 ```
 
 **When to use**:
+
 - Linux servers
 - macOS environments
 - Unix-based CI/CD systems
@@ -151,18 +158,20 @@ npm run build:unix
 
 ---
 
-### Git Bash Only Build
+### Git Bash Only Build Preset
 
 **Preset**: `gitbash-only`
 
 **Shells**: Git Bash
 
 **Usage**:
+
 ```bash
 npm run build:gitbash
 ```
 
 **When to use**:
+
 - Windows users who only use Git Bash
 - Minimalist installations
 - Git-centric development workflows
@@ -179,11 +188,13 @@ npm run build:gitbash
 **Shells**: CMD
 
 **Usage**:
+
 ```bash
 npm run build:cmd
 ```
 
 **When to use**:
+
 - Traditional Windows environments
 - Legacy systems
 - Corporate environments with CMD standardization
@@ -228,6 +239,7 @@ export default config;
 ```
 
 **Usage**:
+
 ```bash
 SHELL_BUILD_PRESET=my-preset npm run build
 ```
@@ -253,6 +265,7 @@ Add to `package.json`:
 Specifies which preset configuration to use.
 
 **Values**:
+
 - `full` - All shells
 - `windows` - Windows shells
 - `unix` - Unix shells
@@ -261,6 +274,7 @@ Specifies which preset configuration to use.
 - Custom preset name
 
 **Example**:
+
 ```bash
 SHELL_BUILD_PRESET=windows npm run build
 ```
@@ -272,6 +286,7 @@ SHELL_BUILD_PRESET=windows npm run build
 Comma-separated list of shells to include in build.
 
 **Valid shells**:
+
 - `powershell`
 - `cmd`
 - `gitbash`
@@ -279,6 +294,7 @@ Comma-separated list of shells to include in build.
 - `wsl`
 
 **Example**:
+
 ```bash
 INCLUDED_SHELLS=gitbash,bash npm run build:custom
 ```
@@ -292,12 +308,14 @@ Enable verbose logging during build.
 **Values**: `true` or `false`
 
 **Example**:
+
 ```bash
 BUILD_VERBOSE=true npm run build
 ```
 
 **Output**:
-```
+
+```text
 Loading shell: gitbash
 ✓ Loaded shell: Git Bash
 Loading shell: powershell
@@ -312,6 +330,7 @@ Loaded 2 shell(s)
 Enable debug mode during runtime.
 
 **Example**:
+
 ```bash
 DEBUG=true node dist/index.gitbash-only.js
 ```
@@ -394,6 +413,7 @@ npm run build:gitbash
 ```
 
 **Benefits**:
+
 - 60% smaller bundle size
 - Faster startup
 - Lower memory usage
@@ -419,6 +439,7 @@ node /opt/wcli0/index.unix.js
 ```
 
 **Benefits**:
+
 - Minimal bundle size
 - No Windows dependencies
 - Fast deployment
@@ -440,6 +461,7 @@ xcopy dist\index.windows.js \\fileserver\apps\wcli0\
 ```
 
 **Benefits**:
+
 - All Windows shells supported
 - No unnecessary Unix code
 - Optimized for Windows
@@ -464,6 +486,7 @@ npm run dev
 ```
 
 **Benefits**:
+
 - All shells available for testing
 - Maximum compatibility
 - Easier debugging
@@ -477,6 +500,7 @@ npm run dev
 **Solution**: Use the Unix build
 
 **Dockerfile**:
+
 ```dockerfile
 FROM node:18-alpine
 
@@ -496,6 +520,7 @@ CMD ["node", "dist/index.unix.js"]
 ```
 
 **Benefits**:
+
 - Minimal container size
 - Faster startup
 - Lower resource usage
@@ -509,6 +534,7 @@ CMD ["node", "dist/index.unix.js"]
 **Solution**: Build and test all presets
 
 **.github/workflows/build-all.yml**:
+
 ```yaml
 name: Build All Presets
 
@@ -542,13 +568,15 @@ jobs:
 ### Issue: Build fails with "Unknown shell type"
 
 **Symptom**:
-```
+
+```text
 Unknown shell type: gitbas
 ```
 
 **Cause**: Typo in shell name
 
 **Solution**: Check spelling of shell names:
+
 - ✅ `gitbash`
 - ❌ `gitbas`
 - ❌ `git-bash`
@@ -561,7 +589,8 @@ Unknown shell type: gitbas
 ### Issue: Shell not available after build
 
 **Symptom**:
-```
+
+```text
 Shell 'bash' not found in build
 ```
 
@@ -586,6 +615,7 @@ INCLUDED_SHELLS=bash,gitbash npm run build:custom
 **Cause**: Tree-shaking not working properly
 
 **Solution**:
+
 1. Verify rollup configuration
 2. Ensure imports are ES modules
 3. Check for side effects
@@ -640,7 +670,8 @@ INCLUDED_SHELLS=gitbash npm run build:custom
 ### Issue: Build preset not found
 
 **Symptom**:
-```
+
+```text
 Preset 'my-preset' not found, using default
 ```
 
@@ -768,7 +799,7 @@ Based on actual builds:
 | Git Bash Only | ~110 KB | 56% | 1 shell |
 | CMD Only | ~95 KB | 62% | 1 shell |
 
-*Note: Sizes are approximate and may vary based on dependencies*
+#### Note: Sizes are approximate and may vary based on dependencies
 
 ### Startup Time Comparison
 

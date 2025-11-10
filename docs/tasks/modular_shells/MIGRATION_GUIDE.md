@@ -77,6 +77,7 @@ npm run build
 ```
 
 **Benefits**:
+
 - Zero migration effort
 - All shells available
 - Complete backward compatibility
@@ -98,6 +99,7 @@ npm run build:gitbash  # or windows, unix, cmd, etc.
 ```
 
 **Benefits**:
+
 - Smaller bundle size (30-65% reduction)
 - Faster startup
 - Lower memory usage
@@ -159,6 +161,7 @@ INCLUDED_SHELLS=gitbash,powershell npm run build:custom
 Update your Claude Desktop configuration if using a specialized build:
 
 **Before** (`claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
@@ -171,6 +174,7 @@ Update your Claude Desktop configuration if using a specialized build:
 ```
 
 **After** (for Git Bash-only build):
+
 ```json
 {
   "mcpServers": {
@@ -210,6 +214,7 @@ cp dist/index.gitbash-only.js /path/to/deployment/
 #### Step 1: Update Imports
 
 **Before** (monolithic):
+
 ```typescript
 import { DEFAULT_CONFIG } from './utils/config';
 import { validateCommand } from './utils/validation';
@@ -217,6 +222,7 @@ import { validatePath } from './utils/pathValidation';
 ```
 
 **After** (modular):
+
 ```typescript
 import { shellRegistry } from './core/registry';
 import { loadShells } from './shells/loader';
@@ -238,11 +244,13 @@ if (gitBash) {
 #### Step 2: Update Configuration Access
 
 **Before**:
+
 ```typescript
 const powershellConfig = DEFAULT_CONFIG.shells.powershell;
 ```
 
 **After**:
+
 ```typescript
 const powershell = shellRegistry.getShell('powershell');
 const powershellConfig = powershell?.defaultConfig;
@@ -251,6 +259,7 @@ const powershellConfig = powershell?.defaultConfig;
 #### Step 3: Update Validation Calls
 
 **Before**:
+
 ```typescript
 import { validateCommand } from './utils/validation';
 
@@ -258,6 +267,7 @@ const result = validateCommand(command, shellType);
 ```
 
 **After**:
+
 ```typescript
 import { shellRegistry } from './core/registry';
 
@@ -272,6 +282,7 @@ if (shell) {
 #### Step 4: Update Tests
 
 **Before** (all shells in one file):
+
 ```typescript
 // src/__tests__/validation.test.ts
 describe('Command Validation', () => {
@@ -290,6 +301,7 @@ describe('Command Validation', () => {
 ```
 
 **After** (separate files):
+
 ```typescript
 // src/shells/gitbash/__tests__/validation.test.ts
 describe('Git Bash Command Validation', () => {
@@ -315,6 +327,7 @@ describe('PowerShell Command Validation', () => {
 **Before**: All shell configurations in one file
 
 **File**: `src/utils/config.ts`
+
 ```typescript
 export const DEFAULT_CONFIG = {
   shells: {
@@ -329,6 +342,7 @@ export const DEFAULT_CONFIG = {
 **After**: Each shell has its own configuration
 
 **File**: `src/shells/gitbash/GitBashImpl.ts`
+
 ```typescript
 export class GitBashPlugin extends BaseShell {
   readonly defaultConfig: ShellConfig = {
@@ -338,6 +352,7 @@ export class GitBashPlugin extends BaseShell {
 ```
 
 **File**: `src/shells/powershell/PowerShellImpl.ts`
+
 ```typescript
 export class PowerShellPlugin extends BaseShell {
   readonly defaultConfig: ShellConfig = {
@@ -349,12 +364,14 @@ export class PowerShellPlugin extends BaseShell {
 ### Accessing Configuration
 
 **Before**:
+
 ```typescript
 import { DEFAULT_CONFIG } from './utils/config';
 const config = DEFAULT_CONFIG.shells.gitbash;
 ```
 
 **After**:
+
 ```typescript
 import { shellRegistry } from './core/registry';
 const gitBash = shellRegistry.getShell('gitbash');
@@ -442,7 +459,7 @@ case 'myshell': {
 
 **Before**: All tests in centralized files
 
-```
+```text
 src/
 └── __tests__/
     ├── validation.test.ts      # All validation tests
@@ -452,7 +469,7 @@ src/
 
 **After**: Tests organized by shell
 
-```
+```text
 src/
 ├── shells/
 │   ├── gitbash/
@@ -474,11 +491,13 @@ src/
 ### Running Tests
 
 **Before**:
+
 ```bash
 npm test
 ```
 
 **After** (multiple options):
+
 ```bash
 # Test everything
 npm test
@@ -523,6 +542,7 @@ module.exports = {
 ### Old Custom Configuration
 
 **Before** (`wcli0-config.json`):
+
 ```json
 {
   "shells": {
@@ -622,13 +642,15 @@ npm test
 ### Issue 1: "Shell not found" Error
 
 **Symptom**:
-```
+
+```text
 Error: Shell 'gitbash' not found
 ```
 
 **Cause**: Shell not included in build
 
 **Solution**:
+
 ```bash
 # Rebuild with the correct shells
 INCLUDED_SHELLS=gitbash npm run build:custom
@@ -642,7 +664,8 @@ npm run build:windows
 ### Issue 2: Import Errors After Migration
 
 **Symptom**:
-```
+
+```text
 Cannot find module './utils/validation'
 ```
 
@@ -651,11 +674,13 @@ Cannot find module './utils/validation'
 **Solution**: Update to new import paths
 
 **Before**:
+
 ```typescript
 import { validateCommand } from './utils/validation';
 ```
 
 **After**:
+
 ```typescript
 import { shellRegistry } from './core/registry';
 const shell = shellRegistry.getShell('gitbash');
@@ -667,7 +692,8 @@ const result = shell?.validateCommand(cmd, { shellType: 'gitbash' });
 ### Issue 3: Tests Failing After Migration
 
 **Symptom**:
-```
+
+```text
 Test suite failed to run
 Cannot find module 'shells/gitbash'
 ```
@@ -725,13 +751,15 @@ if (gitBash) {
 
 **Solution**:
 
-1. Check build configuration:
+#### Step 1: Check build configuration
+
 ```bash
 # Ensure you're using the correct build command
 npm run build:gitbash
 ```
 
-2. Verify Rollup config:
+#### Step 2: Verify Rollup config
+
 ```javascript
 // rollup.config.js
 treeshake: {
@@ -741,7 +769,8 @@ treeshake: {
 }
 ```
 
-3. Clean and rebuild:
+#### Step 3: Clean and rebuild
+
 ```bash
 npm run clean
 npm run build:gitbash
@@ -751,7 +780,7 @@ npm run build:gitbash
 
 ## Migration Checklist
 
-### For End Users
+### End User Migration Checklist
 
 - [ ] Pull latest changes
 - [ ] Install dependencies
@@ -762,7 +791,7 @@ npm run build:gitbash
 - [ ] Verify shells available
 - [ ] Deploy to production
 
-### For Developers
+### Developer Migration Checklist
 
 - [ ] Update imports
 - [ ] Update configuration access
@@ -788,21 +817,25 @@ npm run build:gitbash
 ## Timeline
 
 ### Phase 1: Preparation (Week 1)
+
 - Review documentation
 - Choose migration path
 - Plan configuration changes
 
 ### Phase 2: Implementation (Week 2)
+
 - Update code
 - Migrate tests
 - Update build scripts
 
 ### Phase 3: Testing (Week 3)
+
 - Test all builds
 - Verify functionality
 - Performance testing
 
 ### Phase 4: Deployment (Week 4)
+
 - Deploy to staging
 - User acceptance testing
 - Deploy to production
@@ -812,6 +845,7 @@ npm run build:gitbash
 ## Support & Resources
 
 ### Documentation
+
 - [Architecture](./ARCHITECTURE.md) - System architecture
 - [API Documentation](./API.md) - API reference
 - [User Guide](./USER_GUIDE.md) - Usage guide
@@ -829,6 +863,7 @@ npm run build:gitbash
 When reporting migration issues, include:
 
 1. **Version Information**:
+
    ```bash
    git log -1 --oneline
    node --version
@@ -836,6 +871,7 @@ When reporting migration issues, include:
    ```
 
 2. **Build Configuration**:
+
    ```bash
    echo $SHELL_BUILD_PRESET
    echo $INCLUDED_SHELLS
@@ -878,6 +914,7 @@ When reporting migration issues, include:
 ### Q: Will this affect performance?
 
 **A**: Yes, positively! Specialized builds have:
+
 - 30-65% smaller bundle size
 - 20-45% faster startup
 - 30-50% lower memory usage
@@ -885,6 +922,7 @@ When reporting migration issues, include:
 ### Q: Are there any security implications?
 
 **A**: No negative implications. Security is maintained through:
+
 - Same validation logic per shell
 - No reduction in security features
 - Isolated shell implementations
@@ -896,6 +934,7 @@ When reporting migration issues, include:
 Track these metrics during migration:
 
 ### Before Migration
+
 ```bash
 # Bundle size
 ls -lh dist/index.js
@@ -908,6 +947,7 @@ node --expose-gc dist/index.js
 ```
 
 ### After Migration
+
 ```bash
 # Bundle size (should be smaller for specialized builds)
 ls -lh dist/index.gitbash-only.js
@@ -922,6 +962,7 @@ node --expose-gc dist/index.gitbash-only.js
 ### Target Improvements
 
 For specialized builds:
+
 - ✅ Bundle size: 30-65% reduction
 - ✅ Startup time: 20-45% faster
 - ✅ Memory usage: 30-50% lower
