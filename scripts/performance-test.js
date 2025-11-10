@@ -63,9 +63,10 @@ async function measureStartupTime(buildName) {
     const start = performance.now();
 
     // Load the module (but don't execute server)
-    // Note: ESM modules are cached, so we add a cache-busting query parameter
+    // Note: ESM modules are cached after first import
+    // First iteration measures cold start, subsequent iterations measure cached access
     try {
-      await import(`${buildPath}?t=${Date.now()}`);
+      await import(buildPath);
     } catch (e) {
       // Expected - server tries to start
     }
