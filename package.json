@@ -36,12 +36,14 @@
   "scripts": {
     "clean": "shx rm -rf dist",
     "build": "tsc && shx chmod +x dist/index.js",
-    "build:full": "cross-env SHELL_BUILD_PRESET=full npm run build",
-    "build:windows": "cross-env SHELL_BUILD_PRESET=windows npm run build",
-    "build:unix": "cross-env SHELL_BUILD_PRESET=unix npm run build",
-    "build:gitbash": "cross-env SHELL_BUILD_PRESET=gitbash-only npm run build",
-    "build:cmd": "cross-env SHELL_BUILD_PRESET=cmd-only npm run build",
-    "build:powershell": "cross-env SHELL_BUILD_PRESET=powershell-only npm run build",
+    "build:full": "cross-env SHELL_BUILD_PRESET=full npm run build && shx cp dist/index.js dist/index.full.js",
+    "build:windows": "cross-env SHELL_BUILD_PRESET=windows npm run build && shx cp dist/index.js dist/index.windows.js",
+    "build:unix": "cross-env SHELL_BUILD_PRESET=unix npm run build && shx cp dist/index.js dist/index.unix.js",
+    "build:gitbash": "cross-env SHELL_BUILD_PRESET=gitbash-only npm run build && shx cp dist/index.js dist/index.gitbash-only.js",
+    "build:cmd": "cross-env SHELL_BUILD_PRESET=cmd-only npm run build && shx cp dist/index.js dist/index.cmd-only.js",
+    "build:powershell": "cross-env SHELL_BUILD_PRESET=powershell-only npm run build && shx cp dist/index.js dist/index.powershell-only.js",
+    "build:all": "npm run build:full && npm run build:windows && npm run build:unix && npm run build:gitbash && npm run build:cmd",
+    "build:analyze": "npm run build:all && bash scripts/analyze-builds.sh",
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
@@ -54,7 +56,9 @@
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration/",
     "test:async": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/asyncOperations.test.ts",
     "test:directory": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/directoryValidator.test.ts",
-    "test:debug": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles"
+    "test:debug": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles",
+    "perf": "npm run build:all && node scripts/performance-test.js",
+    "perf:quick": "npm run build:gitbash && node scripts/performance-test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.0.1",
