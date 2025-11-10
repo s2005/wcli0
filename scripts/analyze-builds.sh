@@ -23,11 +23,20 @@ mkdir -p dist
 echo -e "${BLUE}Building all configurations...${NC}"
 echo ""
 
+# Map config names to actual npm script names
+declare -A BUILD_SCRIPTS=(
+  ["full"]="build:full"
+  ["windows"]="build:windows"
+  ["unix"]="build:unix"
+  ["gitbash-only"]="build:gitbash"
+  ["cmd-only"]="build:cmd"
+)
+
 BUILD_CONFIGS=("full" "windows" "unix" "gitbash-only" "cmd-only")
 
 for config in "${BUILD_CONFIGS[@]}"; do
   echo -e "${YELLOW}Building: ${config}${NC}"
-  npm run build:${config} > /dev/null 2>&1 || echo "Build failed for ${config}"
+  npm run ${BUILD_SCRIPTS[$config]} > /dev/null 2>&1 || echo "Build failed for ${config}"
 done
 
 echo ""
