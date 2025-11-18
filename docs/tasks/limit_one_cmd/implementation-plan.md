@@ -7,6 +7,7 @@ Add support for configuring output limits on a per-command basis, allowing indiv
 ## Current Implementation
 
 ### Global Configuration
+
 Currently, output limiting is configured globally in the `LoggingConfig`:
 
 ```typescript
@@ -22,6 +23,7 @@ export interface LoggingConfig {
 All commands use the same `maxOutputLines` value from `config.global.logging.maxOutputLines`.
 
 ### Truncation Application
+
 Output truncation is applied in `src/index.ts` (executeShellCommand method, lines 412-422):
 
 ```typescript
@@ -173,6 +175,7 @@ if (maxOutputLines !== undefined) {
 ## Implementation Steps
 
 ### Phase 1: Core Implementation
+
 1. ✅ Update `ExecuteCommandArgs` interface in `src/types/config.ts`
 2. ✅ Modify `executeShellCommand` method signature to accept `maxOutputLines` parameter
 3. ✅ Implement fallback logic: command-level → global → default (20)
@@ -180,19 +183,22 @@ if (maxOutputLines !== undefined) {
 5. ✅ Update `execute_command` tool handler to pass the parameter
 
 ### Phase 2: Tool Definition
-6. ✅ Update `execute_command` tool definition with new parameter
-7. ✅ Add validation for `maxOutputLines` parameter
+
+1. ✅ Update `execute_command` tool definition with new parameter
+2. ✅ Add validation for `maxOutputLines` parameter
 
 ### Phase 3: Testing
-8. ✅ Add unit tests for command-level override
-9. ✅ Add tests for fallback behavior (undefined → global → default)
-10. ✅ Add tests for validation (negative values, zero, extremely large values)
-11. ✅ Add integration tests with actual command execution
+
+1. ✅ Add unit tests for command-level override
+2. ✅ Add tests for fallback behavior (undefined → global → default)
+3. ✅ Add tests for validation (negative values, zero, extremely large values)
+4. ✅ Add integration tests with actual command execution
 
 ### Phase 4: Documentation
-12. ✅ Update README.md with new parameter usage
-13. ✅ Add examples of per-command configuration
-14. ✅ Update API documentation
+
+1. ✅ Update README.md with new parameter usage
+2. ✅ Add examples of per-command configuration
+3. ✅ Update API documentation
 
 ## Usage Examples
 
@@ -256,7 +262,9 @@ The precedence order for determining the effective `maxOutputLines`:
 ## Edge Cases & Considerations
 
 ### 1. Disabling Truncation Per-Command
+
 To effectively disable truncation for a specific command, set a very high value:
+
 ```json
 {"maxOutputLines": 10000}
 ```
@@ -264,15 +272,18 @@ To effectively disable truncation for a specific command, set a very high value:
 Note: We don't support setting `maxOutputLines: 0` or `null` to disable truncation, as this could lead to ambiguity with the global `enableTruncation` setting.
 
 ### 2. Interaction with Global enableTruncation
+
 - If `config.global.logging.enableTruncation = false`, no truncation occurs regardless of `maxOutputLines`
 - The command-level parameter only affects the line limit, not whether truncation is enabled
 
 ### 3. Very Large Values
+
 - Maximum allowed value: 10000 lines
 - Prevents accidental or intentional resource exhaustion
 - Values exceeding this limit will result in validation error
 
 ### 4. Log Storage
+
 - Full output is still stored in log storage (if enabled)
 - The `maxOutputLines` parameter only affects the immediate response
 - Users can always access full output via `cli://logs/commands/{executionId}`
@@ -280,18 +291,21 @@ Note: We don't support setting `maxOutputLines: 0` or `null` to disable truncati
 ## Testing Strategy
 
 ### Unit Tests
+
 - Test parameter precedence (command → global → default)
 - Test validation (negative, zero, too large)
 - Test truncation behavior with various limits
 - Test backward compatibility (undefined parameter)
 
 ### Integration Tests
+
 - Execute commands with various `maxOutputLines` values
 - Verify truncation messages reflect correct limits
 - Verify metadata includes accurate line counts
 - Test interaction with global settings
 
 ### Performance Tests
+
 - Verify no performance degradation
 - Test with very large outputs
 - Ensure log storage limits still apply

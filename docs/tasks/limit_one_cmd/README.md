@@ -37,6 +37,7 @@ Add an optional `maxOutputLines` parameter to the `execute_command` tool, allowi
 This task includes three planning documents:
 
 ### 1. [Implementation Plan](./implementation-plan.md)
+
 - High-level overview of changes
 - Step-by-step implementation guide
 - Usage examples
@@ -46,6 +47,7 @@ This task includes three planning documents:
 **Read this first** for a general understanding of what needs to be done.
 
 ### 2. [Technical Specification](./technical-spec.md)
+
 - Detailed technical requirements
 - Architecture diagrams
 - Data flow and precedence logic
@@ -57,6 +59,7 @@ This task includes three planning documents:
 **Read this** when implementing to understand the detailed requirements.
 
 ### 3. [Test Plan](./test-plan.md)
+
 - Comprehensive test scenarios
 - Unit, integration, and performance tests
 - Edge cases and regression tests
@@ -68,27 +71,32 @@ This task includes three planning documents:
 ## Key Design Decisions
 
 ### Parameter Precedence
-```
+
+```text
 Command-level maxOutputLines → Global config → Default (20)
 ```
 
 ### Validation
+
 - Type: Positive integer
 - Range: 1 to 10,000
 - Invalid values throw descriptive errors
 
 ### Backward Compatibility
+
 - ✅ Fully backward compatible
 - ✅ No breaking changes
 - ✅ Existing code works without modifications
 
 ### Interaction with Global Settings
+
 - Global `enableTruncation=false` disables all truncation (command-level parameter ignored)
 - Command-level parameter only affects line count, not whether truncation is enabled
 
 ## Implementation Checklist
 
 ### Phase 1: Core Implementation
+
 - [ ] Update `ExecuteCommandArgs` interface
 - [ ] Modify `executeShellCommand` method signature
 - [ ] Implement precedence resolution logic
@@ -96,10 +104,12 @@ Command-level maxOutputLines → Global config → Default (20)
 - [ ] Update tool handler
 
 ### Phase 2: Tool Definition
+
 - [ ] Update `execute_command` tool schema
 - [ ] Add parameter validation
 
 ### Phase 3: Testing
+
 - [ ] Unit tests for precedence
 - [ ] Unit tests for validation
 - [ ] Integration tests
@@ -108,6 +118,7 @@ Command-level maxOutputLines → Global config → Default (20)
 - [ ] Regression tests
 
 ### Phase 4: Documentation
+
 - [ ] Update README.md
 - [ ] Update API documentation
 - [ ] Add usage examples
@@ -116,6 +127,7 @@ Command-level maxOutputLines → Global config → Default (20)
 ## Quick Start for Developers
 
 ### 1. Read the Plans
+
 ```bash
 # Start here
 cat docs/tasks/limit_one_cmd/implementation-plan.md
@@ -128,6 +140,7 @@ cat docs/tasks/limit_one_cmd/test-plan.md
 ```
 
 ### 2. Review Current Implementation
+
 ```bash
 # See how output limiting currently works
 git grep -n "maxOutputLines" src/
@@ -135,17 +148,20 @@ git grep -n "truncateOutput" src/
 ```
 
 Key files:
+
 - `src/index.ts:302-451` - executeShellCommand method
 - `src/utils/truncation.ts` - truncation logic
 - `src/types/config.ts` - type definitions
 - `src/utils/config.ts` - default config
 
 ### 3. Create Feature Branch
+
 ```bash
 git checkout -b feature/per-command-output-limit
 ```
 
 ### 4. Implement Core Changes
+
 Start with Phase 1 from the implementation plan:
 
 ```typescript
@@ -176,6 +192,7 @@ truncateOutput(fullOutput, effectiveMaxOutputLines, {...})
 ```
 
 ### 5. Write Tests
+
 Follow test plan for comprehensive coverage:
 
 ```bash
@@ -187,11 +204,13 @@ npm test -- --coverage
 ```
 
 ### 6. Update Documentation
+
 - Update README.md with new parameter
 - Add examples
 - Update tool documentation
 
 ### 7. Verify and Submit
+
 ```bash
 # Run all tests
 npm test
@@ -213,6 +232,7 @@ git push origin feature/per-command-output-limit
 ## Example Usage
 
 ### Before (Global Config Only)
+
 ```typescript
 // config.json
 {
@@ -230,6 +250,7 @@ await execute({ command: "ls -la" });         // 20 lines
 ```
 
 ### After (Per-Command Override)
+
 ```typescript
 // config.json (same as before)
 {
@@ -260,12 +281,14 @@ await execute({
 ## Benefits
 
 ### For Users
+
 - ✅ Fine-grained control over output limits
 - ✅ No need to change global config frequently
 - ✅ Better debugging for verbose commands
 - ✅ Cleaner output for simple commands
 
 ### For Developers
+
 - ✅ Clear, maintainable implementation
 - ✅ Comprehensive test coverage
 - ✅ No breaking changes

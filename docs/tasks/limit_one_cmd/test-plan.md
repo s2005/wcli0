@@ -9,9 +9,13 @@ This document outlines comprehensive testing for the per-command `maxOutputLines
 ## Test Categories
 
 ### 1. Unit Tests (Low-Level Logic)
+
 ### 2. Integration Tests (End-to-End)
+
 ### 3. Performance Tests
+
 ### 4. Edge Case Tests
+
 ### 5. Regression Tests
 
 ---
@@ -23,6 +27,7 @@ Location: `tests/unit/truncation.test.ts`, `tests/unit/command-execution.test.ts
 ### 1.1 Parameter Precedence Tests
 
 #### Test: Command-level takes precedence over global
+
 ```typescript
 describe('maxOutputLines precedence', () => {
   test('command-level overrides global setting', () => {
@@ -42,6 +47,7 @@ describe('maxOutputLines precedence', () => {
 **Expected**: Returns 100 lines (command-level)
 
 #### Test: Global used when command-level not provided
+
 ```typescript
 test('uses global config when command-level undefined', () => {
   const globalConfig = { maxOutputLines: 30 };
@@ -56,6 +62,7 @@ test('uses global config when command-level undefined', () => {
 **Expected**: Returns 30 lines (global setting)
 
 #### Test: Default used when both undefined
+
 ```typescript
 test('uses default (20) when both undefined', () => {
   const output = generateLines(200);
@@ -69,6 +76,7 @@ test('uses default (20) when both undefined', () => {
 **Expected**: Returns 20 lines (default)
 
 #### Test: Command-level 0 doesn't override
+
 ```typescript
 test('invalid command-level (0) throws error', () => {
   expect(() => {
@@ -84,6 +92,7 @@ test('invalid command-level (0) throws error', () => {
 ### 1.2 Validation Tests
 
 #### Test: Positive integers accepted
+
 ```typescript
 describe('maxOutputLines validation', () => {
   test('accepts valid positive integers', () => {
@@ -99,6 +108,7 @@ describe('maxOutputLines validation', () => {
 **Expected**: No errors for valid values
 
 #### Test: Negative values rejected
+
 ```typescript
 test('rejects negative values', () => {
   expect(() => validateMaxOutputLines(-1)).toThrow(
@@ -114,6 +124,7 @@ test('rejects negative values', () => {
 **Expected**: Clear error messages
 
 #### Test: Zero rejected
+
 ```typescript
 test('rejects zero', () => {
   expect(() => validateMaxOutputLines(0)).toThrow(
@@ -125,6 +136,7 @@ test('rejects zero', () => {
 **Expected**: Error indicating minimum is 1
 
 #### Test: Non-integers rejected
+
 ```typescript
 test('rejects non-integer values', () => {
   const invalidValues = [1.5, 20.7, Math.PI, NaN, Infinity];
@@ -140,6 +152,7 @@ test('rejects non-integer values', () => {
 **Expected**: Type error for all non-integers
 
 #### Test: Exceeding maximum rejected
+
 ```typescript
 test('rejects values > 10000', () => {
   expect(() => validateMaxOutputLines(10001)).toThrow(
@@ -155,6 +168,7 @@ test('rejects values > 10000', () => {
 **Expected**: Error indicating maximum limit
 
 #### Test: Boundary values (edge of valid range)
+
 ```typescript
 test('accepts boundary values', () => {
   expect(() => validateMaxOutputLines(1)).not.toThrow();      // Min
@@ -165,6 +179,7 @@ test('accepts boundary values', () => {
 **Expected**: Both boundary values accepted
 
 #### Test: String numbers rejected
+
 ```typescript
 test('rejects string representations of numbers', () => {
   expect(() => validateMaxOutputLines('50' as any)).toThrow(
@@ -180,6 +195,7 @@ test('rejects string representations of numbers', () => {
 ### 1.3 Truncation Behavior Tests
 
 #### Test: No truncation when output fits
+
 ```typescript
 test('no truncation when output within limit', () => {
   const output = generateLines(10);
@@ -195,6 +211,7 @@ test('no truncation when output within limit', () => {
 **Expected**: Full output returned, no truncation message
 
 #### Test: Truncation applied when exceeds limit
+
 ```typescript
 test('truncates when output exceeds limit', () => {
   const output = generateLines(100);
@@ -209,6 +226,7 @@ test('truncates when output exceeds limit', () => {
 **Expected**: Last 30 lines returned, truncation message included
 
 #### Test: Returns last N lines (not first N)
+
 ```typescript
 test('returns last N lines when truncating', () => {
   const lines = [];
@@ -229,6 +247,7 @@ test('returns last N lines when truncating', () => {
 **Expected**: Returns lines 91-100 (last 10)
 
 #### Test: Truncation message includes correct counts
+
 ```typescript
 test('truncation message includes accurate line counts', () => {
   const output = generateLines(847);
@@ -249,6 +268,7 @@ test('truncation message includes accurate line counts', () => {
 ### 1.4 Interaction with Global Settings
 
 #### Test: Respects global enableTruncation=false
+
 ```typescript
 test('no truncation when globally disabled', () => {
   const output = generateLines(200);
@@ -268,6 +288,7 @@ test('no truncation when globally disabled', () => {
 **Expected**: Full output returned despite maxOutputLines
 
 #### Test: Uses global truncation message template
+
 ```typescript
 test('uses global truncation message template', () => {
   const output = generateLines(100);
@@ -295,6 +316,7 @@ Location: `tests/integration/command-execution.test.ts`
 ### 2.1 End-to-End Command Execution
 
 #### Test: Execute command with custom maxOutputLines
+
 ```typescript
 describe('execute_command with maxOutputLines', () => {
   test('executes with custom limit', async () => {
@@ -318,6 +340,7 @@ describe('execute_command with maxOutputLines', () => {
 **Expected**: Returns 75 lines with metadata
 
 #### Test: Execute without maxOutputLines (uses global)
+
 ```typescript
 test('uses global default when parameter omitted', async () => {
   const server = new WCLIServer();
@@ -336,6 +359,7 @@ test('uses global default when parameter omitted', async () => {
 **Expected**: Uses global config (20 lines)
 
 #### Test: Full log accessible via resources
+
 ```typescript
 test('full output accessible in log resources', async () => {
   const server = new WCLIServer();
@@ -362,6 +386,7 @@ test('full output accessible in log resources', async () => {
 ### 2.2 Tool Input Validation
 
 #### Test: Invalid maxOutputLines rejected at tool level
+
 ```typescript
 test('rejects invalid maxOutputLines in tool call', async () => {
   const server = new WCLIServer();
@@ -381,6 +406,7 @@ test('rejects invalid maxOutputLines in tool call', async () => {
 **Expected**: Error before command execution
 
 #### Test: Non-numeric maxOutputLines rejected
+
 ```typescript
 test('rejects non-numeric maxOutputLines', async () => {
   const server = new WCLIServer();
@@ -404,6 +430,7 @@ test('rejects non-numeric maxOutputLines', async () => {
 ### 2.3 Real-World Scenarios
 
 #### Test: npm test with high limit
+
 ```typescript
 test('npm test with 200 line limit', async () => {
   const server = new WCLIServer();
@@ -424,6 +451,7 @@ test('npm test with 200 line limit', async () => {
 **Expected**: Returns up to 200 lines of test output
 
 #### Test: Build command with custom limit
+
 ```typescript
 test('build command with 300 line limit', async () => {
   const server = new WCLIServer();
@@ -443,6 +471,7 @@ test('build command with 300 line limit', async () => {
 **Expected**: Build output limited to 300 lines
 
 #### Test: Simple command (ls) with default
+
 ```typescript
 test('ls command uses global default', async () => {
   const server = new WCLIServer();
@@ -462,13 +491,14 @@ test('ls command uses global default', async () => {
 
 ---
 
-## 3. Performance Tests
+## 3. Performance Tests (Detailed)
 
 Location: `tests/performance/command-execution.perf.ts`
 
 ### 3.1 Overhead Measurement
 
 #### Test: Minimal overhead from parameter
+
 ```typescript
 describe('performance impact', () => {
   test('parameter processing adds <1ms overhead', async () => {
@@ -500,6 +530,7 @@ describe('performance impact', () => {
 ### 3.2 Large Output Handling
 
 #### Test: Performance with 10,000 line limit
+
 ```typescript
 test('handles maximum limit efficiently', async () => {
   const start = performance.now();
@@ -520,13 +551,14 @@ test('handles maximum limit efficiently', async () => {
 
 ---
 
-## 4. Edge Case Tests
+## 4. Edge Case Tests (Detailed)
 
 Location: `tests/edge-cases/output-limit.test.ts`
 
 ### 4.1 Boundary Conditions
 
 #### Test: Exactly at limit (no truncation)
+
 ```typescript
 test('output exactly at limit shows no truncation', () => {
   const output = generateLines(50);
@@ -541,6 +573,7 @@ test('output exactly at limit shows no truncation', () => {
 **Expected**: No truncation for exact match
 
 #### Test: One line over limit
+
 ```typescript
 test('one line over limit triggers truncation', () => {
   const output = generateLines(51);
@@ -557,6 +590,7 @@ test('one line over limit triggers truncation', () => {
 ### 4.2 Special Characters
 
 #### Test: Output with unicode characters
+
 ```typescript
 test('handles unicode correctly', () => {
   const output = '🚀\n'.repeat(100);
@@ -570,6 +604,7 @@ test('handles unicode correctly', () => {
 **Expected**: Unicode preserved in truncation
 
 #### Test: Output with escape sequences
+
 ```typescript
 test('handles ANSI escape sequences', () => {
   const output = '\x1b[31mRed text\x1b[0m\n'.repeat(100);
@@ -585,6 +620,7 @@ test('handles ANSI escape sequences', () => {
 ### 4.3 Empty/Minimal Output
 
 #### Test: Empty output
+
 ```typescript
 test('handles empty output', () => {
   const result = truncateOutput('', 20, {...config});
@@ -598,6 +634,7 @@ test('handles empty output', () => {
 **Expected**: No errors, no truncation
 
 #### Test: Single line output
+
 ```typescript
 test('handles single line output', () => {
   const result = truncateOutput('Single line', 20, {...config});
@@ -612,13 +649,14 @@ test('handles single line output', () => {
 
 ---
 
-## 5. Regression Tests
+## 5. Regression Tests (Detailed)
 
 Location: `tests/regression/output-limit.test.ts`
 
 ### 5.1 Backward Compatibility
 
 #### Test: Existing code without parameter works
+
 ```typescript
 test('existing calls without maxOutputLines work', async () => {
   const server = new WCLIServer();
@@ -639,6 +677,7 @@ test('existing calls without maxOutputLines work', async () => {
 **Expected**: Works exactly as before
 
 #### Test: Global config still honored
+
 ```typescript
 test('global config still works as before', async () => {
   const server = new WCLIServer({
@@ -665,6 +704,7 @@ test('global config still works as before', async () => {
 ### 5.2 Existing Features Unaffected
 
 #### Test: Log storage still works
+
 ```typescript
 test('log storage unaffected', async () => {
   const server = new WCLIServer();
@@ -685,6 +725,7 @@ test('log storage unaffected', async () => {
 **Expected**: Full logs still stored
 
 #### Test: Timeout still works
+
 ```typescript
 test('timeout unaffected by maxOutputLines', async () => {
   const server = new WCLIServer();
@@ -709,11 +750,13 @@ test('timeout unaffected by maxOutputLines', async () => {
 ## Test Execution
 
 ### Run All Tests
+
 ```bash
 npm test
 ```
 
 ### Run Specific Test Suites
+
 ```bash
 # Unit tests only
 npm test -- --testPathPattern=unit
@@ -732,6 +775,7 @@ npm test -- --testPathPattern=regression
 ```
 
 ### Coverage Report
+
 ```bash
 npm test -- --coverage
 ```
@@ -812,6 +856,7 @@ Add to CI pipeline:
 ```
 
 Ensure tests run on:
+
 - Every PR
 - Every commit to main
 - Daily scheduled runs (catch flaky tests)

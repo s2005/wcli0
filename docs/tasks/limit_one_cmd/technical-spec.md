@@ -7,6 +7,7 @@ This document provides technical specifications for implementing per-command out
 ## Motivation
 
 ### Current Limitation
+
 Currently, all commands share a single global `maxOutputLines` configuration (default: 20 lines). This works well for most use cases, but creates challenges:
 
 1. **Verbose commands**: Some commands (like test runs, build processes) naturally produce more output and would benefit from higher limits
@@ -18,6 +19,7 @@ Currently, all commands share a single global `maxOutputLines` configuration (de
    - Manually accessing full logs via resources (extra steps)
 
 ### Solution
+
 Allow commands to specify `maxOutputLines` as an optional parameter, enabling fine-grained control while maintaining backward compatibility.
 
 ## Requirements
@@ -25,47 +27,56 @@ Allow commands to specify `maxOutputLines` as an optional parameter, enabling fi
 ### Functional Requirements
 
 **FR1**: Commands SHALL accept an optional `maxOutputLines` parameter
+
 - Type: positive integer
 - Range: 1 to 10,000
 - Default: undefined (uses global setting)
 
 **FR2**: Parameter precedence SHALL be:
+
 1. Command-level `maxOutputLines` (if provided)
 2. Global `config.global.logging.maxOutputLines` (if configured)
 3. Default value (20)
 
 **FR3**: Invalid values SHALL result in descriptive error messages
+
 - Non-integer values → error
 - Zero or negative values → error
 - Values > 10,000 → error
 
 **FR4**: The feature SHALL be fully backward compatible
+
 - Existing code continues to work without changes
 - No changes to global configuration format
 - No changes to existing tool behavior when parameter is omitted
 
 **FR5**: Global `enableTruncation` setting SHALL take precedence
+
 - If `enableTruncation = false`, no truncation occurs regardless of `maxOutputLines`
 - Command-level parameter only affects line limit, not whether truncation is enabled
 
 ### Non-Functional Requirements
 
 **NFR1**: Performance
+
 - Parameter processing SHALL add < 1ms overhead
 - No impact on memory usage
 - No impact on log storage performance
 
 **NFR2**: Security
+
 - Validate all inputs to prevent resource exhaustion
 - Maximum limit (10,000) prevents excessive memory usage
 - No new attack vectors introduced
 
 **NFR3**: Maintainability
+
 - Code changes localized to specific areas
 - Clear separation of concerns
 - Comprehensive test coverage (>90%)
 
 **NFR4**: Usability
+
 - Intuitive parameter naming
 - Clear error messages
 - Well-documented behavior
@@ -74,7 +85,7 @@ Allow commands to specify `maxOutputLines` as an optional parameter, enabling fi
 
 ### Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │ MCP Client (Claude, other AI assistants)               │
 └─────────────────────┬───────────────────────────────────┘
@@ -131,7 +142,7 @@ Allow commands to specify `maxOutputLines` as an optional parameter, enabling fi
 
 ### Data Flow
 
-```
+```text
 Input: {command: "npm test", maxOutputLines: 100}
    │
    ├─→ Validation: Is 100 a valid integer between 1-10000? ✓
@@ -169,6 +180,7 @@ Input: {command: "npm test", maxOutputLines: 100}
 #### ExecuteCommandArgs Interface
 
 **Before:**
+
 ```typescript
 export interface ExecuteCommandArgs {
   command: string;
@@ -178,6 +190,7 @@ export interface ExecuteCommandArgs {
 ```
 
 **After:**
+
 ```typescript
 export interface ExecuteCommandArgs {
   command: string;
@@ -190,6 +203,7 @@ export interface ExecuteCommandArgs {
 #### executeShellCommand Method Signature
 
 **Before:**
+
 ```typescript
 private async executeShellCommand(
   command: string,
@@ -199,6 +213,7 @@ private async executeShellCommand(
 ```
 
 **After:**
+
 ```typescript
 private async executeShellCommand(
   command: string,
@@ -211,6 +226,7 @@ private async executeShellCommand(
 ### Implementation Details
 
 #### 1. Parameter Extraction
+
 ```typescript
 // src/index.ts - handleToolUse method
 case "execute_command": {
@@ -231,6 +247,7 @@ case "execute_command": {
 ```
 
 #### 2. Validation Logic
+
 ```typescript
 // Validate maxOutputLines if provided
 if (maxOutputLines !== undefined) {
@@ -258,6 +275,7 @@ if (maxOutputLines !== undefined) {
 ```
 
 #### 3. Precedence Resolution
+
 ```typescript
 // Determine effective maxOutputLines with fallback chain
 const effectiveMaxOutputLines =
@@ -267,6 +285,7 @@ const effectiveMaxOutputLines =
 ```
 
 #### 4. Truncation Application
+
 ```typescript
 // Apply truncation with effective limit
 if (this.config.global.logging?.enableTruncation) {
@@ -293,6 +312,7 @@ if (this.config.global.logging?.enableTruncation) {
 ### Unit Tests
 
 #### Test 1: Command-level override
+
 ```typescript
 test('uses command-level maxOutputLines when provided', () => {
   const output = generateLines(100);
@@ -305,6 +325,7 @@ test('uses command-level maxOutputLines when provided', () => {
 ```
 
 #### Test 2: Global fallback
+
 ```typescript
 test('falls back to global config when command-level not provided', () => {
   const output = generateLines(100);
@@ -315,6 +336,7 @@ test('falls back to global config when command-level not provided', () => {
 ```
 
 #### Test 3: Default fallback
+
 ```typescript
 test('uses default (20) when neither command nor global provided', () => {
   const output = generateLines(100);
@@ -325,6 +347,7 @@ test('uses default (20) when neither command nor global provided', () => {
 ```
 
 #### Test 4: Validation - negative
+
 ```typescript
 test('rejects negative maxOutputLines', async () => {
   await expect(
@@ -334,6 +357,7 @@ test('rejects negative maxOutputLines', async () => {
 ```
 
 #### Test 5: Validation - zero
+
 ```typescript
 test('rejects zero maxOutputLines', async () => {
   await expect(
@@ -343,6 +367,7 @@ test('rejects zero maxOutputLines', async () => {
 ```
 
 #### Test 6: Validation - too large
+
 ```typescript
 test('rejects maxOutputLines > 10000', async () => {
   await expect(
@@ -352,6 +377,7 @@ test('rejects maxOutputLines > 10000', async () => {
 ```
 
 #### Test 7: Validation - non-integer
+
 ```typescript
 test('rejects non-integer maxOutputLines', async () => {
   await expect(
@@ -361,6 +387,7 @@ test('rejects non-integer maxOutputLines', async () => {
 ```
 
 #### Test 8: Interaction with enableTruncation
+
 ```typescript
 test('respects global enableTruncation=false', async () => {
   config.global.logging.enableTruncation = false;
@@ -377,6 +404,7 @@ test('respects global enableTruncation=false', async () => {
 ### Integration Tests
 
 #### Test 9: End-to-end with custom limit
+
 ```typescript
 test('executes command with custom maxOutputLines', async () => {
   const server = new WCLIServer();
@@ -395,6 +423,7 @@ test('executes command with custom maxOutputLines', async () => {
 ```
 
 #### Test 10: Backward compatibility
+
 ```typescript
 test('works without maxOutputLines parameter', async () => {
   const server = new WCLIServer();
@@ -413,6 +442,7 @@ test('works without maxOutputLines parameter', async () => {
 ### Performance Tests
 
 #### Test 11: No performance degradation
+
 ```typescript
 test('parameter processing adds minimal overhead', async () => {
   const iterations = 1000;
@@ -449,6 +479,7 @@ test('parameter processing adds minimal overhead', async () => {
 | Non-numeric | `maxOutputLines must be an integer, got: {type}` | 400 |
 
 ### Error Response Format
+
 ```json
 {
   "isError": true,
@@ -462,16 +493,19 @@ test('parameter processing adds minimal overhead', async () => {
 ## Security Considerations
 
 ### Resource Exhaustion Prevention
+
 - **Maximum limit (10,000)**: Prevents malicious or accidental requests for unlimited output
 - **Integer validation**: Prevents floating-point attacks or NaN
 - **Type checking**: Prevents injection of objects or arrays
 
 ### Memory Safety
+
 - Truncation happens after execution but before response formatting
 - Full output is still subject to log storage limits (1MB per log)
 - No change to overall memory consumption patterns
 
 ### No New Attack Vectors
+
 - Parameter is purely numeric (no string injection)
 - No file system access
 - No code execution beyond existing command execution
@@ -501,12 +535,14 @@ You can override the global `maxOutputLines` setting for individual commands:
 This will return up to 100 lines for this specific command, regardless of the global setting.
 
 **Parameter**: `maxOutputLines` (optional)
+
 - Type: integer
 - Range: 1 to 10,000
 - Default: Uses global `config.global.logging.maxOutputLines` (default: 20)
 
 If omitted, the global configuration is used.
-```
+
+```text
 
 ### 2. API Documentation
 
@@ -535,7 +571,8 @@ Execute with custom output limit:
   "maxOutputLines": 150
 }
 ```
-```
+
+```text
 
 ### 3. Configuration Guide
 
@@ -556,6 +593,7 @@ Add examples to configuration documentation:
 ```
 
 **Per-command override** (specific command):
+
 ```json
 {
   "command": "npm run build",
@@ -564,7 +602,8 @@ Add examples to configuration documentation:
 ```
 
 The command-level setting takes precedence when provided.
-```
+
+```text
 
 ## Migration Path
 
