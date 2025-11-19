@@ -135,6 +135,12 @@ export function buildExecuteCommandDescription(
   lines.push('- Must be within allowed paths for the selected shell');
   lines.push('- Must use the correct format for the shell type');
   lines.push('');
+
+  lines.push('**Output Truncation:**');
+  lines.push('- Output is automatically truncated if it exceeds the configured limit');
+  lines.push('- Default limit is usually 20 lines (configurable via global settings)');
+  lines.push('- Use `maxOutputLines` parameter to override the limit for a specific command');
+  lines.push('');
   
   // Add examples
   lines.push('**Examples:**');
