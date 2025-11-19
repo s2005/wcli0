@@ -412,6 +412,32 @@ Configuration suitable for automated testing:
 }
 ```
 
+### Output Truncation Configuration
+
+Configuration that adjusts the default output truncation limit:
+
+```json
+{
+  "global": {
+    "logging": {
+      "enableTruncation": true,
+      "maxOutputLines": 100,
+      "truncationMessage": "\n... Output truncated ...\n"
+    }
+  },
+  "shells": {
+    "cmd": {
+      "type": "cmd",
+      "enabled": true,
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      }
+    }
+  }
+}
+```
+
 ### No Restrictions Example
 
 Demonstrates using empty arrays to remove all default command, argument, and operator blocks.

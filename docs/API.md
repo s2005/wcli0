@@ -11,6 +11,7 @@ Execute a command in the specified shell with shell-specific validation and sett
 - `shell` (string, required): Shell to use (must be enabled in config)
 - `command` (string, required): Command to execute
 - `workingDir` (string, optional): Working directory
+- `maxOutputLines` (number, optional): Maximum number of output lines to return (overrides global setting)
 
 **Validation:**
 
