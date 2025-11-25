@@ -17,10 +17,15 @@ const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
   truncationMessage: '[Output truncated: Showing last {returnedLines} of {totalLines} lines]',
   maxStoredLogs: 50,
   maxLogSize: 1048576, // 1MB
-  maxTotalStorageSize: 52428800, // 50MB
+  maxTotalStorageSize: 52428800, // 50MB (in-memory guardrail)
   enableLogResources: true,
   logRetentionMinutes: 60,
-  cleanupIntervalMinutes: 5
+  cleanupIntervalMinutes: 5,
+  logDirectory: undefined,
+  logRetentionDays: 7,
+  maxTotalLogSize: 104857600, // 100MB disk budget
+  maxReturnLines: 1000,
+  exposeFullPath: false
 };
 
 export const DEFAULT_CONFIG: ServerConfig = {
@@ -512,6 +517,59 @@ function validateLoggingConfig(config?: LoggingConfig): void {
     if (config.cleanupIntervalMinutes < 1 || config.cleanupIntervalMinutes > 1440) {
       throw new Error('cleanupIntervalMinutes must be between 1 and 1440 (1 day)');
     }
+  }
+
+  if (config.logRetentionDays !== undefined) {
+    if (
+      !Number.isInteger(config.logRetentionDays) ||
+      config.logRetentionDays < 1 ||
+      config.logRetentionDays > 365
+    ) {
+      throw new Error('logRetentionDays must be an integer between 1 and 365');
+    }
+  }
+
+  if (config.logDirectory !== undefined) {
+    if (typeof config.logDirectory !== 'string' || config.logDirectory.trim() === '') {
+      throw new Error('logDirectory must be a non-empty string');
+    }
+
+    const normalized = path.normalize(config.logDirectory);
+    if (normalized.includes('..')) {
+      throw new Error('logDirectory must not contain path traversal (..)');
+    }
+
+    if (process.platform === 'win32') {
+      const invalidChars = /[<>\"|?*]/;
+      const withoutDrive = normalized.replace(/^[a-zA-Z]:/, '');
+      if (invalidChars.test(withoutDrive)) {
+        throw new Error('logDirectory contains invalid characters');
+      }
+    }
+  }
+
+  if (config.maxReturnLines !== undefined) {
+    if (
+      !Number.isInteger(config.maxReturnLines) ||
+      config.maxReturnLines < 1 ||
+      config.maxReturnLines > 10000
+    ) {
+      throw new Error('maxReturnLines must be an integer between 1 and 10000');
+    }
+  }
+
+  if (config.maxTotalLogSize !== undefined) {
+    if (
+      typeof config.maxTotalLogSize !== 'number' ||
+      config.maxTotalLogSize < 1048576 ||
+      config.maxTotalLogSize > 1073741824
+    ) {
+      throw new Error('maxTotalLogSize must be between 1MB and 1GB');
+    }
+  }
+
+  if (config.exposeFullPath !== undefined && typeof config.exposeFullPath !== 'boolean') {
+    throw new Error('exposeFullPath must be a boolean');
   }
 }
 

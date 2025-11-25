@@ -9,6 +9,10 @@ import {
   LogFilter
 } from '../types/logging.js';
 import { LoggingConfig } from '../types/config.js';
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
+import { debugWarn } from './log.js';
 
 /**
  * Manages storage and lifecycle of command execution logs
@@ -17,6 +21,8 @@ export class LogStorageManager {
   private storage: LogStorage;
   private config: LoggingConfig;
   private cleanupTimer?: NodeJS.Timeout;
+  private resolvedLogDir?: string;
+  private logDirEnsured = false;
 
   constructor(config: LoggingConfig) {
     this.config = config;
@@ -25,6 +31,10 @@ export class LogStorageManager {
       executionOrder: [],
       totalStorageSize: 0
     };
+
+    if (this.config.logDirectory) {
+      this.resolvedLogDir = this.sanitizeLogDirectory(this.config.logDirectory);
+    }
   }
 
   /**
@@ -49,16 +59,23 @@ export class LogStorageManager {
     // Generate unique ID
     const id = this.generateId();
 
+    // Normalize newlines to prevent double counting of \r\n
+    let currentStdout = this.normalizeNewlines(stdout || '');
+    let currentStderr = this.normalizeNewlines(stderr || '');
+
+    // Combine output
+    let currentCombined = this.normalizeNewlines(
+      this.combineOutput(currentStdout, currentStderr, exitCode)
+    );
+
     // Calculate initial size
-    let currentStdout = stdout;
-    let currentStderr = stderr;
-    let currentCombined = this.combineOutput(stdout, stderr, exitCode);
     let currentSize = this.calculateEntrySize(currentStdout, currentStderr, currentCombined);
 
     // If entry exceeds max size, truncate all output fields
-    if (currentSize > this.config.maxLogSize) {
+    const maxEntrySize = this.config.maxLogSize || 1048576;
+    if (currentSize > maxEntrySize) {
       // Calculate how much space we can allocate (leaving room for metadata overhead)
-      const maxOutputSize = this.config.maxLogSize - 200; // metadata overhead
+      const maxOutputSize = maxEntrySize - 200; // metadata overhead
       const halfSize = Math.floor(maxOutputSize / 3); // Split between stdout, stderr, combined
 
       // Truncate stdout if needed
@@ -104,7 +121,8 @@ export class LogStorageManager {
       stderrLines,
       wasTruncated: false, // Will be set when truncated for response
       returnedLines: totalLines,
-      size: currentSize
+      size: currentSize,
+      filePath: this.resolvedLogDir ? this.getLogFilePath(id) : undefined
     };
 
     // Add to storage
@@ -114,6 +132,13 @@ export class LogStorageManager {
 
     // Cleanup if needed
     this.cleanup();
+
+    // Persist to disk asynchronously (best-effort, non-blocking)
+    if (entry.filePath) {
+      this.writeLogToFileAsync(entry).catch(err => {
+        debugWarn(`Failed to write log file for ${id}: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
 
     return id;
   }
@@ -172,6 +197,8 @@ export class LogStorageManager {
       return false;
     }
 
+    const filePath = entry.filePath;
+
     // Remove from storage
     this.storage.entries.delete(id);
     this.storage.totalStorageSize -= entry.size;
@@ -180,6 +207,13 @@ export class LogStorageManager {
     const index = this.storage.executionOrder.indexOf(id);
     if (index > -1) {
       this.storage.executionOrder.splice(index, 1);
+    }
+
+    // Best-effort file removal
+    if (filePath) {
+      this.deleteLogFile(filePath).catch(err => {
+        debugWarn(`Failed to delete log file ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+      });
     }
 
     return true;
@@ -202,7 +236,7 @@ export class LogStorageManager {
       totalLogs: this.storage.entries.size,
       totalSize: this.storage.totalStorageSize,
       maxLogs: this.config.maxStoredLogs,
-      maxSize: this.config.maxTotalStorageSize
+      maxSize: this.getMaxTotalBytes()
     };
   }
 
@@ -214,7 +248,7 @@ export class LogStorageManager {
       return; // Already started
     }
 
-    const intervalMs = this.config.cleanupIntervalMinutes * 60 * 1000;
+    const intervalMs = (this.config.cleanupIntervalMinutes ?? 5) * 60 * 1000;
     this.cleanupTimer = setInterval(() => {
       this.cleanup();
     }, intervalMs).unref();
@@ -317,20 +351,30 @@ export class LogStorageManager {
 
     // Enforce size limit (FIFO)
     this.enforceStorageLimit();
+
+    // Kick off async file cleanup if file logging is enabled
+    if (this.resolvedLogDir) {
+      this.cleanupFilesAsync().catch(err => {
+        debugWarn(`Log file cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
   }
 
   /**
    * Remove logs that have exceeded retention time
    */
   private removeExpiredLogs(): void {
-    const now = new Date();
-    const retentionMs = this.config.logRetentionMinutes * 60 * 1000;
-    const expirationTime = new Date(now.getTime() - retentionMs);
+    const retentionMs = this.getRetentionMs();
+    if (retentionMs <= 0) {
+      return;
+    }
+
+    const now = Date.now();
 
     const expiredIds: string[] = [];
 
     for (const [id, entry] of this.storage.entries) {
-      if (entry.timestamp < expirationTime) {
+      if (now - entry.timestamp.getTime() > retentionMs) {
         expiredIds.push(id);
       }
     }
@@ -353,7 +397,8 @@ export class LogStorageManager {
    * Enforce maximum total storage size
    */
   private enforceStorageLimit(): void {
-    while (this.storage.totalStorageSize > this.config.maxTotalStorageSize) {
+    const maxTotal = this.getMaxTotalBytes();
+    while (this.storage.totalStorageSize > maxTotal) {
       this.removeOldestEntry();
     }
   }
@@ -368,5 +413,209 @@ export class LogStorageManager {
 
     const oldestId = this.storage.executionOrder[0];
     this.deleteLog(oldestId);
+  }
+
+  /**
+   * Normalize Windows/Unix newlines to a single style for counting/storage
+   */
+  private normalizeNewlines(text: string): string {
+    return text.replace(/\r\n/g, '\n');
+  }
+
+  /**
+   * Expand and sanitize the configured log directory
+   */
+  private sanitizeLogDirectory(logDir: string): string {
+    let expanded = logDir.trim();
+
+    // Expand leading ~
+    expanded = expanded.replace(/^~(?=$|[\\/])/, os.homedir());
+
+    // Expand environment variables like $HOME or %USERPROFILE%
+    expanded = expanded.replace(/%([A-Za-z0-9_]+)%|\$([A-Za-z0-9_]+)/g, (_match, winVar, unixVar) => {
+      const key = (winVar || unixVar) as string;
+      return process.env[key] ?? '';
+    });
+
+    const resolved = path.resolve(expanded);
+    const normalized = path.normalize(resolved);
+
+    if (!path.isAbsolute(normalized)) {
+      throw new Error(`Log directory must resolve to absolute path: ${logDir}`);
+    }
+
+    if (normalized.includes('..')) {
+      throw new Error(`Log directory contains path traversal: ${logDir}`);
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Build full path for an execution's log file
+   */
+  private getLogFilePath(id: string): string {
+    if (!this.resolvedLogDir) {
+      throw new Error('Log directory not resolved');
+    }
+    return path.join(this.resolvedLogDir, `${id}.log`);
+  }
+
+  /**
+   * Ensure the log directory exists
+   */
+  private async ensureLogDirectoryAsync(): Promise<string> {
+    if (!this.resolvedLogDir) {
+      throw new Error('Log directory is not configured');
+    }
+
+    if (!this.logDirEnsured) {
+      await fs.mkdir(this.resolvedLogDir, { recursive: true });
+      this.logDirEnsured = true;
+    }
+
+    return this.resolvedLogDir;
+  }
+
+  /**
+   * Persist a log entry to disk (best effort)
+   */
+  private async writeLogToFileAsync(entry: CommandLogEntry): Promise<string> {
+    if (!entry.filePath) {
+      throw new Error('Cannot write log without filePath');
+    }
+
+    const logDir = await this.ensureLogDirectoryAsync();
+    const filePath = path.isAbsolute(entry.filePath)
+      ? entry.filePath
+      : path.join(logDir, entry.filePath);
+
+    // Normalize line endings for consistency
+    let content = this.normalizeNewlines(entry.combinedOutput);
+
+    // Final guardrail on size
+    const maxSize = this.config.maxLogSize ?? 1024 * 1024;
+    if (Buffer.byteLength(content, 'utf8') > maxSize) {
+      const lines = content.split('\n');
+      while (Buffer.byteLength(content, 'utf8') > maxSize && lines.length > 1) {
+        lines.shift();
+        content = `[Log truncated to ${maxSize} bytes]\n${lines.join('\n')}`;
+      }
+    }
+
+    await fs.writeFile(filePath, content, 'utf8');
+
+    // Enforce file-based limits asynchronously
+    await this.cleanupFilesAsync();
+
+    return filePath;
+  }
+
+  /**
+   * Delete a log file (best effort)
+   */
+  private async deleteLogFile(filePath: string): Promise<void> {
+    try {
+      await fs.rm(filePath, { force: true });
+    } catch (error) {
+      debugWarn(`Failed to remove log file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Gather log file info in the configured directory
+   */
+  private async getLogFiles(): Promise<Array<{ file: string; fullPath: string; mtimeMs: number; size: number }>> {
+    if (!this.resolvedLogDir) return [];
+    try {
+      const files = await fs.readdir(this.resolvedLogDir);
+      const logFiles = files.filter(f => f.endsWith('.log'));
+      const stats = await Promise.all(
+        logFiles.map(async file => {
+          const fullPath = path.join(this.resolvedLogDir!, file);
+          const stat = await fs.stat(fullPath);
+          return {
+            file,
+            fullPath,
+            mtimeMs: stat.mtimeMs,
+            size: stat.size
+          };
+        })
+      );
+      return stats;
+    } catch (error) {
+      debugWarn(`Failed to read log directory ${this.resolvedLogDir}: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
+
+  /**
+   * Cleanup log files on disk based on retention/count/size
+   */
+  private async cleanupFilesAsync(): Promise<void> {
+    if (!this.resolvedLogDir) return;
+
+    const files = await this.getLogFiles();
+    if (files.length === 0) return;
+
+    const now = Date.now();
+    const retentionMs = this.getRetentionMs();
+    const maxFiles = this.config.maxStoredLogs ?? 50;
+    const maxTotalBytes = this.getMaxTotalBytes();
+
+    // Sort oldest first
+    const sorted = files.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const toDelete = new Set<string>();
+
+    // Retention
+    if (retentionMs > 0) {
+      for (const info of sorted) {
+        if (now - info.mtimeMs > retentionMs) {
+          toDelete.add(info.fullPath);
+        }
+      }
+    }
+
+    // Count limit
+    while (sorted.length - Array.from(toDelete).length > maxFiles) {
+      const oldest = sorted.shift();
+      if (oldest) {
+        toDelete.add(oldest.fullPath);
+      }
+    }
+
+    // Size limit
+    let totalSize = sorted.reduce((sum, f) => toDelete.has(f.fullPath) ? sum : sum + f.size, 0);
+    for (const info of sorted) {
+      if (totalSize <= maxTotalBytes) break;
+      if (toDelete.has(info.fullPath)) continue;
+      toDelete.add(info.fullPath);
+      totalSize -= info.size;
+    }
+
+    // Apply deletions
+    for (const filePath of toDelete) {
+      await this.deleteLogFile(filePath);
+    }
+  }
+
+  /**
+   * Calculate retention in milliseconds, preferring days when provided
+   */
+  private getRetentionMs(): number {
+    if (this.config.logRetentionDays !== undefined) {
+      return this.config.logRetentionDays * 24 * 60 * 60 * 1000;
+    }
+    return (this.config.logRetentionMinutes ?? 60) * 60 * 1000;
+  }
+
+  /**
+   * Get max total bytes allowed for storage (memory/disk)
+   */
+  private getMaxTotalBytes(): number {
+    if (this.config.maxTotalLogSize !== undefined) {
+      return this.config.maxTotalLogSize;
+    }
+    return this.config.maxTotalStorageSize ?? 50 * 1024 * 1024;
   }
 }

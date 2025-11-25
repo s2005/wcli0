@@ -32,6 +32,9 @@ export interface CommandLogEntry {
 
   /** Size tracking */
   size: number; // Total bytes
+
+  /** Optional path to persisted log file on disk */
+  filePath?: string;
 }
 
 /**

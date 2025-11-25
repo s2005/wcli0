@@ -3,6 +3,7 @@
  */
 
 import { TruncatedOutput, TruncationConfig } from '../types/logging.js';
+import path from 'path';
 
 /**
  * Truncates command output to a maximum number of lines
@@ -17,7 +18,9 @@ export function truncateOutput(
   output: string,
   maxLines: number,
   config: TruncationConfig,
-  executionId?: string
+  executionId?: string,
+  filePath?: string,
+  exposeFullPath: boolean = false
 ): TruncatedOutput {
   // Handle empty output
   if (!output || output.length === 0) {
@@ -56,7 +59,9 @@ export function truncateOutput(
     totalLines,
     maxLines,
     executionId,
-    config.truncationMessage
+    config.truncationMessage,
+    filePath,
+    exposeFullPath
   );
 
   return {
@@ -83,7 +88,9 @@ export function buildTruncationMessage(
   totalLines: number,
   returnedLines: number,
   executionId?: string,
-  template?: string
+  template?: string,
+  filePath?: string,
+  exposeFullPath: boolean = false
 ): string {
   const defaultTemplate = '[Output truncated: Showing last {returnedLines} of {totalLines} lines]';
   const messageTemplate = template || defaultTemplate;
@@ -100,6 +107,10 @@ export function buildTruncationMessage(
   parts.push(`[${omittedLines} lines omitted]`);
 
   if (executionId) {
+    if (filePath) {
+      const displayPath = exposeFullPath ? filePath : path.basename(filePath);
+      parts.push(`[Full log saved to: ${displayPath}]`);
+    }
     parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
   }
 

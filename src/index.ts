@@ -31,8 +31,8 @@ import { z } from 'zod';
 import { readFileSync, realpathSync } from 'fs';
 import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
-import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
-import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
+import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetCommandOutputSchema } from './utils/toolSchemas.js';
+import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
 import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
@@ -415,8 +415,11 @@ class CLIServer {
 
         // Store log if enabled
         let executionId: string | undefined;
+        let logFilePath: string | undefined;
         if (this.config.global.logging?.enableLogResources && this.logStorage) {
           executionId = this.logStorage.storeLog(command, shellName, workingDir, stdout, stderr, code ?? -1);
+          const storedEntry = this.logStorage.getLog(executionId);
+          logFilePath = storedEntry?.filePath;
         }
 
         // Truncate output if enabled
@@ -443,7 +446,9 @@ class CLIServer {
               enableTruncation: true,
               truncationMessage: this.config.global.logging.truncationMessage
             },
-            executionId
+            executionId,
+            logFilePath,
+            Boolean(this.config.global.logging?.exposeFullPath)
           );
 
           resultMessage = formatTruncatedOutput(truncated);
@@ -470,7 +475,12 @@ class CLIServer {
             executionId: executionId,
             totalLines: totalLines,
             returnedLines: returnedLines,
-            wasTruncated: wasTruncated
+            wasTruncated: wasTruncated,
+            filePath: logFilePath
+              ? (this.config.global.logging?.exposeFullPath
+                ? logFilePath
+                : path.basename(logFilePath))
+              : undefined
           }
         });
       });
@@ -727,6 +737,15 @@ class CLIServer {
           name: "execute_command",
           description: executeCommandDescription,
           inputSchema: executeCommandSchema
+        });
+      }
+
+      // Add get_command_output tool when log resources are enabled
+      if (this.config.global.logging?.enableLogResources && this.logStorage) {
+        tools.push({
+          name: "get_command_output",
+          description: buildGetCommandOutputDescription(),
+          inputSchema: buildGetCommandOutputSchema()
         });
       }
 
@@ -1048,6 +1067,101 @@ class CLIServer {
             };
           }
         }
+      }
+
+
+      case "get_command_output": {
+        if (!this.config.global.logging?.enableLogResources || !this.logStorage) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            'Log storage is not enabled. Enable logging to retrieve command output.'
+          );
+        }
+
+        const loggingConfig = this.config.global.logging || {};
+        const maxReturnLines = loggingConfig.maxReturnLines ?? 1000;
+
+        const args = z.object({
+          executionId: z.string(),
+          startLine: z.number().int().min(1).optional(),
+          endLine: z.number().int().min(1).optional(),
+          search: z.string().optional(),
+          maxLines: z.number().int().min(1).max(10000).optional()
+        }).parse(toolParams.arguments);
+
+        const log = this.logStorage.getLog(args.executionId);
+
+        if (!log) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `Log entry not found: ${args.executionId}. It may have expired.`
+          );
+        }
+
+        const normalizedOutput = log.combinedOutput.replace(/\r\n/g, '\n');
+        let lines = normalizedOutput.split('\n');
+
+        const start = args.startLine ?? 1;
+        const end = args.endLine ?? lines.length;
+        if (start > end) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `startLine (${start}) must be less than or equal to endLine (${end})`
+          );
+        }
+        lines = lines.slice(start - 1, end);
+
+        if (args.search) {
+          let regex: RegExp;
+          try {
+            regex = new RegExp(args.search, 'i');
+          } catch (error) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `Invalid search pattern: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+
+          lines = lines.filter(line => regex.test(line));
+          if (lines.length === 0) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `No matches found for pattern: ${args.search}`
+            );
+          }
+        }
+
+        const effectiveMaxLines = Math.min(args.maxLines ?? maxReturnLines, maxReturnLines);
+        const wasTruncated = lines.length > effectiveMaxLines;
+        const returnedLinesArr = wasTruncated ? lines.slice(0, effectiveMaxLines) : lines;
+
+        const header: string[] = [];
+        if (wasTruncated) {
+          header.push(`[Output truncated to ${effectiveMaxLines} lines of ${lines.length}]`);
+        }
+
+        const outputText = [...header, ...returnedLinesArr].join('\n');
+        const filePath = log.filePath
+          ? (loggingConfig.exposeFullPath ? log.filePath : path.basename(log.filePath))
+          : undefined;
+
+        return {
+          content: [{
+            type: 'text',
+            text: outputText
+          }],
+          isError: false,
+          metadata: {
+            executionId: args.executionId,
+            totalLines: lines.length,
+            returnedLines: returnedLinesArr.length,
+            wasTruncated,
+            command: log.command,
+            shell: log.shell,
+            exitCode: log.exitCode,
+            filePath
+          }
+        };
       }
 
 

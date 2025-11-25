@@ -246,3 +246,37 @@ export function buildGetConfigDescription(): string {
 
   return lines.join('\n');
 }
+
+/**
+ * Build get_command_output tool description
+ */
+export function buildGetCommandOutputDescription(): string {
+  const lines: string[] = [];
+
+  lines.push('Retrieve the full output from a previous command execution.');
+  lines.push('');
+  lines.push('Use this tool when command output was truncated and you need to see the complete result.');
+  lines.push('The executionId is provided in the truncation message of the original command.');
+  lines.push('');
+  lines.push('Parameters:');
+  lines.push('- executionId (required): The execution ID from the truncation message');
+  lines.push('- startLine (optional): 1-based start line (default: 1)');
+  lines.push('- endLine (optional): 1-based end line (default: last line)');
+  lines.push('- search (optional): Regex pattern (case-insensitive) to filter lines');
+  lines.push('- maxLines (optional): Maximum lines to return (default: config value)');
+  lines.push('');
+  lines.push('Examples:');
+  lines.push('```json');
+  lines.push('{ "executionId": "20251125-143022-a8f3" }');
+  lines.push('```');
+  lines.push('');
+  lines.push('```json');
+  lines.push('{ "executionId": "20251125-143022-a8f3", "startLine": 100, "endLine": 150 }');
+  lines.push('```');
+  lines.push('');
+  lines.push('```json');
+  lines.push('{ "executionId": "20251125-143022-a8f3", "search": "error|failed|exception" }');
+  lines.push('```');
+
+  return lines.join('\n');
+}

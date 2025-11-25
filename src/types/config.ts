@@ -28,6 +28,21 @@ export interface LoggingConfig {
 
   /** How often to run cleanup in minutes */
   cleanupIntervalMinutes: number;
+
+  /** Optional directory to persist logs to disk. When unset, logs remain in memory only. */
+  logDirectory?: string;
+
+  /** Number of days to retain log files (overrides logRetentionMinutes when set) */
+  logRetentionDays?: number;
+
+  /** Maximum total storage size for log files in bytes */
+  maxTotalLogSize?: number;
+
+  /** Maximum lines that get_command_output will return */
+  maxReturnLines?: number;
+
+  /** Whether to expose full log file paths in responses */
+  exposeFullPath?: boolean;
 }
 
 /**
