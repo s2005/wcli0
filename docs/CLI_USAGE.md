@@ -225,6 +225,24 @@ When workingDir is omitted, the command uses the server's current directory:
 }
 ```
 
+## Output Management
+
+### Truncated Output
+
+By default, command output is truncated to 20 lines to prevent large responses. You can adjust this using the `maxOutputLines` parameter.
+
+```json
+{
+  "tool": "execute_command",
+  "arguments": {
+    "shell": "cmd",
+    "command": "dir /s",
+    "workingDir": "C:\\Projects",
+    "maxOutputLines": 100
+  }
+}
+```
+
 ## Common Usage Patterns
 
 ### File Operations
