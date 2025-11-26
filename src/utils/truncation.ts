@@ -108,7 +108,11 @@ export function buildTruncationMessage(
 
   if (executionId) {
     if (filePath) {
-      const displayPath = exposeFullPath ? filePath : path.basename(filePath);
+      const displayPath = exposeFullPath
+        ? filePath
+        : (filePath.includes('\\') || filePath.includes(':')
+            ? path.win32.basename(filePath)
+            : path.basename(filePath));
       parts.push(`[Full log saved to: ${displayPath}]`);
     }
     parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
