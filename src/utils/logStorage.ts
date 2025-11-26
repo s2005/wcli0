@@ -518,17 +518,35 @@ export class LogStorageManager {
       ? entry.filePath
       : path.join(logDir, entry.filePath);
 
+    // Build log content with metadata header
+    const header = [
+      `# Command Execution Log`,
+      `# ====================`,
+      `# Execution ID: ${entry.id}`,
+      `# Timestamp: ${entry.timestamp.toISOString()}`,
+      `# Shell: ${entry.shell}`,
+      `# Working Directory: ${entry.workingDirectory}`,
+      `# Command: ${entry.command}`,
+      `# Exit Code: ${entry.exitCode}`,
+      `# Total Lines: ${entry.totalLines}`,
+      `#`,
+      `# --- Output ---`,
+      ``
+    ].join('\n');
+
     // Normalize line endings for consistency
-    let content = this.normalizeNewlines(entry.combinedOutput);
+    let outputContent = this.normalizeNewlines(entry.combinedOutput);
+    let content = header + outputContent;
 
     // Final guardrail on size
     const maxSize = this.config.maxLogSize ?? 1024 * 1024;
     if (Buffer.byteLength(content, 'utf8') > maxSize) {
-      const lines = content.split('\n');
-      while (Buffer.byteLength(content, 'utf8') > maxSize && lines.length > 1) {
+      const lines = outputContent.split('\n');
+      while (Buffer.byteLength(header + outputContent, 'utf8') > maxSize && lines.length > 1) {
         lines.shift();
-        content = `[Log truncated to ${maxSize} bytes]\n${lines.join('\n')}`;
+        outputContent = `[Log truncated to ${maxSize} bytes]\n${lines.join('\n')}`;
       }
+      content = header + outputContent;
     }
 
     await fs.writeFile(filePath, content, 'utf8');
