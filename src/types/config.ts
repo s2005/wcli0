@@ -43,6 +43,9 @@ export interface LoggingConfig {
 
   /** Whether to expose full log file paths in responses */
   exposeFullPath?: boolean;
+
+  /** Maximum bytes that get_command_output will return */
+  maxReturnBytes?: number;
 }
 
 /**

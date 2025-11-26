@@ -1079,7 +1079,8 @@ class CLIServer {
         }
 
         const loggingConfig = this.config.global.logging || {};
-        const maxReturnLines = loggingConfig.maxReturnLines ?? 1000;
+        const maxReturnLines = loggingConfig.maxReturnLines ?? 500;
+        const maxReturnBytes = loggingConfig.maxReturnBytes ?? loggingConfig.maxLogSize ?? 1024 * 1024;
 
         const args = z.object({
           executionId: z.string(),
@@ -1132,15 +1133,34 @@ class CLIServer {
         }
 
         const effectiveMaxLines = Math.min(args.maxLines ?? maxReturnLines, maxReturnLines);
-        const wasTruncated = lines.length > effectiveMaxLines;
-        const returnedLinesArr = wasTruncated ? lines.slice(0, effectiveMaxLines) : lines;
+        const lineLimited = lines.length > effectiveMaxLines;
+        let returnedLinesArr = lineLimited ? lines.slice(0, effectiveMaxLines) : lines;
+
+        // Apply byte-size guardrail
+        let byteLimited = false;
+        let byteTotal = 0;
+        const sizedLines: string[] = [];
+        for (const line of returnedLinesArr) {
+          const chunk = `${line}\n`;
+          const chunkBytes = Buffer.byteLength(chunk, 'utf8');
+          if (byteTotal + chunkBytes > maxReturnBytes) {
+            byteLimited = true;
+            break;
+          }
+          byteTotal += chunkBytes;
+          sizedLines.push(line);
+        }
+        returnedLinesArr = sizedLines;
 
         const header: string[] = [];
-        if (wasTruncated) {
+        if (lineLimited) {
           header.push(`[Output truncated to ${effectiveMaxLines} lines of ${lines.length}]`);
         }
+        if (byteLimited) {
+          header.push(`[Output truncated to fit ${maxReturnBytes} bytes]`);
+        }
 
-        const outputText = [...header, ...returnedLinesArr].join('\n');
+        const outputText = [...header, ...returnedLinesArr].join('\n').replace(/\n$/, '');
         const filePath = log.filePath
           ? (loggingConfig.exposeFullPath ? log.filePath : path.basename(log.filePath))
           : undefined;
@@ -1155,11 +1175,12 @@ class CLIServer {
             executionId: args.executionId,
             totalLines: lines.length,
             returnedLines: returnedLinesArr.length,
-            wasTruncated,
+            wasTruncated: lineLimited || byteLimited,
             command: log.command,
             shell: log.shell,
             exitCode: log.exitCode,
-            filePath
+            filePath,
+            truncatedByBytes: byteLimited
           }
         };
       }

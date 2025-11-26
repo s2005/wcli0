@@ -38,4 +38,61 @@ describe('get_command_output tool', () => {
       } as any)
     ).rejects.toBeInstanceOf(McpError);
   });
+
+  test('returns requested line range', async () => {
+    const config = cloneConfig();
+    config.global.logging!.enableLogResources = true;
+    server = new CLIServer(config as any);
+
+    const logId = server['logStorage']!.storeLog(
+      'echo test',
+      'cmd',
+      process.cwd(),
+      ['a', 'b', 'c', 'd'].join('\n'),
+      '',
+      0
+    );
+
+    const result = await server._executeTool({
+      name: 'get_command_output',
+      arguments: {
+        executionId: logId,
+        startLine: 2,
+        endLine: 3
+      }
+    } as any);
+
+    expect(result.isError).toBe(false);
+    expect(result.content[0].text.trim()).toBe('b\nc');
+    expect(result.metadata?.returnedLines).toBe(2);
+  });
+
+  test('enforces byte-size guardrail', async () => {
+    const config = cloneConfig();
+    config.global.logging!.enableLogResources = true;
+    config.global.logging!.maxLogSize = 1000; // keep storage lenient
+    config.global.logging!.maxReturnBytes = 50; // tighten retrieval guard
+    server = new CLIServer(config as any);
+
+    const longLine = 'x'.repeat(60);
+    const logId = server['logStorage']!.storeLog(
+      'echo long',
+      'cmd',
+      process.cwd(),
+      longLine,
+      '',
+      0
+    );
+
+    const result = await server._executeTool({
+      name: 'get_command_output',
+      arguments: {
+        executionId: logId
+      }
+    } as any);
+
+    expect(result.isError).toBe(false);
+    expect(result.metadata?.truncatedByBytes).toBe(true);
+    expect(result.content[0].text).toContain('Output truncated to fit 50 bytes');
+  });
 });

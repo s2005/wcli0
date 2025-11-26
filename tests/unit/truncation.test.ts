@@ -217,6 +217,36 @@ describe('buildTruncationMessage', () => {
     const message99 = buildTruncationMessage(99, 100, 1, undefined, template);
     expect(message99).toContain('99 lines omitted');
   });
+
+  test('should include basename when exposeFullPath is false', () => {
+    const message = buildTruncationMessage(
+      10,
+      20,
+      10,
+      'exec-abc',
+      template,
+      'C:\\logs\\full\\run.log',
+      false
+    );
+
+    expect(message).toContain('run.log');
+    expect(message).not.toContain('C:\\logs\\full\\run.log');
+    expect(message).toContain('get_command_output');
+  });
+
+  test('should include full path when exposeFullPath is true', () => {
+    const message = buildTruncationMessage(
+      10,
+      20,
+      10,
+      'exec-abc',
+      template,
+      'C:\\logs\\full\\run.log',
+      true
+    );
+
+    expect(message).toContain('C:\\logs\\full\\run.log');
+  });
 });
 
 describe('formatTruncatedOutput', () => {

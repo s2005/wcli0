@@ -152,7 +152,11 @@ wcli0 automatically stores command execution logs and provides MCP resources for
 
 ### Output Truncation
 
-By default, command responses show only the last 20 lines to prevent overwhelming long outputs. Full output is always stored and accessible via log resources. Configure truncation settings:
+By default, command responses show only the last 20 lines to prevent overwhelming long outputs. Full output is always stored and accessible via:
+- MCP log resources (e.g., `cli://logs/commands/{id}`)
+- The `get_command_output` tool (fallback for hosts that cannot read resources)
+
+Configure truncation settings:
 
 ```json
 {

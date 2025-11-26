@@ -24,7 +24,8 @@ const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
   logDirectory: undefined,
   logRetentionDays: 7,
   maxTotalLogSize: 104857600, // 100MB disk budget
-  maxReturnLines: 1000,
+  maxReturnLines: 500,
+  maxReturnBytes: 1048576, // 1MB cap for retrieval
   exposeFullPath: false
 };
 
@@ -565,6 +566,16 @@ function validateLoggingConfig(config?: LoggingConfig): void {
       config.maxTotalLogSize > 1073741824
     ) {
       throw new Error('maxTotalLogSize must be between 1MB and 1GB');
+    }
+  }
+
+  if (config.maxReturnBytes !== undefined) {
+    if (
+      typeof config.maxReturnBytes !== 'number' ||
+      config.maxReturnBytes < 1024 ||
+      config.maxReturnBytes > 10485760
+    ) {
+      throw new Error('maxReturnBytes must be between 1KB and 10MB');
     }
   }
 
