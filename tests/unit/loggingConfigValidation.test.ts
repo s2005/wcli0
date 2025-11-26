@@ -32,4 +32,10 @@ describe('logging config validation', () => {
     config.global.logging!.maxReturnLines = -5 as unknown as number;
     expect(() => validateConfig(config)).toThrow(/maxReturnLines/);
   });
+
+  test('rejects traversal in logDirectory', () => {
+    const config = cloneConfig();
+    config.global.logging!.logDirectory = '..\\secret';
+    expect(() => validateConfig(config)).toThrow(/logDirectory/);
+  });
 });

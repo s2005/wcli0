@@ -437,6 +437,11 @@ export class LogStorageManager {
       return process.env[key] ?? '';
     });
 
+    const originalNormalized = path.normalize(expanded);
+    if (originalNormalized.includes(`..${path.sep}`) || originalNormalized === '..' || originalNormalized.startsWith(`..${path.sep}`)) {
+      throw new Error(`Log directory must not contain path traversal: ${logDir}`);
+    }
+
     const resolved = path.resolve(expanded);
     const normalized = path.normalize(resolved);
 

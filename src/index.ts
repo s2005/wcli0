@@ -1101,6 +1101,7 @@ class CLIServer {
         }
 
         const normalizedOutput = log.combinedOutput.replace(/\r\n/g, '\n');
+        const originalTotalLines = normalizedOutput.split('\n').length;
         let lines = normalizedOutput.split('\n');
 
         const start = args.startLine ?? 1;
@@ -1198,7 +1199,7 @@ class CLIServer {
           isError: false,
           metadata: {
             executionId: args.executionId,
-            totalLines: lines.length,
+            totalLines: originalTotalLines,
             returnedLines: returnedLinesArr.length,
             wasTruncated: lineLimited || byteLimited,
             command: log.command,

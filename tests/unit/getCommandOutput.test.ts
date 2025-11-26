@@ -65,6 +65,7 @@ describe('get_command_output tool', () => {
     expect(result.isError).toBe(false);
     expect(result.content[0].text.trim()).toBe('b\nc');
     expect(result.metadata?.returnedLines).toBe(2);
+    expect(result.metadata?.totalLines).toBe(4); // should report full log length
   });
 
   test('enforces byte-size guardrail', async () => {
