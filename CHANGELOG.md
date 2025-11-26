@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.1.0] - 2025-11-26
+
+### Added
+
+- **Modular Shell Architecture**: Complete refactoring of shell handling for better extensibility
+  - Plugin-based shell module system with dynamic loading
+  - Shell registry for managing available shells
+  - Improved shell detection and validation
+- **Truncation Fallback System**: Enhanced output handling for long-running commands
+  - File-based log storage for truncated output
+  - `get_command_output` tool to retrieve full output from truncated commands
+  - Command metadata header in file-based logs
+  - Cross-platform path handling for truncation
+- **Per-Command Output Limit**: New `maxOutputLines` parameter for individual commands
+  - Override global output line limit on a per-command basis
+  - Allows fine-grained control over output truncation
+- **CLI Logging Options**: New command-line flags for logging configuration
+  - Simplified truncation output messages
+  - Better fallback guidance in tool descriptions
+
+### Changed
+
+- Improved documentation with consolidated shell architecture guides
+- Enhanced tool descriptions with maxOutputLines documentation
+- Better resource link handling based on enableLogResources setting
+- Type-safe logging config usage throughout codebase
+
+### Fixed
+
+- Cross-platform path separator handling in truncation basename extraction
+- Byte-limit header accounting in log storage
+- Windows path handling in truncation messages
+- Log directory traversal security checks
+- MCP folder propagation in server configuration
+- ESM import compatibility in performance tests
+- Build script names and preset-specific bundles
+
 ## [1.0.9] - 2025-11-06
 
 ### Added
