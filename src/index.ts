@@ -165,8 +165,8 @@ class CLIServer {
     // Initialize server working directory
     this.initializeWorkingDirectory();
 
-    // Initialize log storage if enabled
-    if (this.config.global.logging?.enableLogResources) {
+    // Initialize log storage whenever logging is configured (resource exposure controlled separately)
+    if (this.config.global.logging) {
       this.logStorage = new LogStorageManager(this.config.global.logging);
       this.logStorage.startCleanup();
     }
@@ -416,7 +416,7 @@ class CLIServer {
         // Store log if enabled
         let executionId: string | undefined;
         let logFilePath: string | undefined;
-        if (this.config.global.logging?.enableLogResources && this.logStorage) {
+        if (this.logStorage) {
           executionId = this.logStorage.storeLog(command, shellName, workingDir, stdout, stderr, code ?? -1);
           const storedEntry = this.logStorage.getLog(executionId);
           logFilePath = storedEntry?.filePath;
@@ -740,8 +740,8 @@ class CLIServer {
         });
       }
 
-      // Add get_command_output tool when log resources are enabled
-      if (this.config.global.logging?.enableLogResources && this.logStorage) {
+      // Add get_command_output tool whenever logging is enabled (resources optional)
+      if (this.logStorage) {
         tools.push({
           name: "get_command_output",
           description: buildGetCommandOutputDescription(),
@@ -1071,7 +1071,7 @@ class CLIServer {
 
 
       case "get_command_output": {
-        if (!this.config.global.logging?.enableLogResources || !this.logStorage) {
+        if (!this.logStorage) {
           throw new McpError(
             ErrorCode.InvalidRequest,
             'Log storage is not enabled. Enable logging to retrieve command output.'
