@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { ShellRegistry } from '../registry.js';
 import { ShellPlugin, ShellConfig } from '../../shells/base/ShellInterface.js';
+import { setDebugLogging } from '../../utils/log.js';
 
 // Mock shell plugins for testing
 class MockShellA implements ShellPlugin {
@@ -50,6 +51,7 @@ describe('ShellRegistry', () => {
     });
 
     it('should not register duplicate shells', () => {
+      setDebugLogging(true);
       const shell1 = new MockShellA();
       const shell2 = new MockShellA();
 
@@ -64,6 +66,7 @@ describe('ShellRegistry', () => {
       );
 
       consoleSpy.mockRestore();
+      setDebugLogging(false);
     });
 
     it('should register multiple different shells', () => {
@@ -79,7 +82,8 @@ describe('ShellRegistry', () => {
     });
 
     it('should log when registering shell', () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      setDebugLogging(true);
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       const shell = new MockShellA();
 
       registry.register(shell);
@@ -87,6 +91,7 @@ describe('ShellRegistry', () => {
       expect(consoleSpy).toHaveBeenCalledWith('Registering shell: mock-a');
 
       consoleSpy.mockRestore();
+      setDebugLogging(false);
     });
   });
 

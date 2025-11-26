@@ -3,6 +3,7 @@
  */
 
 import { TruncatedOutput, TruncationConfig } from '../types/logging.js';
+import path from 'path';
 
 /**
  * Truncates command output to a maximum number of lines
@@ -17,7 +18,11 @@ export function truncateOutput(
   output: string,
   maxLines: number,
   config: TruncationConfig,
-  executionId?: string
+  executionId?: string,
+  filePath?: string,
+  exposeFullPath: boolean = false,
+  enableLogResources: boolean = true,
+  logDirectory?: string
 ): TruncatedOutput {
   // Handle empty output
   if (!output || output.length === 0) {
@@ -56,7 +61,11 @@ export function truncateOutput(
     totalLines,
     maxLines,
     executionId,
-    config.truncationMessage
+    config.truncationMessage,
+    filePath,
+    exposeFullPath,
+    enableLogResources,
+    logDirectory
   );
 
   return {
@@ -83,7 +92,11 @@ export function buildTruncationMessage(
   totalLines: number,
   returnedLines: number,
   executionId?: string,
-  template?: string
+  template?: string,
+  filePath?: string,
+  exposeFullPath: boolean = false,
+  enableLogResources: boolean = true,
+  logDirectory?: string
 ): string {
   const defaultTemplate = '[Output truncated: Showing last {returnedLines} of {totalLines} lines]';
   const messageTemplate = template || defaultTemplate;
@@ -100,7 +113,27 @@ export function buildTruncationMessage(
   parts.push(`[${omittedLines} lines omitted]`);
 
   if (executionId) {
-    parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
+    if (filePath) {
+      // File-based logging is enabled - show file path only (simpler access)
+      let displayPath: string;
+      if (exposeFullPath) {
+        displayPath = filePath;
+      } else if (logDirectory) {
+        // Show relative path from log directory (e.g., ./.logs/filename.log)
+        const relativePath = path.relative(process.cwd(), filePath);
+        displayPath = relativePath.startsWith('..') ? filePath : './' + relativePath.replace(/\\/g, '/');
+      } else {
+        // Fallback to just filename - handle both Windows and Unix path separators
+        const basename = filePath.split(/[\\/]/).pop() || filePath;
+        displayPath = './' + basename;
+      }
+      parts.push(`[Full log saved to: ${displayPath}]`);
+      // Don't show MCP resource or tool fallback when file is available
+    } else if (enableLogResources) {
+      // In-memory only - show MCP resource and tool fallback
+      parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
+      parts.push(`[Fallback: use get_command_output with executionId "${executionId}"]`);
+    }
   }
 
   return parts.join('\n');

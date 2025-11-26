@@ -1,5 +1,13 @@
 /**
- * Logging configuration for command output management
+ * Logging configuration for command output management.
+ *
+ * Storage Limits:
+ * - maxTotalStorageSize: Controls in-memory buffer size for command outputs
+ * - maxTotalLogSize: Controls on-disk log file storage when logDirectory is set
+ *
+ * Retention:
+ * - logRetentionDays: Takes precedence when set (days-based retention)
+ * - logRetentionMinutes: Used when logRetentionDays is not set (minutes-based retention)
  */
 export interface LoggingConfig {
   /** Maximum number of lines to show in command output (rest is truncated) */
@@ -17,17 +25,49 @@ export interface LoggingConfig {
   /** Maximum size of a single log entry in bytes */
   maxLogSize: number;
 
-  /** Maximum total storage size for all logs in bytes */
+  /**
+   * Maximum total size for in-memory command output storage in bytes.
+   * This limits the memory used to buffer command outputs before persistence.
+   * @see maxTotalLogSize for on-disk storage limit
+   */
   maxTotalStorageSize: number;
 
   /** Whether to enable log resource endpoints */
   enableLogResources: boolean;
 
-  /** How long to retain logs in minutes */
+  /**
+   * How long to retain logs in minutes.
+   * Note: logRetentionDays takes precedence when set.
+   */
   logRetentionMinutes: number;
 
   /** How often to run cleanup in minutes */
   cleanupIntervalMinutes: number;
+
+  /** Optional directory to persist logs to disk. When unset, logs remain in memory only. */
+  logDirectory?: string;
+
+  /**
+   * Number of days to retain log files.
+   * When set, this overrides logRetentionMinutes.
+   */
+  logRetentionDays?: number;
+
+  /**
+   * Maximum total size for on-disk log file storage in bytes.
+   * Only applies when logDirectory is configured.
+   * @see maxTotalStorageSize for in-memory buffer limit
+   */
+  maxTotalLogSize?: number;
+
+  /** Maximum lines that get_command_output will return */
+  maxReturnLines?: number;
+
+  /** Whether to expose full log file paths in responses */
+  exposeFullPath?: boolean;
+
+  /** Maximum bytes that get_command_output will return */
+  maxReturnBytes?: number;
 }
 
 /**

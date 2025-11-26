@@ -98,3 +98,36 @@ export function buildValidateDirectoriesSchema(
   
   return schema;
 }
+
+/**
+ * Build schema for get_command_output tool
+ */
+export function buildGetCommandOutputSchema(): ToolSchema {
+  return {
+    type: 'object',
+    properties: {
+      executionId: {
+        type: 'string',
+        description: 'Execution ID from a previous command (shown in truncation message)'
+      },
+      startLine: {
+        type: 'number',
+        description: '1-based start line (optional, default 1)'
+      },
+      endLine: {
+        type: 'number',
+        description: '1-based end line (optional, default last line)'
+      },
+      search: {
+        type: 'string',
+        description: 'Regex pattern to filter lines (case-insensitive)'
+      },
+      maxLines: {
+        type: 'number',
+        description: 'Maximum lines to return (default: config maxReturnLines)'
+      }
+    },
+    required: ['executionId'],
+    additionalProperties: false
+  };
+}

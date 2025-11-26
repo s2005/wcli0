@@ -31,11 +31,11 @@ import { z } from 'zod';
 import { readFileSync, realpathSync } from 'fs';
 import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
-import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
-import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions } from './utils/config.js';
+import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetCommandOutputSchema } from './utils/toolSchemas.js';
+import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
-import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
+import type { ServerConfig, ResolvedShellConfig, GlobalConfig, LoggingConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
 import { setDebugLogging, debugLog, debugWarn, errorLog } from './utils/log.js';
@@ -128,6 +128,26 @@ const parseArgs = async () => {
       default: false,
       description: 'Enable debug logging'
     })
+    .option('maxOutputLines', {
+      type: 'number',
+      description: 'Maximum output lines before truncation (default: 20)'
+    })
+    .option('enableTruncation', {
+      type: 'boolean',
+      description: 'Enable output truncation (default: true)'
+    })
+    .option('enableLogResources', {
+      type: 'boolean',
+      description: 'Enable log resources for get_command_output (default: true)'
+    })
+    .option('maxReturnLines', {
+      type: 'number',
+      description: 'Maximum lines returned by get_command_output (default: 500)'
+    })
+    .option('logDirectory', {
+      type: 'string',
+      description: 'Directory to store command output log files (enables file-based logging)'
+    })
     .help()
     .parse();
 };
@@ -165,10 +185,20 @@ class CLIServer {
     // Initialize server working directory
     this.initializeWorkingDirectory();
 
-    // Initialize log storage if enabled
-    if (this.config.global.logging?.enableLogResources) {
+    // Initialize log storage whenever logging is configured (resource exposure controlled separately)
+    if (this.config.global.logging) {
       this.logStorage = new LogStorageManager(this.config.global.logging);
       this.logStorage.startCleanup();
+      
+      // Log storage location info (always log to stderr for security awareness)
+      const logDir = this.config.global.logging.logDirectory;
+      if (logDir) {
+        // Always warn about file-based logging since it may contain sensitive data
+        errorLog(`WARNING: Command output logs will be stored in: ${logDir}`);
+        errorLog(`WARNING: Log files may contain sensitive information from command output.`);
+      } else {
+        debugLog('Log storage: in-memory only (no logDirectory configured)');
+      }
     }
 
     this.setupHandlers();
@@ -415,8 +445,11 @@ class CLIServer {
 
         // Store log if enabled
         let executionId: string | undefined;
-        if (this.config.global.logging?.enableLogResources && this.logStorage) {
+        let logFilePath: string | undefined;
+        if (this.logStorage) {
           executionId = this.logStorage.storeLog(command, shellName, workingDir, stdout, stderr, code ?? -1);
+          const storedEntry = this.logStorage.getLog(executionId);
+          logFilePath = storedEntry?.filePath;
         }
 
         // Truncate output if enabled
@@ -443,7 +476,11 @@ class CLIServer {
               enableTruncation: true,
               truncationMessage: this.config.global.logging.truncationMessage
             },
-            executionId
+            executionId,
+            logFilePath,
+            Boolean(this.config.global.logging?.exposeFullPath),
+            Boolean(this.config.global.logging?.enableLogResources),
+            this.config.global.logging?.logDirectory
           );
 
           resultMessage = formatTruncatedOutput(truncated);
@@ -470,7 +507,11 @@ class CLIServer {
             executionId: executionId,
             totalLines: totalLines,
             returnedLines: returnedLines,
-            wasTruncated: wasTruncated
+            wasTruncated: wasTruncated,
+            // Only expose filePath when exposeFullPath is true (consistent with get_command_output)
+            filePath: logFilePath && this.config.global.logging?.exposeFullPath
+              ? logFilePath
+              : undefined
           }
         });
       });
@@ -718,7 +759,8 @@ class CLIServer {
 
       // Add execute_command tool with dynamic description and schema
       if (enabledShells.length > 0) {
-        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs);
+        const maxOutputLines = this.config.global.logging?.maxOutputLines ?? 20;
+        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs, maxOutputLines);
         const executeCommandSchema = buildExecuteCommandSchema(enabledShells, this.resolvedConfigs);
         
         debugLog(`[tool: execute_command] Description:\n${executeCommandDescription}`);
@@ -727,6 +769,15 @@ class CLIServer {
           name: "execute_command",
           description: executeCommandDescription,
           inputSchema: executeCommandSchema
+        });
+      }
+
+      // Add get_command_output tool whenever logging is enabled (resources optional)
+      if (this.logStorage) {
+        tools.push({
+          name: "get_command_output",
+          description: buildGetCommandOutputDescription(),
+          inputSchema: buildGetCommandOutputSchema()
         });
       }
 
@@ -1051,6 +1102,147 @@ class CLIServer {
       }
 
 
+      case "get_command_output": {
+        if (!this.logStorage) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            'Log storage is not enabled. Enable logging to retrieve command output.'
+          );
+        }
+
+        const loggingConfig: Partial<LoggingConfig> = this.config.global.logging ?? {};
+        const maxReturnLines = loggingConfig.maxReturnLines ?? 500;
+        const maxReturnBytes = loggingConfig.maxReturnBytes ?? loggingConfig.maxLogSize ?? 1024 * 1024;
+
+        const args = z.object({
+          executionId: z.string(),
+          startLine: z.number().int().min(1).optional(),
+          endLine: z.number().int().min(1).optional(),
+          search: z.string().optional(),
+          maxLines: z.number().int().min(1).max(10000).optional()
+        }).parse(toolParams.arguments);
+
+        const log = this.logStorage.getLog(args.executionId);
+
+        if (!log) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `Log entry not found: ${args.executionId}. It may have expired.`
+          );
+        }
+
+        const normalizedOutput = log.combinedOutput.replace(/\r\n/g, '\n');
+        const originalTotalLines = normalizedOutput.split('\n').length;
+        let lines = normalizedOutput.split('\n');
+
+        const start = args.startLine ?? 1;
+        const end = args.endLine ?? lines.length;
+        if (start > end) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `startLine (${start}) must be less than or equal to endLine (${end})`
+          );
+        }
+        lines = lines.slice(start - 1, end);
+
+        if (args.search) {
+          let regex: RegExp;
+          try {
+            regex = new RegExp(args.search, 'i');
+          } catch (error) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `Invalid search pattern: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+
+          lines = lines.filter(line => regex.test(line));
+          if (lines.length === 0) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `No matches found for pattern: ${args.search}`
+            );
+          }
+        }
+
+        const effectiveMaxLines = Math.min(args.maxLines ?? maxReturnLines, maxReturnLines);
+        const lineLimited = lines.length > effectiveMaxLines;
+        const candidateLines = lineLimited ? lines.slice(0, effectiveMaxLines) : lines;
+
+        // Build headers first (they must fit as well)
+        const header: string[] = [];
+        if (lineLimited) {
+          header.push(`[Output truncated to ${effectiveMaxLines} lines of ${lines.length}]`);
+        }
+
+        // Apply byte-size guardrail to full response (headers + lines)
+        let byteLimited = false;
+        let byteTotal = 0;
+        let outputText = '';
+        const returnedLinesArr: string[] = [];
+
+        const appendWithLimit = (line: string, countAsReturned: boolean) => {
+          const addition = outputText.length === 0 ? line : `\n${line}`;
+          const chunkBytes = Buffer.byteLength(addition, 'utf8');
+          if (byteTotal + chunkBytes > maxReturnBytes) {
+            return false;
+          }
+          byteTotal += chunkBytes;
+          outputText += addition;
+          if (countAsReturned) {
+            returnedLinesArr.push(line);
+          }
+          return true;
+        };
+
+        const byteNotice = `[Output truncated to fit ${maxReturnBytes} bytes]`;
+
+        for (const h of header) {
+          if (!appendWithLimit(h, false)) {
+            // Even the header doesn't fit; fall back to a minimal notice
+            outputText = byteNotice;
+            byteLimited = true;
+            break;
+          }
+        }
+
+        if (!byteLimited) {
+          for (const line of candidateLines) {
+            if (!appendWithLimit(line, true)) {
+              byteLimited = true;
+              break;
+            }
+          }
+        }
+
+        if (byteLimited && outputText === '') {
+          outputText = byteNotice;
+        }
+        const filePath = log.filePath
+          ? (loggingConfig.exposeFullPath ? log.filePath : undefined)
+          : undefined;
+
+        return {
+          content: [{
+            type: 'text',
+            text: outputText
+          }],
+          isError: false,
+          metadata: {
+            executionId: args.executionId,
+            totalLines: originalTotalLines,
+            returnedLines: returnedLinesArr.length,
+            wasTruncated: lineLimited || byteLimited,
+            command: log.command,
+            shell: log.shell,
+            exitCode: log.exitCode,
+            filePath,
+            truncatedByBytes: byteLimited
+          }
+        };
+      }
+
+
       case "get_config": {
         const safeConfig = createSerializableConfig(this.config);
 
@@ -1113,9 +1305,14 @@ const main = async () => {
     setDebugLogging(Boolean(args.debug));
 
     // Initialize modular shell system
+    // If --shell is specified, only load that shell; otherwise use build config
     const buildConfig = getBuildConfig();
+    const shellsToLoad = args.shell 
+      ? [args.shell as string]
+      : buildConfig.includedShells;
+    
     await loadShells({
-      shells: buildConfig.includedShells,
+      shells: shellsToLoad,
       verbose: buildConfig.verbose || Boolean(args.debug)
     });
     debugLog(`Loaded ${shellRegistry.getCount()} shell modules: ${shellRegistry.getShellTypes().join(', ')}`);
@@ -1154,6 +1351,14 @@ const main = async () => {
       args.blockedOperator as string[] | undefined
     );
     applyCliWslMountPoint(config, args.wslMountPoint as string | undefined);
+    applyCliLogging(
+      config,
+      args.maxOutputLines as number | undefined,
+      args.enableTruncation as boolean | undefined,
+      args.enableLogResources as boolean | undefined,
+      args.maxReturnLines as number | undefined,
+      args.logDirectory as string | undefined
+    );
 
     const server = new CLIServer(config);
     await server.run();

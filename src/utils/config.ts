@@ -9,7 +9,11 @@ import { debugWarn, errorLog } from './log.js';
 const defaultValidatePathRegex = /^[a-zA-Z]:\\(?:[^<>:"/\\|?*]+\\)*[^<>:"/\\|?*]*$/;
 
 /**
- * Default logging configuration
+ * Default logging configuration.
+ *
+ * Note: logRetentionDays takes precedence over logRetentionMinutes when both are set.
+ * The default only sets logRetentionMinutes to allow fine-grained control.
+ * Set logRetentionDays in your config for day-based retention.
  */
 const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
   maxOutputLines: 20,
@@ -17,10 +21,16 @@ const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
   truncationMessage: '[Output truncated: Showing last {returnedLines} of {totalLines} lines]',
   maxStoredLogs: 50,
   maxLogSize: 1048576, // 1MB
-  maxTotalStorageSize: 52428800, // 50MB
+  maxTotalStorageSize: 52428800, // 50MB - in-memory output buffer limit
   enableLogResources: true,
-  logRetentionMinutes: 60,
-  cleanupIntervalMinutes: 5
+  logRetentionMinutes: 60, // Default 1 hour; logRetentionDays overrides if set
+  cleanupIntervalMinutes: 5,
+  logDirectory: undefined,
+  // logRetentionDays: intentionally not set - allows logRetentionMinutes to work as default
+  maxTotalLogSize: 104857600, // 100MB - on-disk log file storage limit
+  maxReturnLines: 500,
+  maxReturnBytes: 1048576, // 1MB cap for retrieval
+  exposeFullPath: false
 };
 
 export const DEFAULT_CONFIG: ServerConfig = {
@@ -181,6 +191,9 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
   config.global.paths.allowedPaths = normalizeAllowedPaths(
     config.global.paths.allowedPaths
   );
+
+  // Validate configuration at startup to catch errors early
+  validateConfig(config);
   
   return config;
 }
@@ -513,6 +526,69 @@ function validateLoggingConfig(config?: LoggingConfig): void {
       throw new Error('cleanupIntervalMinutes must be between 1 and 1440 (1 day)');
     }
   }
+
+  if (config.logRetentionDays !== undefined) {
+    if (
+      !Number.isInteger(config.logRetentionDays) ||
+      config.logRetentionDays < 1 ||
+      config.logRetentionDays > 365
+    ) {
+      throw new Error('logRetentionDays must be an integer between 1 and 365');
+    }
+  }
+
+  if (config.logDirectory !== undefined) {
+    if (typeof config.logDirectory !== 'string' || config.logDirectory.trim() === '') {
+      throw new Error('logDirectory must be a non-empty string');
+    }
+
+    const normalized = path.normalize(config.logDirectory);
+    if (normalized.includes('..')) {
+      throw new Error('logDirectory must not contain path traversal (..)');
+    }
+
+    if (process.platform === 'win32') {
+      const invalidChars = /[<>\"|?*]/;
+      const withoutDrive = normalized.replace(/^[a-zA-Z]:/, '');
+      if (invalidChars.test(withoutDrive)) {
+        throw new Error('logDirectory contains invalid characters');
+      }
+    }
+  }
+
+  if (config.maxReturnLines !== undefined) {
+    if (
+      !Number.isInteger(config.maxReturnLines) ||
+      config.maxReturnLines < 1 ||
+      config.maxReturnLines > 10000
+    ) {
+      throw new Error('maxReturnLines must be an integer between 1 and 10000');
+    }
+  }
+
+  if (config.maxTotalLogSize !== undefined) {
+    if (
+      typeof config.maxTotalLogSize !== 'number' ||
+      config.maxTotalLogSize < 1048576 ||
+      config.maxTotalLogSize > 1073741824
+    ) {
+      throw new Error('maxTotalLogSize must be between 1MB and 1GB');
+    }
+  }
+
+  if (config.maxReturnBytes !== undefined) {
+    if (
+      typeof config.maxReturnBytes !== 'number' ||
+      config.maxReturnBytes < 1024 ||
+      config.maxReturnBytes > 10485760
+    ) {
+      throw new Error('maxReturnBytes must be between 1KB and 10MB');
+    }
+  }
+
+  if (config.exposeFullPath !== undefined && typeof config.exposeFullPath !== 'boolean') {
+    throw new Error('exposeFullPath must be a boolean');
+  }
 }
 
 export function validateConfig(config: ServerConfig): void {
@@ -668,5 +744,51 @@ export function applyCliRestrictions(
       ? []
       : blockedOperators;
     config.global.restrictions.blockedOperators = list;
+  }
+}
+
+export function applyCliLogging(
+  config: ServerConfig,
+  maxOutputLines?: number,
+  enableTruncation?: boolean,
+  enableLogResources?: boolean,
+  maxReturnLines?: number,
+  logDirectory?: string
+): void {
+  // Check if any valid logging option is provided
+  const hasValidOptions = 
+    (maxOutputLines !== undefined && maxOutputLines > 0) ||
+    enableTruncation !== undefined ||
+    enableLogResources !== undefined ||
+    (maxReturnLines !== undefined && maxReturnLines > 0) ||
+    (logDirectory !== undefined && logDirectory.trim() !== '');
+
+  if (!hasValidOptions) {
+    return;
+  }
+
+  // Initialize logging config if not present
+  if (!config.global.logging) {
+    config.global.logging = { ...DEFAULT_LOGGING_CONFIG };
+  }
+
+  if (maxOutputLines !== undefined && maxOutputLines > 0) {
+    config.global.logging.maxOutputLines = maxOutputLines;
+  }
+
+  if (enableTruncation !== undefined) {
+    config.global.logging.enableTruncation = enableTruncation;
+  }
+
+  if (enableLogResources !== undefined) {
+    config.global.logging.enableLogResources = enableLogResources;
+  }
+
+  if (maxReturnLines !== undefined && maxReturnLines > 0) {
+    config.global.logging.maxReturnLines = maxReturnLines;
+  }
+
+  if (logDirectory !== undefined && logDirectory.trim() !== '') {
+    config.global.logging.logDirectory = logDirectory.trim();
   }
 }

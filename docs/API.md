@@ -41,6 +41,54 @@ Return the current server configuration.
 - `global`: The default configuration applied to all shells
 - `shells`: Enabled shells with any security, restriction or path overrides
 
+### get_command_output Tool
+
+Retrieve the full output from a previous command execution. Use this when command output was truncated and you need to see the complete result.
+
+**Arguments:**
+
+- `executionId` (string, required): The execution ID from the truncation message
+- `startLine` (number, optional): 1-based start line (default: 1)
+- `endLine` (number, optional): 1-based end line (default: last line)
+- `search` (string, optional): Regex pattern (case-insensitive) to filter lines
+- `maxLines` (number, optional): Maximum lines to return (default: config value)
+
+**Example:**
+
+```json
+{
+  "name": "get_command_output",
+  "arguments": {
+    "executionId": "20251126-abc123"
+  }
+}
+```
+
+**With line range:**
+
+```json
+{
+  "name": "get_command_output",
+  "arguments": {
+    "executionId": "20251126-abc123",
+    "startLine": 100,
+    "endLine": 150
+  }
+}
+```
+
+**With search filter:**
+
+```json
+{
+  "name": "get_command_output",
+  "arguments": {
+    "executionId": "20251126-abc123",
+    "search": "error|failed|exception"
+  }
+}
+```
+
 ### validate_directories Tool
 
 Check if directories are valid for global or shell-specific contexts.

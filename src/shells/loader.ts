@@ -1,5 +1,6 @@
 import { shellRegistry } from '../core/registry.js';
 import { ShellPlugin } from './base/ShellInterface.js';
+import { debugLog, debugWarn, errorLog } from '../utils/log.js';
 
 export interface LoaderConfig {
   shells: string[];
@@ -20,7 +21,7 @@ export async function loadShells(config: LoaderConfig): Promise<void> {
   for (const shellType of shells) {
     try {
       if (verbose) {
-        console.log(`Loading shell: ${shellType}`);
+        debugLog(`Loading shell: ${shellType}`);
       }
 
       let plugin: ShellPlugin | null = null;
@@ -52,21 +53,21 @@ export async function loadShells(config: LoaderConfig): Promise<void> {
           break;
         }
         default:
-          console.warn(`Unknown shell type: ${shellType}`);
+          debugWarn(`Unknown shell type: ${shellType}`);
       }
 
       if (plugin) {
         shellRegistry.register(plugin);
         if (verbose) {
-          console.log(`✓ Loaded shell: ${plugin.displayName}`);
+          debugLog(`✓ Loaded shell: ${plugin.displayName}`);
         }
       }
     } catch (error) {
-      console.error(`Failed to load shell ${shellType}:`, error);
+      errorLog(`Failed to load shell ${shellType}:`, error);
     }
   }
 
   if (verbose) {
-    console.log(`Loaded ${shellRegistry.getCount()} shell(s)`);
+    debugLog(`Loaded ${shellRegistry.getCount()} shell(s)`);
   }
 }
