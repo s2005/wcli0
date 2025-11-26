@@ -112,6 +112,7 @@ export function buildTruncationMessage(
       parts.push(`[Full log saved to: ${displayPath}]`);
     }
     parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
+    parts.push(`[Fallback: use get_command_output with executionId "${executionId}"]`);
   }
 
   return parts.join('\n');
