@@ -226,7 +226,8 @@ describe('buildTruncationMessage', () => {
       'exec-abc',
       template,
       'C:\\logs\\full\\run.log',
-      false
+      false,
+      true
     );
 
     expect(message).toContain('run.log');
@@ -242,10 +243,27 @@ describe('buildTruncationMessage', () => {
       'exec-abc',
       template,
       'C:\\logs\\full\\run.log',
+      true,
       true
     );
 
     expect(message).toContain('C:\\logs\\full\\run.log');
+  });
+
+  test('should omit resource link when log resources disabled', () => {
+    const message = buildTruncationMessage(
+      10,
+      20,
+      10,
+      'exec-abc',
+      template,
+      'C:\\logs\\full\\run.log',
+      false,
+      false
+    );
+
+    expect(message).not.toContain('cli://logs/commands/exec-abc');
+    expect(message).toContain('get_command_output');
   });
 });
 

@@ -20,7 +20,8 @@ export function truncateOutput(
   config: TruncationConfig,
   executionId?: string,
   filePath?: string,
-  exposeFullPath: boolean = false
+  exposeFullPath: boolean = false,
+  enableLogResources: boolean = true
 ): TruncatedOutput {
   // Handle empty output
   if (!output || output.length === 0) {
@@ -61,7 +62,8 @@ export function truncateOutput(
     executionId,
     config.truncationMessage,
     filePath,
-    exposeFullPath
+    exposeFullPath,
+    enableLogResources
   );
 
   return {
@@ -90,7 +92,8 @@ export function buildTruncationMessage(
   executionId?: string,
   template?: string,
   filePath?: string,
-  exposeFullPath: boolean = false
+  exposeFullPath: boolean = false,
+  enableLogResources: boolean = true
 ): string {
   const defaultTemplate = '[Output truncated: Showing last {returnedLines} of {totalLines} lines]';
   const messageTemplate = template || defaultTemplate;
@@ -115,7 +118,9 @@ export function buildTruncationMessage(
             : path.basename(filePath));
       parts.push(`[Full log saved to: ${displayPath}]`);
     }
-    parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
+    if (enableLogResources) {
+      parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
+    }
     parts.push(`[Fallback: use get_command_output with executionId "${executionId}"]`);
   }
 

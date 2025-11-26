@@ -448,7 +448,8 @@ class CLIServer {
             },
             executionId,
             logFilePath,
-            Boolean(this.config.global.logging?.exposeFullPath)
+            Boolean(this.config.global.logging?.exposeFullPath),
+            Boolean(this.config.global.logging?.enableLogResources)
           );
 
           resultMessage = formatTruncatedOutput(truncated);
