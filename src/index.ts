@@ -1135,35 +1135,59 @@ class CLIServer {
 
         const effectiveMaxLines = Math.min(args.maxLines ?? maxReturnLines, maxReturnLines);
         const lineLimited = lines.length > effectiveMaxLines;
-        let returnedLinesArr = lineLimited ? lines.slice(0, effectiveMaxLines) : lines;
+        const candidateLines = lineLimited ? lines.slice(0, effectiveMaxLines) : lines;
 
-        // Apply byte-size guardrail
-        let byteLimited = false;
-        let byteTotal = 0;
-        const sizedLines: string[] = [];
-        for (const line of returnedLinesArr) {
-          const chunk = `${line}\n`;
-          const chunkBytes = Buffer.byteLength(chunk, 'utf8');
-          if (byteTotal + chunkBytes > maxReturnBytes) {
-            byteLimited = true;
-            break;
-          }
-          byteTotal += chunkBytes;
-          sizedLines.push(line);
-        }
-        returnedLinesArr = sizedLines;
-
+        // Build headers first (they must fit as well)
         const header: string[] = [];
         if (lineLimited) {
           header.push(`[Output truncated to ${effectiveMaxLines} lines of ${lines.length}]`);
         }
-        if (byteLimited) {
-          header.push(`[Output truncated to fit ${maxReturnBytes} bytes]`);
+
+        // Apply byte-size guardrail to full response (headers + lines)
+        let byteLimited = false;
+        let byteTotal = 0;
+        let outputText = '';
+        const returnedLinesArr: string[] = [];
+
+        const appendWithLimit = (line: string, countAsReturned: boolean) => {
+          const addition = outputText.length === 0 ? line : `\n${line}`;
+          const chunkBytes = Buffer.byteLength(addition, 'utf8');
+          if (byteTotal + chunkBytes > maxReturnBytes) {
+            return false;
+          }
+          byteTotal += chunkBytes;
+          outputText += addition;
+          if (countAsReturned) {
+            returnedLinesArr.push(line);
+          }
+          return true;
+        };
+
+        const byteNotice = `[Output truncated to fit ${maxReturnBytes} bytes]`;
+
+        for (const h of header) {
+          if (!appendWithLimit(h, false)) {
+            // Even the header doesn't fit; fall back to a minimal notice
+            outputText = byteNotice;
+            byteLimited = true;
+            break;
+          }
         }
 
-        const outputText = [...header, ...returnedLinesArr].join('\n').replace(/\n$/, '');
+        if (!byteLimited) {
+          for (const line of candidateLines) {
+            if (!appendWithLimit(line, true)) {
+              byteLimited = true;
+              break;
+            }
+          }
+        }
+
+        if (byteLimited && outputText === '') {
+          outputText = byteNotice;
+        }
         const filePath = log.filePath
-          ? (loggingConfig.exposeFullPath ? log.filePath : path.basename(log.filePath))
+          ? (loggingConfig.exposeFullPath ? log.filePath : undefined)
           : undefined;
 
         return {
