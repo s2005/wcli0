@@ -35,7 +35,7 @@ import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetComm
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
 import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
-import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
+import type { ServerConfig, ResolvedShellConfig, GlobalConfig, LoggingConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
 import { setDebugLogging, debugLog, debugWarn, errorLog } from './utils/log.js';
@@ -1078,7 +1078,7 @@ class CLIServer {
           );
         }
 
-        const loggingConfig = this.config.global.logging || {};
+        const loggingConfig: Partial<LoggingConfig> = this.config.global.logging ?? {};
         const maxReturnLines = loggingConfig.maxReturnLines ?? 500;
         const maxReturnBytes = loggingConfig.maxReturnBytes ?? loggingConfig.maxLogSize ?? 1024 * 1024;
 
