@@ -142,6 +142,8 @@ export function buildExecuteCommandDescription(
   lines.push('- Output is automatically truncated if it exceeds the configured limit');
   lines.push(`- Current limit: ${maxOutputLines} lines`);
   lines.push('- Use `maxOutputLines` parameter to override the limit for a specific command');
+  lines.push('- If truncated, use `get_command_output` tool with the executionId to retrieve full output');
+  lines.push('- When file logging is enabled (via `logDirectory`), full logs are also saved to disk');
   lines.push('');
   
   // Add examples
