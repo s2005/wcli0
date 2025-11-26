@@ -229,7 +229,7 @@ When workingDir is omitted, the command uses the server's current directory:
 
 ### Truncated Output
 
-By default, command output is truncated to 20 lines to prevent large responses. You can adjust this using the `maxOutputLines` parameter.
+By default, command output is truncated to 20 lines to prevent large responses. You can adjust this using the `maxOutputLines` parameter:
 
 ```json
 {
@@ -242,6 +242,18 @@ By default, command output is truncated to 20 lines to prevent large responses. 
   }
 }
 ```
+
+### File-Based Logging
+
+When the server is configured with `--logDirectory`, full output is saved to log files. Truncation messages will display the file path for easy access:
+
+```text
+[Output truncated: Showing last 20 of 150 lines]
+[130 lines omitted]
+[Full log saved to: ./logs/20251126-abc123.log]
+```
+
+This is simpler than in-memory mode, which shows MCP resource URLs and fallback tool information.
 
 ## Common Usage Patterns
 

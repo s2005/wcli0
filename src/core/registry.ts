@@ -1,4 +1,5 @@
 import { ShellPlugin } from '../shells/base/ShellInterface.js';
+import { debugLog, debugWarn } from '../utils/log.js';
 
 /**
  * Shell Registry
@@ -29,10 +30,10 @@ export class ShellRegistry {
    */
   register(shell: ShellPlugin): void {
     if (this.shells.has(shell.shellType)) {
-      console.warn(`Shell ${shell.shellType} is already registered, skipping`);
+      debugWarn(`Shell ${shell.shellType} is already registered, skipping`);
       return;
     }
-    console.log(`Registering shell: ${shell.shellType}`);
+    debugLog(`Registering shell: ${shell.shellType}`);
     this.shells.set(shell.shellType, shell);
   }
 

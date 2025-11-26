@@ -3,6 +3,7 @@ import { shellRegistry } from '../../src/core/registry.js';
 import { loadShells } from '../../src/shells/loader.js';
 import { getBuildConfig } from '../../src/build/shell-config.js';
 import { buildExecuteCommandSchema } from '../../src/utils/toolSchemas.js';
+import { setDebugLogging } from '../../src/utils/log.js';
 
 describe('Modular Shell System Integration', () => {
   const originalEnv = process.env;
@@ -20,6 +21,7 @@ describe('Modular Shell System Integration', () => {
   afterEach(() => {
     process.env = originalEnv;
     shellRegistry.clear();
+    setDebugLogging(false);
   });
 
   describe('Shell Loading Integration', () => {
@@ -87,7 +89,8 @@ describe('Modular Shell System Integration', () => {
       process.env.SHELL_BUILD_PRESET = 'gitbash-only';
       process.env.BUILD_VERBOSE = 'true';
 
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+      setDebugLogging(true);
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       const config = getBuildConfig();
       expect(config.verbose).toBe(true);
@@ -275,6 +278,7 @@ describe('Modular Shell System Integration', () => {
     });
 
     it('should handle invalid shell types in custom list', async () => {
+      setDebugLogging(true);
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       process.env.INCLUDED_SHELLS = 'gitbash,invalid-shell';

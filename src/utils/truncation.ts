@@ -21,7 +21,8 @@ export function truncateOutput(
   executionId?: string,
   filePath?: string,
   exposeFullPath: boolean = false,
-  enableLogResources: boolean = true
+  enableLogResources: boolean = true,
+  logDirectory?: string
 ): TruncatedOutput {
   // Handle empty output
   if (!output || output.length === 0) {
@@ -63,7 +64,8 @@ export function truncateOutput(
     config.truncationMessage,
     filePath,
     exposeFullPath,
-    enableLogResources
+    enableLogResources,
+    logDirectory
   );
 
   return {
@@ -93,7 +95,8 @@ export function buildTruncationMessage(
   template?: string,
   filePath?: string,
   exposeFullPath: boolean = false,
-  enableLogResources: boolean = true
+  enableLogResources: boolean = true,
+  logDirectory?: string
 ): string {
   const defaultTemplate = '[Output truncated: Showing last {returnedLines} of {totalLines} lines]';
   const messageTemplate = template || defaultTemplate;
@@ -111,17 +114,25 @@ export function buildTruncationMessage(
 
   if (executionId) {
     if (filePath) {
-      const displayPath = exposeFullPath
-        ? filePath
-        : (filePath.includes('\\') || filePath.includes(':')
-            ? path.win32.basename(filePath)
-            : path.basename(filePath));
+      // File-based logging is enabled - show file path only (simpler access)
+      let displayPath: string;
+      if (exposeFullPath) {
+        displayPath = filePath;
+      } else if (logDirectory) {
+        // Show relative path from log directory (e.g., ./.logs/filename.log)
+        const relativePath = path.relative(process.cwd(), filePath);
+        displayPath = relativePath.startsWith('..') ? filePath : './' + relativePath.replace(/\\/g, '/');
+      } else {
+        // Fallback to just filename
+        displayPath = './' + path.basename(filePath);
+      }
       parts.push(`[Full log saved to: ${displayPath}]`);
-    }
-    if (enableLogResources) {
+      // Don't show MCP resource or tool fallback when file is available
+    } else if (enableLogResources) {
+      // In-memory only - show MCP resource and tool fallback
       parts.push(`[Access full output: cli://logs/commands/${executionId}]`);
+      parts.push(`[Fallback: use get_command_output with executionId "${executionId}"]`);
     }
-    parts.push(`[Fallback: use get_command_output with executionId "${executionId}"]`);
   }
 
   return parts.join('\n');

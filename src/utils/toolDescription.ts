@@ -85,10 +85,12 @@ export function buildToolDescription(allowedShells: string[]): string[] {
 /**
  * Build tool description with resolved shell information
  * @param resolvedConfigs Map of shell names to their resolved configurations
+ * @param maxOutputLines Optional configured max output lines (defaults to 20)
  * @returns Full description for execute_command tool
  */
 export function buildExecuteCommandDescription(
-  resolvedConfigs: Map<string, ResolvedShellConfig>
+  resolvedConfigs: Map<string, ResolvedShellConfig>,
+  maxOutputLines: number = 20
 ): string {
   const lines: string[] = [];
   const shellNames = Array.from(resolvedConfigs.keys());
@@ -138,7 +140,7 @@ export function buildExecuteCommandDescription(
 
   lines.push('**Output Truncation:**');
   lines.push('- Output is automatically truncated if it exceeds the configured limit');
-  lines.push('- Default limit is usually 20 lines (configurable via global settings)');
+  lines.push(`- Current limit: ${maxOutputLines} lines`);
   lines.push('- Use `maxOutputLines` parameter to override the limit for a specific command');
   lines.push('');
   
@@ -152,7 +154,7 @@ export function buildExecuteCommandDescription(
     lines.push('{');
     lines.push('  "shell": "cmd",');
     lines.push('  "command": "dir /b",');
-    lines.push('  "workingDir": "C:\\Projects"');
+    lines.push('  "workingDir": "C:\\\\Projects"');
     lines.push('}');
     lines.push('```');
     lines.push('');
@@ -164,7 +166,8 @@ export function buildExecuteCommandDescription(
     lines.push('{');
     lines.push('  "shell": "wsl",');
     lines.push('  "command": "ls -la",');
-    lines.push('  "workingDir": "/home/user"');
+    lines.push('  "workingDir": "/home/user",');
+    lines.push('  "maxOutputLines": 50');
     lines.push('}');
     lines.push('```');
     lines.push('');
@@ -176,7 +179,8 @@ export function buildExecuteCommandDescription(
     lines.push('{');
     lines.push('  "shell": "bash",');
     lines.push('  "command": "ls -la",');
-    lines.push('  "workingDir": "/home/user"');
+    lines.push('  "workingDir": "/home/user",');
+    lines.push('  "maxOutputLines": 50');
     lines.push('}');
     lines.push('```');
     lines.push('');
@@ -189,6 +193,16 @@ export function buildExecuteCommandDescription(
     lines.push('  "shell": "gitbash",');
     lines.push('  "command": "git status",');
     lines.push('  "workingDir": "/c/Projects/repo"  // or "C:\\Projects\\repo"');
+    lines.push('}');
+    lines.push('```');
+    lines.push('');
+    lines.push('With custom output limit:');
+    lines.push('```json');
+    lines.push('{');
+    lines.push('  "shell": "gitbash",');
+    lines.push('  "command": "git log --oneline -50",');
+    lines.push('  "workingDir": "/c/Projects/repo",');
+    lines.push('  "maxOutputLines": 100');
     lines.push('}');
     lines.push('```');
   }

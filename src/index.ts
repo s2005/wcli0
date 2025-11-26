@@ -33,7 +33,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetCommandOutputSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig, LoggingConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -128,6 +128,26 @@ const parseArgs = async () => {
       default: false,
       description: 'Enable debug logging'
     })
+    .option('maxOutputLines', {
+      type: 'number',
+      description: 'Maximum output lines before truncation (default: 20)'
+    })
+    .option('enableTruncation', {
+      type: 'boolean',
+      description: 'Enable output truncation (default: true)'
+    })
+    .option('enableLogResources', {
+      type: 'boolean',
+      description: 'Enable log resources for get_command_output (default: true)'
+    })
+    .option('maxReturnLines', {
+      type: 'number',
+      description: 'Maximum lines returned by get_command_output (default: 500)'
+    })
+    .option('logDirectory', {
+      type: 'string',
+      description: 'Directory to store command output log files (enables file-based logging)'
+    })
     .help()
     .parse();
 };
@@ -169,6 +189,16 @@ class CLIServer {
     if (this.config.global.logging) {
       this.logStorage = new LogStorageManager(this.config.global.logging);
       this.logStorage.startCleanup();
+      
+      // Log storage location info (always log to stderr for security awareness)
+      const logDir = this.config.global.logging.logDirectory;
+      if (logDir) {
+        // Always warn about file-based logging since it may contain sensitive data
+        errorLog(`WARNING: Command output logs will be stored in: ${logDir}`);
+        errorLog(`WARNING: Log files may contain sensitive information from command output.`);
+      } else {
+        debugLog('Log storage: in-memory only (no logDirectory configured)');
+      }
     }
 
     this.setupHandlers();
@@ -449,7 +479,8 @@ class CLIServer {
             executionId,
             logFilePath,
             Boolean(this.config.global.logging?.exposeFullPath),
-            Boolean(this.config.global.logging?.enableLogResources)
+            Boolean(this.config.global.logging?.enableLogResources),
+            this.config.global.logging?.logDirectory
           );
 
           resultMessage = formatTruncatedOutput(truncated);
@@ -728,7 +759,8 @@ class CLIServer {
 
       // Add execute_command tool with dynamic description and schema
       if (enabledShells.length > 0) {
-        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs);
+        const maxOutputLines = this.config.global.logging?.maxOutputLines ?? 20;
+        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs, maxOutputLines);
         const executeCommandSchema = buildExecuteCommandSchema(enabledShells, this.resolvedConfigs);
         
         debugLog(`[tool: execute_command] Description:\n${executeCommandDescription}`);
@@ -1273,9 +1305,14 @@ const main = async () => {
     setDebugLogging(Boolean(args.debug));
 
     // Initialize modular shell system
+    // If --shell is specified, only load that shell; otherwise use build config
     const buildConfig = getBuildConfig();
+    const shellsToLoad = args.shell 
+      ? [args.shell as string]
+      : buildConfig.includedShells;
+    
     await loadShells({
-      shells: buildConfig.includedShells,
+      shells: shellsToLoad,
       verbose: buildConfig.verbose || Boolean(args.debug)
     });
     debugLog(`Loaded ${shellRegistry.getCount()} shell modules: ${shellRegistry.getShellTypes().join(', ')}`);
@@ -1314,6 +1351,14 @@ const main = async () => {
       args.blockedOperator as string[] | undefined
     );
     applyCliWslMountPoint(config, args.wslMountPoint as string | undefined);
+    applyCliLogging(
+      config,
+      args.maxOutputLines as number | undefined,
+      args.enableTruncation as boolean | undefined,
+      args.enableLogResources as boolean | undefined,
+      args.maxReturnLines as number | undefined,
+      args.logDirectory as string | undefined
+    );
 
     const server = new CLIServer(config);
     await server.run();

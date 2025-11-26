@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { loadShells } from '../loader.js';
 import { shellRegistry } from '../../core/registry.js';
+import { setDebugLogging } from '../../utils/log.js';
 
 describe('Shell Loader', () => {
   beforeEach(() => {
@@ -9,6 +10,7 @@ describe('Shell Loader', () => {
 
   afterEach(() => {
     shellRegistry.clear();
+    setDebugLogging(false);
   });
 
   it('should load specified shells', async () => {
@@ -43,6 +45,7 @@ describe('Shell Loader', () => {
   });
 
   it('should handle invalid shell types gracefully', async () => {
+    setDebugLogging(true);
     const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     await loadShells({
@@ -128,7 +131,8 @@ describe('Shell Loader', () => {
   });
 
   it('should support verbose mode', async () => {
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    setDebugLogging(true);
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await loadShells({
       shells: ['gitbash'],

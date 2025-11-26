@@ -746,3 +746,49 @@ export function applyCliRestrictions(
     config.global.restrictions.blockedOperators = list;
   }
 }
+
+export function applyCliLogging(
+  config: ServerConfig,
+  maxOutputLines?: number,
+  enableTruncation?: boolean,
+  enableLogResources?: boolean,
+  maxReturnLines?: number,
+  logDirectory?: string
+): void {
+  // Check if any valid logging option is provided
+  const hasValidOptions = 
+    (maxOutputLines !== undefined && maxOutputLines > 0) ||
+    enableTruncation !== undefined ||
+    enableLogResources !== undefined ||
+    (maxReturnLines !== undefined && maxReturnLines > 0) ||
+    (logDirectory !== undefined && logDirectory.trim() !== '');
+
+  if (!hasValidOptions) {
+    return;
+  }
+
+  // Initialize logging config if not present
+  if (!config.global.logging) {
+    config.global.logging = { ...DEFAULT_LOGGING_CONFIG };
+  }
+
+  if (maxOutputLines !== undefined && maxOutputLines > 0) {
+    config.global.logging.maxOutputLines = maxOutputLines;
+  }
+
+  if (enableTruncation !== undefined) {
+    config.global.logging.enableTruncation = enableTruncation;
+  }
+
+  if (enableLogResources !== undefined) {
+    config.global.logging.enableLogResources = enableLogResources;
+  }
+
+  if (maxReturnLines !== undefined && maxReturnLines > 0) {
+    config.global.logging.maxReturnLines = maxReturnLines;
+  }
+
+  if (logDirectory !== undefined && logDirectory.trim() !== '') {
+    config.global.logging.logDirectory = logDirectory.trim();
+  }
+}

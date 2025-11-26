@@ -153,7 +153,9 @@ wcli0 automatically stores command execution logs and provides MCP resources for
 ### Output Truncation
 
 By default, command responses show only the last 20 lines to prevent overwhelming long outputs. Full output is always stored and accessible via:
-- MCP log resources (e.g., `cli://logs/commands/{id}`)
+
+- **File-based storage**: When `logDirectory` is configured, logs are saved to files for persistent storage
+- **In-memory storage**: Default behavior using MCP log resources (e.g., `cli://logs/commands/{id}`)
 - The `get_command_output` tool (fallback for hosts that cannot read resources)
 
 Configure truncation settings:
@@ -169,9 +171,38 @@ Configure truncation settings:
 }
 ```
 
+### File-Based Log Storage
+
+For persistent logging, configure a log directory:
+
+```json
+{
+  "global": {
+    "logging": {
+      "logDirectory": "./logs",
+      "exposeFullPath": false
+    }
+  }
+}
+```
+
+Or via CLI:
+
+```bash
+npx wcli0 --shell gitbash --logDirectory ./logs
+```
+
+When file-based logging is enabled:
+
+- Truncation messages show the file path directly (simpler output)
+- Logs persist across server restarts
+- No in-memory storage limits apply
+
+> **Security Note**: Log files may contain sensitive command output. Ensure the log directory has appropriate permissions.
+
 ### Log Resources
 
-Access stored command output via MCP resources:
+Access stored command output via MCP resources (in-memory mode):
 
 - `cli://logs/list` - List all stored command execution logs
 - `cli://logs/recent?n=10` - Get the N most recent logs
@@ -192,7 +223,8 @@ See [API Documentation](docs/API.md) for detailed resource specifications and qu
       "maxStoredLogs": 50,
       "maxLogSize": 1048576,
       "enableLogResources": true,
-      "logRetentionMinutes": 60
+      "logRetentionMinutes": 60,
+      "logDirectory": "./logs"
     }
   }
 }
@@ -264,6 +296,31 @@ To get started with configuration:
     npx wcli0 --config ./my-config.json \
       --maxCommandLength 5000 --commandTimeout 60
     ```
+
+   You can configure output truncation and logging via CLI:
+
+    ```bash
+    npx wcli0 --shell gitbash \
+      --maxOutputLines 50 \
+      --enableTruncation \
+      --enableLogResources \
+      --maxReturnLines 1000 \
+      --logDirectory ./logs
+    ```
+
+   | Option | Type | Default | Description |
+   |--------|------|---------|-------------|
+   | `--maxOutputLines` | number | 20 | Maximum output lines before truncation |
+   | `--enableTruncation` | boolean | true | Enable output truncation |
+   | `--enableLogResources` | boolean | true | Enable log resources for `get_command_output` |
+   | `--maxReturnLines` | number | 500 | Maximum lines returned by `get_command_output` |
+   | `--logDirectory` | string | - | Directory for file-based log storage (instead of in-memory) |
+
+   When `--logDirectory` is configured, command output logs are saved to files instead of in-memory storage.
+   Truncation messages will show the file path for easy access to full output.
+
+   > **Security Note**: Log files may contain sensitive data from command output. Ensure the log directory
+   > has appropriate permissions and consider implementing log rotation.
 
    You can override blocked restrictions directly from the CLI. Pass the option with
    an empty string to clear defaults:

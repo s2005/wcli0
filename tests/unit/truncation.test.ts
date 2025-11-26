@@ -232,7 +232,9 @@ describe('buildTruncationMessage', () => {
 
     expect(message).toContain('run.log');
     expect(message).not.toContain('C:\\logs\\full\\run.log');
-    expect(message).toContain('get_command_output');
+    // When file path is provided, we don't show the fallback (file is simpler to access)
+    expect(message).not.toContain('get_command_output');
+    expect(message).not.toContain('cli://logs/commands');
   });
 
   test('should include full path when exposeFullPath is true', () => {
@@ -262,8 +264,43 @@ describe('buildTruncationMessage', () => {
       false
     );
 
+    // When file path is provided, only file path is shown (no MCP resource or tool)
     expect(message).not.toContain('cli://logs/commands/exec-abc');
+    expect(message).not.toContain('get_command_output');
+    expect(message).toContain('run.log');
+  });
+
+  test('should show MCP resource and tool when no file path (in-memory)', () => {
+    const message = buildTruncationMessage(
+      10,
+      20,
+      10,
+      'exec-abc',
+      template,
+      undefined, // No file path
+      false,
+      true
+    );
+
+    expect(message).toContain('cli://logs/commands/exec-abc');
     expect(message).toContain('get_command_output');
+  });
+
+  test('should show nothing extra when no file path and log resources disabled', () => {
+    const message = buildTruncationMessage(
+      10,
+      20,
+      10,
+      'exec-abc',
+      template,
+      undefined, // No file path
+      false,
+      false // Log resources disabled
+    );
+
+    expect(message).not.toContain('cli://logs/commands');
+    expect(message).not.toContain('get_command_output');
+    expect(message).not.toContain('Full log saved');
   });
 });
 
