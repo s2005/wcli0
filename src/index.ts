@@ -477,10 +477,9 @@ class CLIServer {
             totalLines: totalLines,
             returnedLines: returnedLines,
             wasTruncated: wasTruncated,
-            filePath: logFilePath
-              ? (this.config.global.logging?.exposeFullPath
-                ? logFilePath
-                : path.basename(logFilePath))
+            // Only expose filePath when exposeFullPath is true (consistent with get_command_output)
+            filePath: logFilePath && this.config.global.logging?.exposeFullPath
+              ? logFilePath
               : undefined
           }
         });

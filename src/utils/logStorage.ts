@@ -423,10 +423,32 @@ export class LogStorageManager {
   }
 
   /**
-   * Expand and sanitize the configured log directory
+   * Check if a path string contains traversal patterns.
+   * Works on raw strings before any normalization.
+   */
+  private containsTraversal(pathStr: string): boolean {
+    // Check for ".." in various forms: standalone, at start, at end, or in middle
+    // Handles both forward and back slashes
+    return /(?:^|[\\/])\.\.(?:[\\/]|$)/.test(pathStr);
+  }
+
+  /**
+   * Expand and sanitize the configured log directory.
+   *
+   * Security: Checks for path traversal at each stage:
+   * 1. Original input before any transformation
+   * 2. After environment variable expansion (env vars could contain "..")
+   * 3. Final resolved path
    */
   private sanitizeLogDirectory(logDir: string): string {
-    let expanded = logDir.trim();
+    const trimmed = logDir.trim();
+
+    // SECURITY: Check original input BEFORE any transformation
+    if (this.containsTraversal(trimmed)) {
+      throw new Error(`Log directory must not contain path traversal: ${logDir}`);
+    }
+
+    let expanded = trimmed;
 
     // Expand leading ~
     expanded = expanded.replace(/^~(?=$|[\\/])/, os.homedir());
@@ -437,9 +459,9 @@ export class LogStorageManager {
       return process.env[key] ?? '';
     });
 
-    const originalNormalized = path.normalize(expanded);
-    if (originalNormalized.includes(`..${path.sep}`) || originalNormalized === '..' || originalNormalized.startsWith(`..${path.sep}`)) {
-      throw new Error(`Log directory must not contain path traversal: ${logDir}`);
+    // SECURITY: Check after env var expansion (env vars could contain traversal)
+    if (this.containsTraversal(expanded)) {
+      throw new Error(`Log directory must not contain path traversal (after env expansion): ${logDir}`);
     }
 
     const resolved = path.resolve(expanded);
@@ -449,7 +471,8 @@ export class LogStorageManager {
       throw new Error(`Log directory must resolve to absolute path: ${logDir}`);
     }
 
-    if (normalized.includes('..')) {
+    // SECURITY: Final check on resolved path using same traversal detection
+    if (this.containsTraversal(normalized)) {
       throw new Error(`Log directory contains path traversal: ${logDir}`);
     }
 

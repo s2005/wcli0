@@ -9,7 +9,11 @@ import { debugWarn, errorLog } from './log.js';
 const defaultValidatePathRegex = /^[a-zA-Z]:\\(?:[^<>:"/\\|?*]+\\)*[^<>:"/\\|?*]*$/;
 
 /**
- * Default logging configuration
+ * Default logging configuration.
+ *
+ * Note: logRetentionDays takes precedence over logRetentionMinutes when both are set.
+ * The default only sets logRetentionMinutes to allow fine-grained control.
+ * Set logRetentionDays in your config for day-based retention.
  */
 const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
   maxOutputLines: 20,
@@ -17,13 +21,13 @@ const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
   truncationMessage: '[Output truncated: Showing last {returnedLines} of {totalLines} lines]',
   maxStoredLogs: 50,
   maxLogSize: 1048576, // 1MB
-  maxTotalStorageSize: 52428800, // 50MB (in-memory guardrail)
+  maxTotalStorageSize: 52428800, // 50MB - in-memory output buffer limit
   enableLogResources: true,
-  logRetentionMinutes: 60,
+  logRetentionMinutes: 60, // Default 1 hour; logRetentionDays overrides if set
   cleanupIntervalMinutes: 5,
   logDirectory: undefined,
-  logRetentionDays: 7,
-  maxTotalLogSize: 104857600, // 100MB disk budget
+  // logRetentionDays: intentionally not set - allows logRetentionMinutes to work as default
+  maxTotalLogSize: 104857600, // 100MB - on-disk log file storage limit
   maxReturnLines: 500,
   maxReturnBytes: 1048576, // 1MB cap for retrieval
   exposeFullPath: false
@@ -187,6 +191,9 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
   config.global.paths.allowedPaths = normalizeAllowedPaths(
     config.global.paths.allowedPaths
   );
+
+  // Validate configuration at startup to catch errors early
+  validateConfig(config);
   
   return config;
 }
