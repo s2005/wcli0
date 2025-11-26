@@ -123,8 +123,9 @@ export function buildTruncationMessage(
         const relativePath = path.relative(process.cwd(), filePath);
         displayPath = relativePath.startsWith('..') ? filePath : './' + relativePath.replace(/\\/g, '/');
       } else {
-        // Fallback to just filename
-        displayPath = './' + path.basename(filePath);
+        // Fallback to just filename - handle both Windows and Unix path separators
+        const basename = filePath.split(/[\\/]/).pop() || filePath;
+        displayPath = './' + basename;
       }
       parts.push(`[Full log saved to: ${displayPath}]`);
       // Don't show MCP resource or tool fallback when file is available
