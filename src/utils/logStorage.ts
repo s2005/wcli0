@@ -236,7 +236,7 @@ export class LogStorageManager {
       totalLogs: this.storage.entries.size,
       totalSize: this.storage.totalStorageSize,
       maxLogs: this.config.maxStoredLogs,
-      maxSize: this.getMaxTotalBytes()
+      maxSize: this.getMaxMemoryBytes()
     };
   }
 
@@ -397,7 +397,7 @@ export class LogStorageManager {
    * Enforce maximum total storage size
    */
   private enforceStorageLimit(): void {
-    const maxTotal = this.getMaxTotalBytes();
+    const maxTotal = this.getMaxMemoryBytes();
     while (this.storage.totalStorageSize > maxTotal) {
       this.removeOldestEntry();
     }
@@ -561,7 +561,7 @@ export class LogStorageManager {
     const now = Date.now();
     const retentionMs = this.getRetentionMs();
     const maxFiles = this.config.maxStoredLogs ?? 50;
-    const maxTotalBytes = this.getMaxTotalBytes();
+    const maxTotalBytes = this.getMaxDiskBytes();
 
     // Sort oldest first
     const sorted = files.sort((a, b) => a.mtimeMs - b.mtimeMs);
@@ -610,9 +610,16 @@ export class LogStorageManager {
   }
 
   /**
-   * Get max total bytes allowed for storage (memory/disk)
+   * Get max total bytes allowed for in-memory storage
    */
-  private getMaxTotalBytes(): number {
+  private getMaxMemoryBytes(): number {
+    return this.config.maxTotalStorageSize ?? 50 * 1024 * 1024;
+  }
+
+  /**
+   * Get max total bytes allowed for on-disk log files
+   */
+  private getMaxDiskBytes(): number {
     if (this.config.maxTotalLogSize !== undefined) {
       return this.config.maxTotalLogSize;
     }
