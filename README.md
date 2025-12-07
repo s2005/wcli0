@@ -223,7 +223,7 @@ See [API Documentation](docs/API.md) for detailed resource specifications and qu
       "maxStoredLogs": 50,
       "maxLogSize": 1048576,
       "enableLogResources": true,
-      "logRetentionMinutes": 60,
+      "logRetentionMinutes": 1440,
       "logDirectory": "./logs"
     }
   }
@@ -456,6 +456,8 @@ If no configuration file is found, the server will use a default (restricted) co
 ### Default Configuration
 
 **Note**: The default configuration is designed to be restrictive and secure. Find more details on each setting in the [Configuration Settings](#configuration-settings) section.
+
+For a complete reference of all default values, see [docs/defaults.md](docs/defaults.md).
 
 ```json
 {

@@ -652,7 +652,7 @@ export class LogStorageManager {
     if (this.config.logRetentionDays !== undefined) {
       return this.config.logRetentionDays * 24 * 60 * 60 * 1000;
     }
-    return (this.config.logRetentionMinutes ?? 60) * 60 * 1000;
+    return (this.config.logRetentionMinutes ?? 24 * 60) * 60 * 1000;
   }
 
   /**
