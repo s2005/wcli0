@@ -10,6 +10,20 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+/**
+ * Wait for a file to exist with polling (more reliable than fixed timeout under load)
+ */
+async function waitForFile(filePath: string, timeoutMs = 2000, intervalMs = 50): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (fs.existsSync(filePath)) {
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`File ${filePath} did not appear within ${timeoutMs}ms`);
+}
+
 describe('LogStorageManager - File Content Format', () => {
   let storage: LogStorageManager;
   let config: LoggingConfig;
@@ -60,15 +74,15 @@ describe('LogStorageManager - File Content Format', () => {
       0
     );
 
-    // Wait for async file write
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     const log = storage.getLog(id);
     expect(log?.filePath).toBeDefined();
 
     const filePath = path.isAbsolute(log!.filePath!)
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
+
+    // Wait for async file write
+    await waitForFile(filePath);
 
     const content = fs.readFileSync(filePath, 'utf8');
 
@@ -92,12 +106,12 @@ describe('LogStorageManager - File Content Format', () => {
     const id = storage.storeLog('ls', 'bash', '/', 'output', '', 0);
     const afterStore = new Date();
 
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     const log = storage.getLog(id);
     const filePath = path.isAbsolute(log!.filePath!)
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
+
+    await waitForFile(filePath);
 
     const content = fs.readFileSync(filePath, 'utf8');
 
@@ -120,12 +134,12 @@ describe('LogStorageManager - File Content Format', () => {
       127
     );
 
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     const log = storage.getLog(id);
     const filePath = path.isAbsolute(log!.filePath!)
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
+
+    await waitForFile(filePath);
 
     const content = fs.readFileSync(filePath, 'utf8');
 
@@ -138,12 +152,12 @@ describe('LogStorageManager - File Content Format', () => {
     const specialCmd = 'echo "test" && ls -la | grep "*.ts"';
     const id = storage.storeLog(specialCmd, 'bash', '/', 'output', '', 0);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     const log = storage.getLog(id);
     const filePath = path.isAbsolute(log!.filePath!)
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
+
+    await waitForFile(filePath);
 
     const content = fs.readFileSync(filePath, 'utf8');
 
@@ -154,12 +168,12 @@ describe('LogStorageManager - File Content Format', () => {
     const multilineOutput = 'line1\nline2\nline3\nline4\nline5';
     const id = storage.storeLog('ls', 'bash', '/', multilineOutput, '', 0);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     const log = storage.getLog(id);
     const filePath = path.isAbsolute(log!.filePath!)
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
+
+    await waitForFile(filePath);
 
     const content = fs.readFileSync(filePath, 'utf8');
 
@@ -176,12 +190,12 @@ describe('LogStorageManager - File Content Format', () => {
     const largeOutput = 'x'.repeat(config.maxLogSize + 1000);
     const id = storage.storeLog('big-cmd', 'bash', '/big/dir', largeOutput, '', 0);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     const log = storage.getLog(id);
     const filePath = path.isAbsolute(log!.filePath!)
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
+
+    await waitForFile(filePath);
 
     const content = fs.readFileSync(filePath, 'utf8');
 
