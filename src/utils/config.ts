@@ -23,7 +23,7 @@ const DEFAULT_LOGGING_CONFIG: LoggingConfig = {
   maxLogSize: 1048576, // 1MB
   maxTotalStorageSize: 52428800, // 50MB - in-memory output buffer limit
   enableLogResources: true,
-  logRetentionMinutes: 60, // Default 1 hour; logRetentionDays overrides if set
+  logRetentionMinutes: 24 * 60, // Default 24 hours; logRetentionDays overrides if set
   cleanupIntervalMinutes: 5,
   logDirectory: undefined,
   // logRetentionDays: intentionally not set - allows logRetentionMinutes to work as default
