@@ -792,3 +792,32 @@ export function applyCliLogging(
     config.global.logging.logDirectory = logDirectory.trim();
   }
 }
+
+export function applyCliUnsafeMode(
+  config: ServerConfig,
+  unsafeOptions?: { unsafe?: boolean; yolo?: boolean }
+): void {
+  if (!unsafeOptions) return;
+
+  const { unsafe, yolo } = unsafeOptions;
+  if (!unsafe && !yolo) return;
+
+  if (unsafe && yolo) {
+    throw new Error('Cannot enable both --unsafe and --yolo modes at the same time.');
+  }
+
+  const mode = unsafe ? 'unsafe' : 'yolo';
+
+  // Disable all safety checks first
+  config.global.security.enableInjectionProtection = false;
+  config.global.restrictions.blockedCommands = [];
+  config.global.restrictions.blockedArguments = [];
+  config.global.restrictions.blockedOperators = [];
+
+  // Apply mode-specific directory handling
+  if (mode === 'unsafe') {
+    config.global.security.restrictWorkingDirectory = false;
+  } else {
+    config.global.security.restrictWorkingDirectory = true;
+  }
+}

@@ -357,9 +357,26 @@ To get started with configuration:
   npx wcli0 --allowAllDirs
   ```
 
-   When started this way, `restrictWorkingDirectory` is forced on and
-   `enableInjectionProtection` is disabled to ensure the allowed paths apply
-   without shell injection checks.
+  When started this way, `restrictWorkingDirectory` is forced on and
+  `enableInjectionProtection` is disabled to ensure the allowed paths apply
+  without shell injection checks.
+
+  If you need to disable safety checks that block command execution for
+  experimentation, you can start the server in **unsafe** or **YOLO** modes
+  (not recommended for production):
+
+  ```bash
+  # YOLO disables all safety checks except allowed working directories
+  npx wcli0 --yolo
+
+  # Fully unsafe removes all safety checks, including directory limits
+  npx wcli0 --unsafe
+  ```
+
+  Both modes clear blocked commands/arguments/operators and turn off injection
+  protection. YOLO mode leaves working directory restrictions active, while
+  fully unsafe mode disables those restrictions as well. These two flags are
+  mutually exclusive; using both at once will fail.
 
 1. **Update your Claude Desktop configuration** to use your config file:
 
