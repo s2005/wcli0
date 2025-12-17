@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0] - 2025-12-17
+
+### Added
+
+- **Separate unsafe and yolo CLI flags**: New `--yolo` flag for autonomous mode, distinct from `--unsafe` flag for better control over security bypasses
+
+### Changed
+
+- **Increased default log retention**: Extended from 60 minutes to 24 hours for better debugging experience
+
+### Fixed
+
+- Replace fixed timeout with polling in logFileContent tests (fixes intermittent test failures under heavy load)
+- Make changelog headings unique to resolve MD024 lint errors
+
 ## [1.1.0] - 2025-11-26
 
 ### New Features
