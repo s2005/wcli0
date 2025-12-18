@@ -26,6 +26,37 @@ describe('applyCliUnsafeMode', () => {
     expect(config.global.restrictions.blockedOperators).toEqual([]);
   });
 
+  test('clears shell-specific overrides in yolo mode', () => {
+    const config = buildTestConfig({
+      global: {
+        security: {},
+        restrictions: {}
+      },
+      shells: {
+        powershell: {
+          type: 'powershell',
+          enabled: true,
+          executable: { command: 'powershell', args: [] },
+          overrides: {
+            security: {
+              enableInjectionProtection: true
+            },
+            restrictions: {
+              blockedCommands: ['Start-Process'],
+              blockedOperators: ['&']
+            }
+          }
+        }
+      }
+    });
+
+    applyCliUnsafeMode(config, { yolo: true });
+
+    expect(config.shells.powershell!.overrides!.security!.enableInjectionProtection).toBe(false);
+    expect(config.shells.powershell!.overrides!.restrictions!.blockedCommands).toEqual([]);
+    expect(config.shells.powershell!.overrides!.restrictions!.blockedOperators).toEqual([]);
+  });
+
   test('removes all restrictions in unsafe mode', () => {
     const config = buildTestConfig({
       global: {
