@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1] - 2025-12-18
+
+### Fixed
+
+- Ensure YOLO mode clears shell-specific overrides (fixes issue where blocked operators would persist in autonomous mode)
+- Updated unit test descriptions and added documentation for new features
+
 ## [1.2.0] - 2025-12-17
 
 ### Added
