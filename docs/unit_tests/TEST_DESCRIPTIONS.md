@@ -254,3 +254,85 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 ## tests/handlers/resourceTemplatesHandler.test.ts
 
 - **returns empty template list** – verifies that the ListResourceTemplates handler responds with an empty array.
+## tests/unsafeMode.test.ts
+
+- **disables safety mechanisms and clears restrictions in yolo mode** – verifies that `--yolo` mode disables injection protection and clears command/argument/operator blocks while enforcing working directory restriction.
+- **removes all restrictions in unsafe mode** – confirms that `--unsafe` mode disables all protections including working directory restrictions.
+- **throws when both yolo and unsafe are enabled** – ensures the CLI prevents enabling both mutually exclusive modes simultaneously.
+
+## tests/loggingCliOverride.test.ts
+
+- **overrides maxOutputLines with valid value** – ensures CLI flags update the output limit in configuration.
+- **sets enableTruncation and enableLogResources** – verifies that Boolean flags are correctly applied to logging settings.
+- **sets logDirectory with valid path** – checks that the logging directory can be overridden and results in an initialized logging config.
+- **preserves existing logging config values** – ensures partial overrides do not wipe out other existing logging settings.
+
+## tests/unit/pathTraversal.test.ts
+
+- **direct traversal patterns** – rejects `..` sequences in various positions to prevent escaping the log directory.
+- **env var expansion attacks** – ensures that environment variables containing traversal sequences are caught before expansion.
+- **valid paths should work** – confirms that absolute paths, tilde expansion, and folders with dots (but not as segments) are accepted.
+
+## tests/unit/startupValidation.test.ts
+
+- **loadConfig throws on invalid security settings** – ensures critical security limits are validated immediately when the server starts.
+- **loadConfig validates logging config** – checks that the logging configuration is safe before use.
+- **logRetentionMinutes not shadowed** – verifies that default configurations allow minute-based retention to work unless explicitly overridden by days.
+
+## tests/unit/logStorage.test.ts
+
+- **storeLog and listLogs** – verifies correct in-memory storage, unique ID generation, and filtering of execution logs.
+- **enforces limits (FIFO)** – ensures oldest logs are removed when count or total memory limits are exceeded.
+- **cleanup process** – confirms that expired logs are automatically removed based on retention settings.
+
+## tests/unit/lineRangeProcessor.test.ts
+
+- **processRange extracts correct lines** – verifies extraction of positive, negative (from end), and mixed line ranges.
+- **validation and error handling** – ensures invalid ranges or ranges exceeding limits are rejected with appropriate error types.
+
+## tests/unit/searchProcessor.test.ts
+
+- **search with context** – verifies regex-based searching with before/after context lines and navigation hints.
+- **countMatches** – ensures accurate reporting of total pattern occurrences across logs.
+
+## tests/unit/truncation.test.ts
+
+- **truncateOutput enforces limits** – confirms that large outputs are capped to the last N lines with an informative summary message.
+- **buildTruncationMessage** – tests templates for truncation summaries, including MCP resource links and file paths.
+
+## tests/unit/logFileContent.test.ts
+
+- **metadata header in log file** – verifies that saved log files contain a standardized header with execution details (ID, timestamp, command, etc.).
+- **preserves header on truncation** – ensures the metadata remains even if the output itself is truncated due to size limits.
+
+## tests/unit/perCommandOutputLimit.test.ts
+
+- **respects command-level maxOutputLines** – verifies that the `maxOutputLines` parameter in `execute_command` correctly overrides the global configuration.
+- **validation of parameter values** – ensures invalid (negative, zero, too large) values are rejected.
+- **precedence resolution** – confirms the hierarchy of command-level -> global -> system default limits.
+
+## tests/bash/bashShell.test.ts
+
+- **echo command** – verifies basic command execution in a dedicated Bash shell environment.
+- **working directory validation** – ensures that Bash-specific path validation is enforced before execution.
+
+## tests/integration/modularShellSystem.test.ts
+
+- **shell loading integration** – verifies that shells are loaded correctly based on build presets (`full`, `windows`, etc.) and environment variables.
+- **dynamic tool schema** – ensures the `shell` enum in tool definitions automatically updates to reflect only the currently loaded shells.
+- **registry and configuration** – checks that shell plugins are correctly registered and accessible for command validation.
+
+## tests/integration/folderPropagation.test.ts
+
+- **bug: folders not visible in get_config** – regression tests for ensuring that `allowedPaths` correctly propagate from global config to individual shells when `inheritGlobalPaths` is enabled.
+- **WSL-converted paths** – verifies that Windows paths are correctly converted to `/mnt/` format when inherited by a WSL shell.
+
+## tests/integration/perCommandOutputLimit.test.ts
+
+- **end-to-end custom limit** – verifies that a command executed with a custom `maxOutputLines` via the MCP protocol correctly truncates output according to that limit.
+- **real-world scenarios** – ensures the limit works correctly with standard commands like `ls -la` and `echo`.
+
+## tests/performance/logPerformance.test.ts
+
+- **truncation performance** – ensures that output truncation for large logs (up to 100k lines) completes in reasonable time.
+- **storage and search performance** – verifies that in-memory storage, retrieval, and regex searching across many logs do not cause significant overhead.
