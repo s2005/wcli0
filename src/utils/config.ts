@@ -139,7 +139,7 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
 
   for (const location of configLocations) {
     if (!location) continue;
-    
+
     try {
       if (fs.existsSync(location)) {
         const fileContent = fs.readFileSync(location, 'utf8');
@@ -170,7 +170,7 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
   ) {
     config.global.security.restrictWorkingDirectory = false;
   }
-  
+
   // Validate and process initialDir if provided
   if (config.global.paths.initialDir) {
     const normalizedInitialDir = normalizeWindowsPath(config.global.paths.initialDir);
@@ -186,7 +186,7 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
       config.global.paths.initialDir = undefined;
     }
   }
-  
+
   // Normalize allowed paths
   config.global.paths.allowedPaths = normalizeAllowedPaths(
     config.global.paths.allowedPaths
@@ -194,7 +194,7 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
 
   // Validate configuration at startup to catch errors early
   validateConfig(config);
-  
+
   return config;
 }
 
@@ -209,14 +209,14 @@ export function getResolvedShellConfig(
   if (!shell || !shell.enabled) {
     return null;
   }
-  
+
   let resolved = resolveShellConfiguration(config.global, shell);
-  
+
   // Special handling for WSL/Bash path inheritance
   if ((resolved.type === 'wsl' || resolved.type === 'bash') && resolved.wslConfig) {
     resolved = applyWslPathInheritance(resolved, config.global.paths.allowedPaths);
   }
-  
+
   return resolved;
 }
 
@@ -264,21 +264,21 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     const userShell = userConfig.shells?.powershell;
     const baseShell: BaseShellConfig = defaultConfig.shells.powershell
       ? {
-          ...defaultConfig.shells.powershell,
-          overrides: defaultConfig.shells.powershell.overrides
-            ? {
-                ...defaultConfig.shells.powershell.overrides,
-                restrictions: defaultConfig.shells.powershell.overrides.restrictions
-                  ? { ...defaultConfig.shells.powershell.overrides.restrictions }
-                  : undefined
-              }
-            : undefined
-        }
+        ...defaultConfig.shells.powershell,
+        overrides: defaultConfig.shells.powershell.overrides
+          ? {
+            ...defaultConfig.shells.powershell.overrides,
+            restrictions: defaultConfig.shells.powershell.overrides.restrictions
+              ? { ...defaultConfig.shells.powershell.overrides.restrictions }
+              : undefined
+          }
+          : undefined
+      }
       : {
-          type: 'powershell',
-          enabled: false,
-          executable: { command: '', args: [] }
-        };
+        type: 'powershell',
+        enabled: false,
+        executable: { command: '', args: [] }
+      };
     if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
       const { restrictions, ...rest } = baseShell.overrides;
       baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
@@ -289,8 +289,8 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
       // Override with user config
       ...(userConfig.shells?.powershell || {}),
       // Ensure required properties
-      enabled: (userConfig.shells?.powershell?.enabled !== undefined) ? 
-        userConfig.shells.powershell.enabled : 
+      enabled: (userConfig.shells?.powershell?.enabled !== undefined) ?
+        userConfig.shells.powershell.enabled :
         (baseShell.enabled !== undefined ? baseShell.enabled : true)
     };
     // Ensure executable is properly set
@@ -303,21 +303,21 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     const userShell = userConfig.shells?.cmd;
     const baseShell: BaseShellConfig = defaultConfig.shells.cmd
       ? {
-          ...defaultConfig.shells.cmd,
-          overrides: defaultConfig.shells.cmd.overrides
-            ? {
-                ...defaultConfig.shells.cmd.overrides,
-                restrictions: defaultConfig.shells.cmd.overrides.restrictions
-                  ? { ...defaultConfig.shells.cmd.overrides.restrictions }
-                  : undefined
-              }
-            : undefined
-        }
+        ...defaultConfig.shells.cmd,
+        overrides: defaultConfig.shells.cmd.overrides
+          ? {
+            ...defaultConfig.shells.cmd.overrides,
+            restrictions: defaultConfig.shells.cmd.overrides.restrictions
+              ? { ...defaultConfig.shells.cmd.overrides.restrictions }
+              : undefined
+          }
+          : undefined
+      }
       : {
-          type: 'cmd',
-          enabled: false,
-          executable: { command: '', args: [] }
-        };
+        type: 'cmd',
+        enabled: false,
+        executable: { command: '', args: [] }
+      };
     if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
       const { restrictions, ...rest } = baseShell.overrides;
       baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
@@ -328,8 +328,8 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
       // Override with user config
       ...(userConfig.shells?.cmd || {}),
       // Ensure required properties
-      enabled: (userConfig.shells?.cmd?.enabled !== undefined) ? 
-        userConfig.shells.cmd.enabled : 
+      enabled: (userConfig.shells?.cmd?.enabled !== undefined) ?
+        userConfig.shells.cmd.enabled :
         (baseShell.enabled !== undefined ? baseShell.enabled : true)
     };
     // Ensure executable is properly set
@@ -342,21 +342,21 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     const userShell = userConfig.shells?.gitbash;
     const baseShell: BaseShellConfig = defaultConfig.shells.gitbash
       ? {
-          ...defaultConfig.shells.gitbash,
-          overrides: defaultConfig.shells.gitbash.overrides
-            ? {
-                ...defaultConfig.shells.gitbash.overrides,
-                restrictions: defaultConfig.shells.gitbash.overrides.restrictions
-                  ? { ...defaultConfig.shells.gitbash.overrides.restrictions }
-                  : undefined
-              }
-            : undefined
-        }
+        ...defaultConfig.shells.gitbash,
+        overrides: defaultConfig.shells.gitbash.overrides
+          ? {
+            ...defaultConfig.shells.gitbash.overrides,
+            restrictions: defaultConfig.shells.gitbash.overrides.restrictions
+              ? { ...defaultConfig.shells.gitbash.overrides.restrictions }
+              : undefined
+          }
+          : undefined
+      }
       : {
-          type: 'gitbash',
-          enabled: false,
-          executable: { command: '', args: [] }
-        };
+        type: 'gitbash',
+        enabled: false,
+        executable: { command: '', args: [] }
+      };
     if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
       const { restrictions, ...rest } = baseShell.overrides;
       baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
@@ -367,8 +367,8 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
       // Override with user config
       ...(userConfig.shells?.gitbash || {}),
       // Ensure required properties
-      enabled: (userConfig.shells?.gitbash?.enabled !== undefined) ? 
-        userConfig.shells.gitbash.enabled : 
+      enabled: (userConfig.shells?.gitbash?.enabled !== undefined) ?
+        userConfig.shells.gitbash.enabled :
         (baseShell.enabled !== undefined ? baseShell.enabled : true)
     };
     // Ensure executable is properly set
@@ -381,25 +381,25 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     const userShell = userConfig.shells?.bash;
     const baseShell: WslShellConfig = defaultConfig.shells.bash
       ? {
-          ...defaultConfig.shells.bash,
-          overrides: defaultConfig.shells.bash.overrides
-            ? {
-                ...defaultConfig.shells.bash.overrides,
-                restrictions: defaultConfig.shells.bash.overrides.restrictions
-                  ? { ...defaultConfig.shells.bash.overrides.restrictions }
-                  : undefined
-              }
-            : undefined
-        }
-      : {
-          type: 'bash',
-          enabled: false,
-          executable: { command: '', args: [] },
-          wslConfig: {
-            mountPoint: '/mnt/',
-            inheritGlobalPaths: true
+        ...defaultConfig.shells.bash,
+        overrides: defaultConfig.shells.bash.overrides
+          ? {
+            ...defaultConfig.shells.bash.overrides,
+            restrictions: defaultConfig.shells.bash.overrides.restrictions
+              ? { ...defaultConfig.shells.bash.overrides.restrictions }
+              : undefined
           }
-        } as WslShellConfig;
+          : undefined
+      }
+      : {
+        type: 'bash',
+        enabled: false,
+        executable: { command: '', args: [] },
+        wslConfig: {
+          mountPoint: '/mnt/',
+          inheritGlobalPaths: true
+        }
+      } as WslShellConfig;
     if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
       const { restrictions, ...rest } = baseShell.overrides;
       baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
@@ -431,25 +431,25 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     const userShell = userConfig.shells?.wsl;
     const baseShell: WslShellConfig = defaultConfig.shells.wsl
       ? {
-          ...defaultConfig.shells.wsl,
-          overrides: defaultConfig.shells.wsl.overrides
-            ? {
-                ...defaultConfig.shells.wsl.overrides,
-                restrictions: defaultConfig.shells.wsl.overrides.restrictions
-                  ? { ...defaultConfig.shells.wsl.overrides.restrictions }
-                  : undefined
-              }
-            : undefined,
-        }
-      : {
-          type: 'wsl',
-          enabled: false,
-          executable: { command: '', args: [] },
-          wslConfig: {
-            mountPoint: '/mnt/',
-            inheritGlobalPaths: true
+        ...defaultConfig.shells.wsl,
+        overrides: defaultConfig.shells.wsl.overrides
+          ? {
+            ...defaultConfig.shells.wsl.overrides,
+            restrictions: defaultConfig.shells.wsl.overrides.restrictions
+              ? { ...defaultConfig.shells.wsl.overrides.restrictions }
+              : undefined
           }
-        };
+          : undefined,
+      }
+      : {
+        type: 'wsl',
+        enabled: false,
+        executable: { command: '', args: [] },
+        wslConfig: {
+          mountPoint: '/mnt/',
+          inheritGlobalPaths: true
+        }
+      };
     if (userShell && !userShell.overrides?.restrictions && baseShell.overrides?.restrictions) {
       const { restrictions, ...rest } = baseShell.overrides;
       baseShell.overrides = Object.keys(rest).length > 0 ? rest : undefined;
@@ -460,20 +460,20 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
       // Override with user config
       ...(userConfig.shells?.wsl || {}),
       // Ensure required properties
-      enabled: (userConfig.shells?.wsl?.enabled !== undefined) ? 
-        userConfig.shells.wsl.enabled : 
+      enabled: (userConfig.shells?.wsl?.enabled !== undefined) ?
+        userConfig.shells.wsl.enabled :
         (baseShell.enabled !== undefined ? baseShell.enabled : true),
       // Ensure wslConfig exists with default values if not provided
       wslConfig: {
         ...((baseShell as any).wslConfig || {}),
         ...((userConfig.shells?.wsl as any)?.wslConfig || {}),
-        mountPoint: ((userConfig.shells?.wsl as any)?.wslConfig?.mountPoint !== undefined) ? 
-          (userConfig.shells?.wsl as any).wslConfig.mountPoint : 
+        mountPoint: ((userConfig.shells?.wsl as any)?.wslConfig?.mountPoint !== undefined) ?
+          (userConfig.shells?.wsl as any).wslConfig.mountPoint :
           ((baseShell as any).wslConfig?.mountPoint || '/mnt/'),
-        inheritGlobalPaths: ((userConfig.shells?.wsl as any)?.wslConfig?.inheritGlobalPaths !== undefined) ? 
-          (userConfig.shells?.wsl as any).wslConfig.inheritGlobalPaths : 
-          ((baseShell as any).wslConfig?.inheritGlobalPaths !== undefined ? 
-           (baseShell as any).wslConfig.inheritGlobalPaths : true)
+        inheritGlobalPaths: ((userConfig.shells?.wsl as any)?.wslConfig?.inheritGlobalPaths !== undefined) ?
+          (userConfig.shells?.wsl as any).wslConfig.inheritGlobalPaths :
+          ((baseShell as any).wslConfig?.inheritGlobalPaths !== undefined ?
+            (baseShell as any).wslConfig.inheritGlobalPaths : true)
       }
     };
     // Ensure executable is properly set
@@ -616,21 +616,21 @@ export function validateConfig(config: ServerConfig): void {
 // Helper function to create a default config file
 export function createDefaultConfig(configPath: string): void {
   const dirPath = path.dirname(configPath);
-  
+
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
 
   // Create a JSON-safe version of the config (excluding functions)
   const configForSave = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-  
+
   // Remove validatePath functions as they can't be serialized to JSON
   for (const shellName in configForSave.shells) {
     if (configForSave.shells[shellName]) {
       delete configForSave.shells[shellName].validatePath;
     }
   }
-  
+
   fs.writeFileSync(configPath, JSON.stringify(configForSave, null, 2));
 }
 
@@ -756,7 +756,7 @@ export function applyCliLogging(
   logDirectory?: string
 ): void {
   // Check if any valid logging option is provided
-  const hasValidOptions = 
+  const hasValidOptions =
     (maxOutputLines !== undefined && maxOutputLines > 0) ||
     enableTruncation !== undefined ||
     enableLogResources !== undefined ||
@@ -808,7 +808,7 @@ export function applyCliUnsafeMode(
 
   const mode = unsafe ? 'unsafe' : 'yolo';
 
-  // Disable all safety checks first
+  // Disable all global safety checks first
   config.global.security.enableInjectionProtection = false;
   config.global.restrictions.blockedCommands = [];
   config.global.restrictions.blockedArguments = [];
@@ -819,5 +819,21 @@ export function applyCliUnsafeMode(
     config.global.security.restrictWorkingDirectory = false;
   } else {
     config.global.security.restrictWorkingDirectory = true;
+  }
+
+  // Clear shell-specific overrides
+  for (const shellName of Object.keys(config.shells)) {
+    const shell = config.shells[shellName as keyof ServerConfig['shells']];
+    if (shell && shell.overrides) {
+      if (shell.overrides.security) {
+        shell.overrides.security.enableInjectionProtection = false;
+      }
+
+      if (shell.overrides.restrictions) {
+        shell.overrides.restrictions.blockedCommands = [];
+        shell.overrides.restrictions.blockedArguments = [];
+        shell.overrides.restrictions.blockedOperators = [];
+      }
+    }
   }
 }
