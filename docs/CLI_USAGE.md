@@ -254,6 +254,7 @@ When the server is configured with `--logDirectory`, full output is saved to log
 ```
 
 This is simpler than in-memory mode, which shows MCP resource URLs and fallback tool information.
+Starting the server with `--debug` automatically turns on file-based logging when no `logDirectory` is configured, using `<temp>/wcli0-debug-logs` so each command's output is captured during debugging sessions.
 
 ## Common Usage Patterns
 
