@@ -19,15 +19,15 @@ const PRESETS: Record<string, BuildConfig> = {
   full: {
     buildName: 'full',
     includeAll: true,
-    includedShells: ['powershell', 'cmd', 'gitbash', 'bash', 'wsl'],
+    includedShells: ['powershell', 'cmd', 'gitbash', 'bash', 'bash_auto', 'wsl'],
   },
   windows: {
     buildName: 'windows',
-    includedShells: ['powershell', 'cmd', 'gitbash'],
+    includedShells: ['powershell', 'cmd', 'gitbash', 'bash_auto'],
   },
   unix: {
     buildName: 'unix',
-    includedShells: ['bash'],
+    includedShells: ['bash', 'bash_auto'],
   },
   'gitbash-only': {
     buildName: 'gitbash-only',
@@ -88,7 +88,7 @@ export function getBuildConfig(): BuildConfig {
 
   // Default: include all shells
   return {
-    includedShells: ['powershell', 'cmd', 'gitbash', 'bash', 'wsl'],
+    includedShells: ['powershell', 'cmd', 'gitbash', 'bash', 'bash_auto', 'wsl'],
     buildName: 'full',
     includeAll: true,
     verbose,

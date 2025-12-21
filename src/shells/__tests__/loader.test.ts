@@ -25,14 +25,15 @@ describe('Shell Loader', () => {
 
   it('should load all shells when requested', async () => {
     await loadShells({
-      shells: ['powershell', 'cmd', 'gitbash', 'bash', 'wsl'],
+      shells: ['powershell', 'cmd', 'gitbash', 'bash', 'bash_auto', 'wsl'],
     });
 
-    expect(shellRegistry.getCount()).toBe(5);
+    expect(shellRegistry.getCount()).toBe(6);
     expect(shellRegistry.hasShell('powershell')).toBe(true);
     expect(shellRegistry.hasShell('cmd')).toBe(true);
     expect(shellRegistry.hasShell('gitbash')).toBe(true);
     expect(shellRegistry.hasShell('bash')).toBe(true);
+    expect(shellRegistry.hasShell('bash_auto')).toBe(true);
     expect(shellRegistry.hasShell('wsl')).toBe(true);
   });
 
@@ -46,7 +47,7 @@ describe('Shell Loader', () => {
 
   it('should handle invalid shell types gracefully', async () => {
     setDebugLogging(true);
-    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
 
     await loadShells({
       shells: ['gitbash', 'invalid-shell', 'powershell'],
@@ -119,6 +120,21 @@ describe('Shell Loader', () => {
     expect(shell?.defaultConfig.shellCommand).toBe('/bin/bash');
   });
 
+  it('should load Bash Auto correctly', async () => {
+    await loadShells({
+      shells: ['bash_auto'],
+    });
+
+    const shell = shellRegistry.getShell('bash_auto');
+    expect(shell).toBeDefined();
+    // BashAutoPlugin delegates to Git Bash on Windows, Bash on other platforms
+    const isWindows = process.platform === 'win32';
+    expect(shell?.displayName).toBe(isWindows ? 'Git Bash (Auto)' : 'Bash (Auto)');
+    expect(shell?.defaultConfig.shellCommand).toBe(
+      isWindows ? 'C:\\Program Files\\Git\\bin\\bash.exe' : '/bin/bash'
+    );
+  });
+
   it('should load WSL correctly', async () => {
     await loadShells({
       shells: ['wsl'],
@@ -132,7 +148,7 @@ describe('Shell Loader', () => {
 
   it('should support verbose mode', async () => {
     setDebugLogging(true);
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
     await loadShells({
       shells: ['gitbash'],
@@ -147,7 +163,7 @@ describe('Shell Loader', () => {
   });
 
   it('should handle loading errors gracefully', async () => {
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
     // This should not throw even if there's an error
     await loadShells({
@@ -170,5 +186,26 @@ describe('Shell Loader', () => {
     expect(types).toContain('powershell');
     expect(types).toContain('gitbash');
     expect(types.length).toBe(3);
+  });
+
+  it('should register bash_auto alongside explicit shells without duplicates', async () => {
+    setDebugLogging(true);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+
+    await loadShells({
+      shells: ['bash_auto', 'bash'],
+    });
+    await loadShells({
+      shells: ['bash_auto'],
+    });
+
+    expect(shellRegistry.getCount()).toBe(2);
+    expect(shellRegistry.hasShell('bash_auto')).toBe(true);
+    expect(shellRegistry.hasShell('bash')).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Shell bash_auto is already registered, skipping')
+    );
+
+    warnSpy.mockRestore();
   });
 });
