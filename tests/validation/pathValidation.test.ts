@@ -77,7 +77,7 @@ describe('Path Validation', () => {
       
       // Invalid path should throw with appropriate message
       expect(() => validateWorkingDirectory('D:\\NotAllowed', context))
-        .toThrow('Working directory must be within allowed paths: C:\\Windows, C:\\Users');
+        .toThrow('Working directory must be within allowed paths: c:\\windows, c:\\users');
     });
 
     test('validates WSL paths with WSL shell', () => {
@@ -107,6 +107,16 @@ describe('Path Validation', () => {
       // Invalid paths should throw with appropriate message
       expect(() => validateWorkingDirectory('/d/NotAllowed', context))
         .toThrow(/allowed paths/);
+    });
+    
+    test('handles Windows drive letter casing for GitBash paths', () => {
+      const context = createValidationContext(
+        'gitbash',
+        createMockConfig({ type: 'gitbash' }, ['C:\\Projects\\MyApp'])
+      );
+
+      // Lowercase drive letter should still be accepted
+      expect(() => validateWorkingDirectory('c:\\Projects\\MyApp', context)).not.toThrow();
     });
 
     test('allows any path when restriction is disabled', () => {

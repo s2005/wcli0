@@ -4,6 +4,15 @@ import { normalizeWindowsPath, isPathAllowed, convertWindowsToWslPath } from './
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { getExpectedPathFormat } from './validationContext.js';
 
+function isWindowsPathFormat(pathValue: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(pathValue) || pathValue.includes('\\') || pathValue.startsWith('\\\\');
+}
+
+function normalizeWindowsForComparison(pathValue: string): string {
+  const normalized = normalizeWindowsPath(pathValue);
+  return normalized ? normalized.toLowerCase() : normalized;
+}
+
 /**
  * Normalize path based on shell type
  */
@@ -46,18 +55,26 @@ export function validateWorkingDirectory(
       `No allowed paths configured for ${context.shellName}`
     );
   }
+
+  // Normalize Windows-style allowed paths for consistent comparisons (case-insensitive drives)
+  const normalizedAllowedPaths = allowedPaths.map(pathValue => 
+    isWindowsPathFormat(pathValue) ? normalizeWindowsForComparison(pathValue) : pathValue
+  );
   
   // Normalize the directory path for validation
   const normalizedDir = normalizePathForShell(dir, context);
+  const comparisonDir = isWindowsPathFormat(normalizedDir)
+    ? normalizeWindowsForComparison(normalizedDir)
+    : normalizedDir;
   
   // Validate based on path format
   if (context.isWslShell) {
-    validateWslPath(normalizedDir, allowedPaths, context);
+    validateWslPath(comparisonDir, normalizedAllowedPaths, context);
   } else if (context.isWindowsShell) {
-    validateWindowsPath(normalizedDir, allowedPaths, context);
+    validateWindowsPath(comparisonDir, normalizedAllowedPaths, context);
   } else {
     // Git Bash or other Unix-like shells
-    validateUnixPath(normalizedDir, allowedPaths, context);
+    validateUnixPath(comparisonDir, normalizedAllowedPaths, context);
   }
 }
 
