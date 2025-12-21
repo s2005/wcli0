@@ -47,6 +47,11 @@ export async function loadShells(config: LoaderConfig): Promise<void> {
           plugin = new BashPlugin();
           break;
         }
+        case 'bash_auto': {
+          const { BashAutoPlugin } = await import('./bash_auto/index.js');
+          plugin = new BashAutoPlugin();
+          break;
+        }
         case 'wsl': {
           const { WslPlugin } = await import('./wsl/index.js');
           plugin = new WslPlugin();
