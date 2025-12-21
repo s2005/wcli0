@@ -47,10 +47,11 @@ describe('Modular Shell System Integration', () => {
         shells: config.includedShells,
       });
 
-      expect(shellRegistry.getCount()).toBe(3);
+      expect(shellRegistry.getCount()).toBe(4);
       expect(shellRegistry.hasShell('powershell')).toBe(true);
       expect(shellRegistry.hasShell('cmd')).toBe(true);
       expect(shellRegistry.hasShell('gitbash')).toBe(true);
+      expect(shellRegistry.hasShell('bash_auto')).toBe(true);
       expect(shellRegistry.hasShell('bash')).toBe(false);
       expect(shellRegistry.hasShell('wsl')).toBe(false);
     });
@@ -63,11 +64,12 @@ describe('Modular Shell System Integration', () => {
         shells: config.includedShells,
       });
 
-      expect(shellRegistry.getCount()).toBe(5);
+      expect(shellRegistry.getCount()).toBe(6);
       expect(shellRegistry.hasShell('powershell')).toBe(true);
       expect(shellRegistry.hasShell('cmd')).toBe(true);
       expect(shellRegistry.hasShell('gitbash')).toBe(true);
       expect(shellRegistry.hasShell('bash')).toBe(true);
+      expect(shellRegistry.hasShell('bash_auto')).toBe(true);
       expect(shellRegistry.hasShell('wsl')).toBe(true);
     });
 
@@ -136,7 +138,8 @@ describe('Modular Shell System Integration', () => {
       expect(schema.properties.shell.enum).toContain('powershell');
       expect(schema.properties.shell.enum).toContain('cmd');
       expect(schema.properties.shell.enum).toContain('gitbash');
-      expect(schema.properties.shell.enum).toHaveLength(3);
+      expect(schema.properties.shell.enum).toContain('bash_auto');
+      expect(schema.properties.shell.enum).toHaveLength(4);
     });
 
     it('should generate schema with all shells for full preset', async () => {
@@ -150,11 +153,12 @@ describe('Modular Shell System Integration', () => {
       const loadedShells = shellRegistry.getShellTypes();
       const schema = buildExecuteCommandSchema(loadedShells, new Map());
 
-      expect(schema.properties.shell.enum).toHaveLength(5);
+      expect(schema.properties.shell.enum).toHaveLength(6);
       expect(schema.properties.shell.enum).toContain('powershell');
       expect(schema.properties.shell.enum).toContain('cmd');
       expect(schema.properties.shell.enum).toContain('gitbash');
       expect(schema.properties.shell.enum).toContain('bash');
+      expect(schema.properties.shell.enum).toContain('bash_auto');
       expect(schema.properties.shell.enum).toContain('wsl');
     });
   });
@@ -306,7 +310,7 @@ describe('Modular Shell System Integration', () => {
         shells: config.includedShells,
       });
 
-      expect(shellRegistry.getCount()).toBe(5);
+      expect(shellRegistry.getCount()).toBe(6);
 
       shellRegistry.clear();
 
@@ -328,10 +332,11 @@ describe('Modular Shell System Integration', () => {
       const config2 = getBuildConfig();
       await loadShells({ shells: config2.includedShells });
 
-      expect(shellRegistry.getCount()).toBe(3);
+      expect(shellRegistry.getCount()).toBe(4);
       expect(shellRegistry.hasShell('powershell')).toBe(true);
       expect(shellRegistry.hasShell('cmd')).toBe(true);
       expect(shellRegistry.hasShell('gitbash')).toBe(true);
+      expect(shellRegistry.hasShell('bash_auto')).toBe(true);
     });
   });
 });

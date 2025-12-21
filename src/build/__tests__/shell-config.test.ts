@@ -28,6 +28,7 @@ describe('Build Configuration', () => {
         'cmd',
         'gitbash',
         'bash',
+        'bash_auto',
         'wsl',
       ]);
     });
@@ -51,6 +52,7 @@ describe('Build Configuration', () => {
         'cmd',
         'gitbash',
         'bash',
+        'bash_auto',
         'wsl',
       ]);
     });
@@ -61,7 +63,7 @@ describe('Build Configuration', () => {
       const config = getBuildConfig();
 
       expect(config.buildName).toBe('windows');
-      expect(config.includedShells).toEqual(['powershell', 'cmd', 'gitbash']);
+      expect(config.includedShells).toEqual(['powershell', 'cmd', 'gitbash', 'bash_auto']);
     });
 
     it('should load unix preset', () => {
@@ -70,7 +72,7 @@ describe('Build Configuration', () => {
       const config = getBuildConfig();
 
       expect(config.buildName).toBe('unix');
-      expect(config.includedShells).toEqual(['bash']);
+      expect(config.includedShells).toEqual(['bash', 'bash_auto']);
     });
 
     it('should load gitbash-only preset', () => {
@@ -217,7 +219,7 @@ describe('Build Configuration', () => {
     });
 
     it('should have valid shell names', () => {
-      const validShells = ['powershell', 'cmd', 'gitbash', 'bash', 'wsl'];
+      const validShells = ['powershell', 'cmd', 'gitbash', 'bash', 'bash_auto', 'wsl'];
 
       const config = getBuildConfig();
 

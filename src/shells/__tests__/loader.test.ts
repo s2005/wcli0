@@ -25,14 +25,15 @@ describe('Shell Loader', () => {
 
   it('should load all shells when requested', async () => {
     await loadShells({
-      shells: ['powershell', 'cmd', 'gitbash', 'bash', 'wsl'],
+      shells: ['powershell', 'cmd', 'gitbash', 'bash', 'bash_auto', 'wsl'],
     });
 
-    expect(shellRegistry.getCount()).toBe(5);
+    expect(shellRegistry.getCount()).toBe(6);
     expect(shellRegistry.hasShell('powershell')).toBe(true);
     expect(shellRegistry.hasShell('cmd')).toBe(true);
     expect(shellRegistry.hasShell('gitbash')).toBe(true);
     expect(shellRegistry.hasShell('bash')).toBe(true);
+    expect(shellRegistry.hasShell('bash_auto')).toBe(true);
     expect(shellRegistry.hasShell('wsl')).toBe(true);
   });
 
@@ -119,6 +120,17 @@ describe('Shell Loader', () => {
     expect(shell?.defaultConfig.shellCommand).toBe('/bin/bash');
   });
 
+  it('should load Bash Auto correctly', async () => {
+    await loadShells({
+      shells: ['bash_auto'],
+    });
+
+    const shell = shellRegistry.getShell('bash_auto');
+    expect(shell).toBeDefined();
+    expect(shell?.displayName).toBe('Bash (Auto)');
+    expect(shell?.defaultConfig.shellCommand).toBe('/bin/bash');
+  });
+
   it('should load WSL correctly', async () => {
     await loadShells({
       shells: ['wsl'],
@@ -170,5 +182,26 @@ describe('Shell Loader', () => {
     expect(types).toContain('powershell');
     expect(types).toContain('gitbash');
     expect(types.length).toBe(3);
+  });
+
+  it('should register bash_auto alongside explicit shells without duplicates', async () => {
+    setDebugLogging(true);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await loadShells({
+      shells: ['bash_auto', 'bash'],
+    });
+    await loadShells({
+      shells: ['bash_auto'],
+    });
+
+    expect(shellRegistry.getCount()).toBe(2);
+    expect(shellRegistry.hasShell('bash_auto')).toBe(true);
+    expect(shellRegistry.hasShell('bash')).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Shell bash_auto is already registered, skipping')
+    );
+
+    warnSpy.mockRestore();
   });
 });
