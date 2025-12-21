@@ -355,6 +355,24 @@ class CLIServer {
     }
   }
 
+  private logValidationFailure(command: string, shellName: string, workingDir: string, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    debugLog(`[execute_command] Validation failed for shell ${shellName}: ${message}. Command: ${command}`);
+
+    if (!this.logStorage) {
+      return;
+    }
+
+    this.logStorage.storeLog(
+      command,
+      shellName,
+      workingDir,
+      '',
+      `Validation error: ${message}`,
+      -1
+    );
+  }
+
   private async executeShellCommand(
     shellName: string,
     shellConfig: ResolvedShellConfig,
@@ -934,7 +952,12 @@ class CLIServer {
             }
           }
 
-          this.validateCommand(context, args.command, workingDir);
+          try {
+            this.validateCommand(context, args.command, workingDir);
+          } catch (error) {
+            this.logValidationFailure(args.command, args.shell, workingDir, error);
+            throw error;
+          }
 
           return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir, args.maxOutputLines);
         }
