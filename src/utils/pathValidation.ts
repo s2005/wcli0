@@ -40,7 +40,12 @@ export function validateWorkingDirectory(
   }
   
   const allowedPaths = context.shellConfig.paths.allowedPaths;
-  if (allowedPaths.length === 0) {
+  const normalizedAllowedPaths = normalizeAllowedPathsForValidation(
+    context.shellConfig.paths.allowedPaths,
+    context
+  );
+
+  if (normalizedAllowedPaths.length === 0) {
     throw new McpError(
       ErrorCode.InvalidRequest,
       `No allowed paths configured for ${context.shellName}`
@@ -49,15 +54,15 @@ export function validateWorkingDirectory(
   
   // Normalize the directory path for validation
   const normalizedDir = normalizePathForShell(dir, context);
-  
+
   // Validate based on path format
   if (context.isWslShell) {
-    validateWslPath(normalizedDir, allowedPaths, context);
+    validateWslPath(normalizedDir, normalizedAllowedPaths, context);
   } else if (context.isWindowsShell) {
-    validateWindowsPath(normalizedDir, allowedPaths, context);
+    validateWindowsPath(normalizedDir, normalizedAllowedPaths, allowedPaths, context);
   } else {
     // Git Bash or other Unix-like shells
-    validateUnixPath(normalizedDir, allowedPaths, context);
+    validateUnixPath(normalizedDir, normalizedAllowedPaths, allowedPaths, context);
   }
 }
 
@@ -105,20 +110,23 @@ function validateWslPath(
 function validateWindowsPath(
   dir: string,
   allowedPaths: string[],
+  allowedPathsDisplay: string[],
   context: ValidationContext
 ): void {
+  const normalizedDir = normalizeWindowsPath(dir).toLowerCase();
+
   // Windows paths should be normalized already
-  if (!path.win32.isAbsolute(dir)) {
+  if (!path.win32.isAbsolute(normalizedDir)) {
     throw new McpError(
       ErrorCode.InvalidRequest,
       'Working directory must be an absolute path'
     );
   }
   
-  if (!isPathAllowed(dir, allowedPaths)) {
+  if (!isPathAllowed(normalizedDir, allowedPaths)) {
     throw new McpError(
       ErrorCode.InvalidRequest,
-      `Working directory must be within allowed paths: ${allowedPaths.join(', ')}`
+      `Working directory must be within allowed paths: ${allowedPathsDisplay.join(', ')}`
     );
   }
 }
@@ -129,12 +137,17 @@ function validateWindowsPath(
 function validateUnixPath(
   dir: string,
   allowedPaths: string[],
+  allowedPathsDisplay: string[],
   context: ValidationContext
 ): void {
   // Git Bash can use both Windows and Unix paths
   const isWindowsFormat =
     path.win32.isAbsolute(dir) || /^[A-Za-z]:/.test(dir) || dir.includes('\\');
   const isUnixFormat = dir.startsWith('/');
+
+  const windowsNormalizedDir = isWindowsFormat
+    ? normalizeWindowsPath(dir).toLowerCase()
+    : dir;
   
   if (!isWindowsFormat && !isUnixFormat) {
     throw new McpError(
@@ -147,7 +160,7 @@ function validateUnixPath(
   const isAllowed = allowedPaths.some(allowed => {
     if (isWindowsFormat && (allowed.includes('\\') || /^[A-Z]:/i.test(allowed))) {
       // Both are Windows format
-      return isPathAllowed(dir, [allowed]);
+      return isPathAllowed(windowsNormalizedDir, [allowed]);
     } else if (isUnixFormat && allowed.startsWith('/')) {
       // Both are Unix format
       return dir === allowed || 
@@ -155,12 +168,15 @@ function validateUnixPath(
     } else if (isWindowsFormat && allowed.startsWith('/')) {
       // Convert Git Bash Unix path to Windows for comparison
       const convertedAllowed = convertGitBashToWindows(allowed);
-      return isPathAllowed(dir, [convertedAllowed]);
+      return isPathAllowed(windowsNormalizedDir, [convertedAllowed]);
     } else if (isUnixFormat && (allowed.includes('\\') || /^[A-Z]:/i.test(allowed))) {
       // Convert Windows to Git Bash Unix path for comparison
       const convertedAllowed = convertWindowsToGitBash(allowed);
-      return dir === convertedAllowed || 
-             dir.startsWith(convertedAllowed.endsWith('/') ? convertedAllowed : convertedAllowed + '/');
+      const normalizedDir = normalizeGitBashWindowsPath(dir);
+      const normalizedAllowed = normalizeGitBashWindowsPath(convertedAllowed);
+
+      return normalizedDir === normalizedAllowed || 
+             normalizedDir.startsWith(normalizedAllowed.endsWith('/') ? normalizedAllowed : normalizedAllowed + '/');
     }
     return false;
   });
@@ -168,7 +184,7 @@ function validateUnixPath(
   if (!isAllowed) {
     throw new McpError(
       ErrorCode.InvalidRequest,
-      `Working directory must be within allowed paths: ${allowedPaths.join(', ')}`
+      `Working directory must be within allowed paths: ${allowedPathsDisplay.join(', ')}`
     );
   }
 }
@@ -199,4 +215,35 @@ function convertWindowsToGitBash(windowsPath: string): string {
     return `/${drive}/${rest}`;
   }
   return windowsPath;
+}
+
+function normalizeAllowedPathsForValidation(
+  allowedPaths: string[],
+  context: ValidationContext
+): string[] {
+  const shouldNormalizeWindowsCase = context.isWindowsShell || context.shellName === 'gitbash';
+
+  if (!shouldNormalizeWindowsCase) {
+    return allowedPaths;
+  }
+
+  return allowedPaths.map(pathValue => {
+    if (isWindowsLikePath(pathValue)) {
+      return normalizeWindowsPath(pathValue).toLowerCase();
+    }
+
+    return pathValue;
+  });
+}
+
+function normalizeGitBashWindowsPath(pathValue: string): string {
+  if (/^\/[a-z]:/i.test(pathValue) || /^\/[a-z]\//i.test(pathValue)) {
+    return pathValue.toLowerCase();
+  }
+
+  return pathValue;
+}
+
+function isWindowsLikePath(pathValue: string): boolean {
+  return /^[a-zA-Z]:/.test(pathValue) || pathValue.includes('\\') || /^\/[a-zA-Z]\//.test(pathValue);
 }

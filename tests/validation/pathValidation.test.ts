@@ -125,5 +125,20 @@ describe('Path Validation', () => {
       expect(() => validateWorkingDirectory('C:\\Any', context))
         .toThrow(/No allowed paths configured/);
     });
+
+    test('handles drive-letter casing for Windows shells', () => {
+      const context = createValidationContext('cmd', createMockConfig({}, ['C:\\Projects\\MyApp']));
+
+      expect(() => validateWorkingDirectory('c:\\projects\\myapp', context)).not.toThrow();
+      expect(() => validateWorkingDirectory('C:\\PROJECTS\\MYAPP\\docs', context)).not.toThrow();
+    });
+
+    test('handles drive-letter casing for GitBash shells', () => {
+      const gitbashConfig = createMockConfig({ type: 'gitbash' }, ['C:\\Projects\\MyApp']);
+      const context = createValidationContext('gitbash', gitbashConfig);
+
+      expect(() => validateWorkingDirectory('/c/Projects/MyApp/docs', context)).not.toThrow();
+      expect(() => validateWorkingDirectory('c:../projects/myapp', context)).not.toThrow();
+    });
   });
 });
