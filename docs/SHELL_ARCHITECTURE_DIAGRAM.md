@@ -1,7 +1,7 @@
 WCLI0 SHELL ARCHITECTURE DIAGRAM
 =================================
 
-SUPPORTED SHELLS (5 Total)
+SUPPORTED SHELLS (6 Total)
 ==========================
 
                     Windows Shells          Unix-Like Shells       Unix + WSL
@@ -18,6 +18,16 @@ SUPPORTED SHELLS (5 Total)
                     └─ Custom override                            ├─ wsl.exe runner
                                                                    ├─ WSL-specific
                                                                    └─ Mount point
+
+                    Auto-Select Shell
+                    ═════════════════
+                    
+                    bash_auto
+                    ├─ Platform detection
+                    │  ├─ linux/darwin ──→ Bash (/bin/bash)
+                    │  └─ win32 ────────→ Git Bash (bash.exe)
+                    ├─ Inherits validation from selected shell
+                    └─ Cross-platform compatible
 
 
 CONFIGURATION HIERARCHY
