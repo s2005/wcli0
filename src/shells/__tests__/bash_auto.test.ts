@@ -35,8 +35,21 @@ describe('BashAutoPlugin', () => {
     );
   });
 
+  it('uses Bash defaults on darwin (macOS) platforms', () => {
+    setPlatform('darwin');
+
+    const plugin = new BashAutoPlugin();
+
+    expect(plugin.displayName).toBe('Bash (Auto)');
+    expect(plugin.defaultConfig.shellCommand).toBe('/bin/bash');
+    expect(plugin.getBlockedCommands()).toEqual(
+      expect.arrayContaining(['rm -rf /'])
+    );
+  });
+
   it.each([
     { platform: 'linux' as const, expectedShell: 'bash' },
+    { platform: 'darwin' as const, expectedShell: 'bash' },
     { platform: 'win32' as const, expectedShell: 'gitbash' },
   ])(
     'delegates validation to the selected implementation on $platform',

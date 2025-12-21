@@ -105,7 +105,7 @@ describe('Build Configuration', () => {
     it('should warn for unknown preset and use default', () => {
       process.env.SHELL_BUILD_PRESET = 'unknown-preset';
 
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
 
       const config = getBuildConfig();
 
@@ -143,6 +143,15 @@ describe('Build Configuration', () => {
 
       expect(config.buildName).toBe('custom');
       expect(config.includedShells).toEqual(['gitbash']);
+    });
+
+    it('should support bash_auto as standalone shell option', () => {
+      process.env.INCLUDED_SHELLS = 'bash_auto';
+
+      const config = getBuildConfig();
+
+      expect(config.buildName).toBe('custom');
+      expect(config.includedShells).toEqual(['bash_auto']);
     });
 
     it('should handle empty strings in list', () => {

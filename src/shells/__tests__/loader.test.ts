@@ -208,4 +208,33 @@ describe('Shell Loader', () => {
 
     warnSpy.mockRestore();
   });
+
+  it('should support verbose mode with bash_auto', async () => {
+    setDebugLogging(true);
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+
+    await loadShells({
+      shells: ['bash_auto'],
+      verbose: true,
+    });
+
+    expect(consoleSpy).toHaveBeenCalledWith('Loading shell: bash_auto');
+    // bash_auto displayName varies by platform
+    const isWindows = process.platform === 'win32';
+    expect(consoleSpy).toHaveBeenCalledWith(
+      `✓ Loaded shell: ${isWindows ? 'Git Bash (Auto)' : 'Bash (Auto)'}`
+    );
+    expect(consoleSpy).toHaveBeenCalledWith('Loaded 1 shell(s)');
+
+    consoleSpy.mockRestore();
+  });
+
+  it('should maintain registration order when bash_auto is included with explicit shells', async () => {
+    await loadShells({
+      shells: ['cmd', 'bash_auto', 'powershell'],
+    });
+
+    const types = shellRegistry.getShellTypes();
+    expect(types).toEqual(['cmd', 'bash_auto', 'powershell']);
+  });
 });
