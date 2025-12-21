@@ -793,6 +793,28 @@ export function applyCliLogging(
   }
 }
 
+export function getDefaultDebugLogDirectory(): string {
+  return path.join(os.tmpdir(), 'wcli0-debug-logs');
+}
+
+export function applyDebugLogDirectory(
+  config: ServerConfig,
+  debugEnabled: boolean
+): void {
+  if (!debugEnabled) {
+    return;
+  }
+
+  if (!config.global.logging) {
+    config.global.logging = { ...DEFAULT_LOGGING_CONFIG };
+  }
+
+  const hasLogDirectory = config.global.logging.logDirectory?.trim();
+  if (!hasLogDirectory) {
+    config.global.logging.logDirectory = getDefaultDebugLogDirectory();
+  }
+}
+
 export function applyCliUnsafeMode(
   config: ServerConfig,
   unsafeOptions?: { unsafe?: boolean; yolo?: boolean }

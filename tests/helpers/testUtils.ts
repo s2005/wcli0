@@ -29,7 +29,8 @@ export function buildTestConfig(overrides: DeepPartial<ServerConfig> = {}): Serv
       paths: {
         allowedPaths: overrides.global?.paths?.allowedPaths?.filter((path): path is string => path !== undefined) ?? ['/test/default'],
         initialDir: overrides.global?.paths?.initialDir,
-      }
+      },
+      logging: overrides.global?.logging as any
     },
     shells: {}
   };

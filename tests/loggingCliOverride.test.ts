@@ -1,5 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
-import { applyCliLogging } from '../src/utils/config.js';
+import { applyCliLogging, applyDebugLogDirectory, getDefaultDebugLogDirectory } from '../src/utils/config.js';
 import { buildTestConfig } from './helpers/testUtils.js';
 
 describe('applyCliLogging', () => {
@@ -125,6 +125,39 @@ describe('applyCliLogging', () => {
   test('does not modify config when all parameters are undefined', () => {
     const config = buildTestConfig();
     applyCliLogging(config, undefined, undefined, undefined, undefined, undefined);
+    
+    expect(config.global.logging).toBeUndefined();
+  });
+});
+
+describe('applyDebugLogDirectory', () => {
+  test('initializes logging and sets default debug log directory when enabled', () => {
+    const config = buildTestConfig();
+    expect(config.global.logging).toBeUndefined();
+
+    applyDebugLogDirectory(config, true);
+
+    expect(config.global.logging).toBeDefined();
+    expect(config.global.logging!.logDirectory).toBe(getDefaultDebugLogDirectory());
+  });
+
+  test('does not override existing logDirectory', () => {
+    const config = buildTestConfig({
+      global: {
+        logging: {
+          logDirectory: '/custom/logs'
+        } as any
+      }
+    });
+
+    applyDebugLogDirectory(config, true);
+
+    expect(config.global.logging!.logDirectory).toBe('/custom/logs');
+  });
+
+  test('does nothing when debug is disabled', () => {
+    const config = buildTestConfig();
+    applyDebugLogDirectory(config, false);
     
     expect(config.global.logging).toBeUndefined();
   });

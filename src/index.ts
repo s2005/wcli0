@@ -33,7 +33,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetCommandOutputSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging, applyCliUnsafeMode } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging, applyCliUnsafeMode, applyDebugLogDirectory } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig, LoggingConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -1370,6 +1370,7 @@ const main = async () => {
       args.maxReturnLines as number | undefined,
       args.logDirectory as string | undefined
     );
+    applyDebugLogDirectory(config, Boolean(args.debug));
     applyCliUnsafeMode(config, {
       unsafe: args.unsafe as boolean | undefined,
       yolo: args.yolo as boolean | undefined

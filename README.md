@@ -197,6 +197,7 @@ When file-based logging is enabled:
 - Truncation messages show the file path directly (simpler output)
 - Logs persist across server restarts
 - No in-memory storage limits apply
+- Starting the server with `--debug` automatically enables file-based logging to your OS temp directory (`<temp>/wcli0-debug-logs`) when no `logDirectory` is set, so every command and its output are persisted during debugging sessions.
 
 > **Security Note**: Log files may contain sensitive command output. Ensure the log directory has appropriate permissions.
 

@@ -19,6 +19,7 @@ This document lists the default settings applied when no custom configuration is
 - `maxReturnLines`: 500
 - `maxReturnBytes`: 1,048,576 bytes (1 MB retrieval cap)
 - `exposeFullPath`: false
+- `--debug` flag: if provided at startup and `logDirectory` is unset, logs are written to `<temp>/wcli0-debug-logs`
 
 ## Global Security Defaults
 
