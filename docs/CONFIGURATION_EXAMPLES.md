@@ -2,7 +2,76 @@
 
 This document provides practical examples of different configuration scenarios for the Windows CLI MCP Server.
 
-Each shell entry now requires a `type` property specifying the shell (`powershell`, `cmd`, `gitbash` or `wsl`).
+Each shell entry now requires a `type` property specifying the shell (`powershell`, `cmd`, `gitbash`, `wsl`, `bash`, or `bash_auto`).
+
+## Cross-Platform Configuration with bash_auto
+
+The `bash_auto` shell automatically selects between Bash (Linux/macOS) and Git Bash (Windows) based on the host platform. This is ideal for cross-platform development.
+
+### Simple Cross-Platform Setup
+
+```json
+{
+  "global": {
+    "security": {
+      "restrictWorkingDirectory": false
+    }
+  },
+  "shells": {
+    "bash_auto": {
+      "type": "bash_auto",
+      "enabled": true
+    }
+  }
+}
+```
+
+### Using Build Presets
+
+Configure via environment variables:
+
+```bash
+# Unix preset includes bash_auto
+SHELL_BUILD_PRESET=unix
+
+# Windows preset includes bash_auto for cross-platform compatibility
+SHELL_BUILD_PRESET=windows
+
+# Custom shell list with bash_auto only
+INCLUDED_SHELLS=bash_auto
+```
+
+### Mixed Environment (bash_auto + PowerShell)
+
+Use bash_auto for scripts while keeping PowerShell available for Windows-specific commands:
+
+```json
+{
+  "global": {
+    "security": {
+      "commandTimeout": 60,
+      "restrictWorkingDirectory": true
+    },
+    "paths": {
+      "allowedPaths": ["C:\\\\Projects", "/home/user/projects"]
+    }
+  },
+  "shells": {
+    "bash_auto": {
+      "type": "bash_auto",
+      "enabled": true
+    },
+    "powershell": {
+      "type": "powershell",
+      "enabled": true,
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      }
+    }
+  }
+}
+```
 
 ## Basic Configurations
 

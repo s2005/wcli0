@@ -1,0 +1,26 @@
+{
+    "mcpServers": {
+        "wcli0_local": {
+            "command": "npx",
+            "args": [
+                "wcli0",
+                "--shell",
+                "gitbash",
+                "--commandTimeout",
+                "1800",
+                "--allowedDir",
+                "D:/mcp/my.TypeScript/wcli0",
+                "--maxOutputLines",
+                "100",
+                "--enableTruncation",
+                "--enableLogResources",
+                "--logDirectory",
+                "D:/mcp/my.TypeScript/wcli0/logs/wcli0",
+                "--logRetentionDays",
+                "3",
+                "--debug",
+                "--yolo"
+            ]
+        }
+    }
+}

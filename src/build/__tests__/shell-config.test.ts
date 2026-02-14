@@ -28,6 +28,7 @@ describe('Build Configuration', () => {
         'cmd',
         'gitbash',
         'bash',
+        'bash_auto',
         'wsl',
       ]);
     });
@@ -51,6 +52,7 @@ describe('Build Configuration', () => {
         'cmd',
         'gitbash',
         'bash',
+        'bash_auto',
         'wsl',
       ]);
     });
@@ -61,7 +63,7 @@ describe('Build Configuration', () => {
       const config = getBuildConfig();
 
       expect(config.buildName).toBe('windows');
-      expect(config.includedShells).toEqual(['powershell', 'cmd', 'gitbash']);
+      expect(config.includedShells).toEqual(['powershell', 'cmd', 'gitbash', 'bash_auto']);
     });
 
     it('should load unix preset', () => {
@@ -70,7 +72,7 @@ describe('Build Configuration', () => {
       const config = getBuildConfig();
 
       expect(config.buildName).toBe('unix');
-      expect(config.includedShells).toEqual(['bash']);
+      expect(config.includedShells).toEqual(['bash', 'bash_auto']);
     });
 
     it('should load gitbash-only preset', () => {
@@ -103,7 +105,7 @@ describe('Build Configuration', () => {
     it('should warn for unknown preset and use default', () => {
       process.env.SHELL_BUILD_PRESET = 'unknown-preset';
 
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
 
       const config = getBuildConfig();
 
@@ -141,6 +143,15 @@ describe('Build Configuration', () => {
 
       expect(config.buildName).toBe('custom');
       expect(config.includedShells).toEqual(['gitbash']);
+    });
+
+    it('should support bash_auto as standalone shell option', () => {
+      process.env.INCLUDED_SHELLS = 'bash_auto';
+
+      const config = getBuildConfig();
+
+      expect(config.buildName).toBe('custom');
+      expect(config.includedShells).toEqual(['bash_auto']);
     });
 
     it('should handle empty strings in list', () => {
@@ -217,7 +228,7 @@ describe('Build Configuration', () => {
     });
 
     it('should have valid shell names', () => {
-      const validShells = ['powershell', 'cmd', 'gitbash', 'bash', 'wsl'];
+      const validShells = ['powershell', 'cmd', 'gitbash', 'bash', 'bash_auto', 'wsl'];
 
       const config = getBuildConfig();
 
