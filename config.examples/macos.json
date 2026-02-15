@@ -1,0 +1,24 @@
+{
+  "global": {
+    "security": {
+      "commandTimeout": 30,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": ["rm -rf /", "dd", "mkfs"],
+      "blockedArguments": ["--force", "-rf"],
+      "blockedOperators": ["&&", "||", ";", "|"]
+    },
+    "paths": {
+      "allowedPaths": ["/Users/$(whoami)", "/tmp"],
+      "initialDir": "/Users/$(whoami)"
+    }
+  },
+  "shells": {
+    "bash_auto": {
+      "type": "bash_auto",
+      "enabled": true
+    }
+  }
+}
