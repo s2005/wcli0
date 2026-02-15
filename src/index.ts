@@ -378,7 +378,8 @@ class CLIServer {
     shellConfig: ResolvedShellConfig,
     command: string,
     workingDir: string,
-    maxOutputLines?: number
+    maxOutputLines?: number,
+    timeout?: number
   ): Promise<CallToolResult> {
     return new Promise((resolve, reject) => {
       let shellProcess: ReturnType<typeof spawn>;
@@ -444,7 +445,7 @@ class CLIServer {
       });
 
       shellProcess.on('close', (code) => {
-        clearTimeout(timeout);
+        clearTimeout(timeoutHandle);
 
         // Combine output for storage and truncation
         const stdout = output;
@@ -546,20 +547,22 @@ class CLIServer {
       });
 
       shellProcess.on('error', (err) => {
-        clearTimeout(timeout);
+        clearTimeout(timeoutHandle);
         reject(new McpError(
           ErrorCode.InternalError,
           `${shellName} process error: ${err.message}`
         ));
       });
 
-      const timeout = setTimeout(() => {
+      // Use provided timeout or fall back to shell's default timeout
+      const effectiveTimeout = timeout ?? shellConfig.security.commandTimeout;
+      const timeoutHandle = setTimeout(() => {
         shellProcess.kill();
         reject(new McpError(
           ErrorCode.InternalError,
-          `Command execution timed out after ${shellConfig.security.commandTimeout} seconds in ${shellName}`
+          `Command execution timed out after ${effectiveTimeout} seconds in ${shellName}`
         ));
-      }, shellConfig.security.commandTimeout * 1000);
+      }, effectiveTimeout * 1000);
     });
   }
 
@@ -875,7 +878,8 @@ class CLIServer {
             shell: z.enum(enabledShells as [string, ...string[]]),
             command: z.string(),
             workingDir: z.string().optional(),
-            maxOutputLines: z.number().optional()
+            maxOutputLines: z.number().optional(),
+            timeout: z.number().optional()
           }).parse(toolParams.arguments);
 
           // Validate maxOutputLines if provided
@@ -896,6 +900,28 @@ class CLIServer {
               throw new McpError(
                 ErrorCode.InvalidRequest,
                 `maxOutputLines cannot exceed 10000, got: ${args.maxOutputLines}`
+              );
+            }
+          }
+
+          // Validate timeout if provided
+          if (args.timeout !== undefined) {
+            if (!Number.isInteger(args.timeout)) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `timeout must be an integer, got: ${typeof args.timeout}`
+              );
+            }
+            if (args.timeout < 1) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `timeout must be at least 1 second, got: ${args.timeout}`
+              );
+            }
+            if (args.timeout > 3600) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `timeout cannot exceed 3600 seconds (1 hour), got: ${args.timeout}`
               );
             }
           }
@@ -959,7 +985,7 @@ class CLIServer {
             throw error;
           }
 
-          return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir, args.maxOutputLines);
+          return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir, args.maxOutputLines, args.timeout);
         }
 
         case "get_current_directory": {

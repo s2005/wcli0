@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.2.2] - 2026-02-14
+
+### New Features
+
+- **Per-Command Timeout**: New `timeout` parameter for individual command execution
+  - Override global command timeout on a per-command basis
+  - Must be a positive integer between 1 and 3,600 seconds (1 hour)
+  - Provides fine-grained control over command execution time
+  - Full validation and error messages for invalid timeout values
+
+### Improvements
+
+- Updated tool descriptions to document the new `timeout` parameter
+- Enhanced execute_command tool schema with timeout support
+- Improved API documentation with timeout usage examples
+
+### Added
+
+- Comprehensive test coverage for timeout validation and behavior
+- Integration tests for timeout with maxOutputLines parameter
+- Boundary value tests (1-3600 seconds)
+
 ## [1.2.1] - 2025-12-18
 
 ### Fixed

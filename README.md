@@ -748,6 +748,8 @@ To completely remove defaults for a given restriction, provide an empty array:
     - `shell` (string): Shell to use ("powershell", "cmd", "gitbash", "bash", or "wsl")
     - `command` (string): Command to execute
     - `workingDir` (optional string): Working directory
+    - `maxOutputLines` (optional number): Maximum output lines to return (1-10,000). Overrides global setting.
+    - `timeout` (optional number): Command timeout in seconds (1-3,600). Overrides global setting.
   - Returns command output as text, or error message if execution fails
   - If `workingDir` is omitted, the command runs in the server's active working directory. If this has not been set, the tool returns an error.
 

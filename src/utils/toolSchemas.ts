@@ -61,6 +61,10 @@ export function buildExecuteCommandSchema(
       maxOutputLines: {
         type: "number",
         description: "Maximum number of output lines to return (optional, overrides global setting). Must be a positive integer between 1 and 10,000."
+      },
+      timeout: {
+        type: "number",
+        description: "Command timeout in seconds (optional, overrides global setting). Must be a positive integer between 1 and 3,600 (1 hour)."
       }
     },
     required: ["shell", "command"],

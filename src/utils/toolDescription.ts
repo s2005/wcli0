@@ -145,6 +145,13 @@ export function buildExecuteCommandDescription(
   lines.push('- If truncated, use `get_command_output` tool with the executionId to retrieve full output');
   lines.push('- When file logging is enabled (via `logDirectory`), full logs are also saved to disk');
   lines.push('');
+
+  lines.push('**Command Timeout:**');
+  lines.push('- Each shell has a default command timeout (see Shell-Specific Settings above)');
+  lines.push('- Use `timeout` parameter to override the timeout for a specific command');
+  lines.push('- Timeout must be a positive integer between 1 and 3,600 seconds (1 hour)');
+  lines.push('- If the timeout is exceeded, the command will be terminated');
+  lines.push('');
   
   // Add examples
   lines.push('**Examples:**');
@@ -170,6 +177,16 @@ export function buildExecuteCommandDescription(
     lines.push('  "command": "ls -la",');
     lines.push('  "workingDir": "/home/user",');
     lines.push('  "maxOutputLines": 50');
+    lines.push('}');
+    lines.push('```');
+    lines.push('');
+    lines.push('With custom timeout:');
+    lines.push('```json');
+    lines.push('{');
+    lines.push('  "shell": "wsl",');
+    lines.push('  "command": "long-running-command",');
+    lines.push('  "workingDir": "/home/user",');
+    lines.push('  "timeout": 120');
     lines.push('}');
     lines.push('```');
     lines.push('');
