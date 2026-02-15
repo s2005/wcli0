@@ -11,17 +11,35 @@ import path from 'path';
 import os from 'os';
 
 /**
- * Wait for a file to exist with polling (more reliable than fixed timeout under load)
+ * Wait for file content to be fully available, not just file existence.
+ * This avoids races with async writes on slower filesystems (e.g. Windows CI).
  */
-async function waitForFile(filePath: string, timeoutMs = 2000, intervalMs = 50): Promise<void> {
+async function waitForFileContent(
+  filePath: string,
+  isReady: (content: string) => boolean = content => content.length > 0,
+  timeoutMs = 4000,
+  intervalMs = 50
+): Promise<string> {
   const start = Date.now();
+  let lastContent = '';
+
   while (Date.now() - start < timeoutMs) {
-    if (fs.existsSync(filePath)) {
-      return;
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      lastContent = content;
+      if (isReady(content)) {
+        return content;
+      }
+    } catch {
+      // File may not exist yet or may still be in-flight; keep polling.
     }
+
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
-  throw new Error(`File ${filePath} did not appear within ${timeoutMs}ms`);
+
+  throw new Error(
+    `File ${filePath} did not contain expected content within ${timeoutMs}ms. Last content length: ${lastContent.length}`
+  );
 }
 
 describe('LogStorageManager - File Content Format', () => {
@@ -81,10 +99,10 @@ describe('LogStorageManager - File Content Format', () => {
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
 
-    // Wait for async file write
-    await waitForFile(filePath);
-
-    const content = fs.readFileSync(filePath, 'utf8');
+    // Wait for async file write to include header and output
+    const content = await waitForFileContent(filePath, value =>
+      value.includes('# Command Execution Log') && value.includes('hello world')
+    );
 
     // Check header is present
     expect(content).toContain('# Command Execution Log');
@@ -111,9 +129,7 @@ describe('LogStorageManager - File Content Format', () => {
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
 
-    await waitForFile(filePath);
-
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = await waitForFileContent(filePath, value => value.includes('# Timestamp: '));
 
     // Extract timestamp from content
     const timestampMatch = content.match(/# Timestamp: (.+)/);
@@ -139,9 +155,7 @@ describe('LogStorageManager - File Content Format', () => {
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
 
-    await waitForFile(filePath);
-
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = await waitForFileContent(filePath, value => value.includes('command not found'));
 
     expect(content).toContain('# Exit Code: 127');
     expect(content).toContain('# Command: bad-command');
@@ -157,9 +171,7 @@ describe('LogStorageManager - File Content Format', () => {
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
 
-    await waitForFile(filePath);
-
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = await waitForFileContent(filePath, value => value.includes(`# Command: ${specialCmd}`));
 
     expect(content).toContain(`# Command: ${specialCmd}`);
   });
@@ -173,9 +185,9 @@ describe('LogStorageManager - File Content Format', () => {
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
 
-    await waitForFile(filePath);
-
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = await waitForFileContent(filePath, value =>
+      value.includes('# --- Output ---') && value.includes('line1\nline2\nline3\nline4\nline5')
+    );
 
     // Header should come before output
     const headerEnd = content.indexOf('# --- Output ---');
@@ -195,9 +207,11 @@ describe('LogStorageManager - File Content Format', () => {
       ? log!.filePath!
       : path.join(testLogDir, log!.filePath!);
 
-    await waitForFile(filePath);
-
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = await waitForFileContent(filePath, value =>
+      value.includes('# Command Execution Log') &&
+      value.includes('# Command: big-cmd') &&
+      value.includes('# Working Directory: /big/dir')
+    );
 
     // Header should still be present even if content is truncated
     expect(content).toContain('# Command Execution Log');
