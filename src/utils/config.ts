@@ -105,11 +105,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
         command: 'bash',
         args: ['-c']
       },
-      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-      wslConfig: {
-        mountPoint: '/mnt/',
-        inheritGlobalPaths: true
-      }
+      validatePath: (dir: string) => /^\/|^\.\.?[/]/.test(dir)
     },
     wsl: {
       type: 'wsl',
