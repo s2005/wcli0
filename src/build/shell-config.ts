@@ -86,11 +86,13 @@ export function getBuildConfig(): BuildConfig {
     };
   }
 
-  // Default: include all shells
+  // Default: platform-aware selection
+  const isUnix = process.platform !== 'win32';
   return {
-    includedShells: ['powershell', 'cmd', 'gitbash', 'bash', 'bash_auto', 'wsl'],
-    buildName: 'full',
-    includeAll: true,
+    includedShells: isUnix
+      ? ['bash', 'bash_auto']
+      : ['powershell', 'cmd', 'gitbash', 'bash_auto'],
+    buildName: isUnix ? 'unix' : 'windows',
     verbose,
   };
 }
