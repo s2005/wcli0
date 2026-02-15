@@ -92,14 +92,15 @@ export class TestCLIServer {
     this.server = new CLIServer(config);
   }
 
-  async executeCommand(options: { shell: keyof ServerConfig['shells']; command: string; workingDir?: string; maxOutputLines?: number }) {
+  async executeCommand(options: { shell: keyof ServerConfig['shells']; command: string; workingDir?: string; maxOutputLines?: number; timeout?: number }) {
     const result = await this.server._executeTool({
       name: 'execute_command',
       arguments: {
         shell: options.shell as string,
         command: options.command,
         workingDir: options.workingDir,
-        maxOutputLines: options.maxOutputLines
+        maxOutputLines: options.maxOutputLines,
+        timeout: options.timeout
       }
     });
 
@@ -201,6 +202,10 @@ export class TestCLIServer {
             maxOutputLines: {
               type: 'number',
               description: 'Maximum number of output lines to return (optional, overrides global setting). Must be a positive integer between 1 and 10,000.'
+            },
+            timeout: {
+              type: 'number',
+              description: 'Command timeout in seconds (optional, overrides global setting). Must be a positive integer between 1 and 3,600 (1 hour).'
             }
           },
           required: ['shell', 'command'],
