@@ -63,6 +63,48 @@ export class TestCLIServer {
         (baseConfig.global.restrictions.blockedArguments || []).filter(a => a !== '-e');
     }
 
+    // Merge shell overrides deeply so partial test overrides don't drop required defaults.
+    const mergedShells: ServerConfig['shells'] = { ...(baseConfig.shells || {}) };
+    for (const [shellName, shellOverride] of Object.entries(overrides.shells || {})) {
+      const key = shellName as keyof ServerConfig['shells'];
+      const baseShell = mergedShells[key] as any;
+      const overrideShell = shellOverride as any;
+
+      if (!baseShell) {
+        (mergedShells as any)[key] = overrideShell;
+        continue;
+      }
+
+      (mergedShells as any)[key] = {
+        ...baseShell,
+        ...overrideShell,
+        executable: {
+          ...(baseShell.executable || {}),
+          ...(overrideShell.executable || {})
+        },
+        overrides: {
+          ...(baseShell.overrides || {}),
+          ...(overrideShell.overrides || {}),
+          security: {
+            ...(baseShell.overrides?.security || {}),
+            ...(overrideShell.overrides?.security || {})
+          },
+          paths: {
+            ...(baseShell.overrides?.paths || {}),
+            ...(overrideShell.overrides?.paths || {})
+          },
+          restrictions: {
+            ...(baseShell.overrides?.restrictions || {}),
+            ...(overrideShell.overrides?.restrictions || {})
+          }
+        },
+        wslConfig: {
+          ...(baseShell.wslConfig || {}),
+          ...(overrideShell.wslConfig || {})
+        }
+      };
+    }
+
     // Merge overrides deeply
     const config: ServerConfig = {
       ...baseConfig,
@@ -82,11 +124,7 @@ export class TestCLIServer {
           ...(overrides.global?.restrictions || {})
         }
       },
-      shells: {
-        ...baseConfig.shells,
-        ...(overrides.shells || {}),
-        wsl: overrides.shells?.wsl ? { ...wslShell, ...overrides.shells.wsl } : wslShell
-      }
+      shells: mergedShells
     } as ServerConfig;
 
     this.server = new CLIServer(config);

@@ -385,7 +385,7 @@ class CLIServer {
       let shellProcess: ReturnType<typeof spawn>;
       let spawnArgs: string[];
 
-      if (shellConfig.type === 'wsl' || shellConfig.type === 'bash') {
+      if (shellConfig.type === 'wsl') {
         const parsedCommand = parseCommand(command);
         spawnArgs = [...shellConfig.executable.args, parsedCommand.command, ...parsedCommand.args];
       } else {
@@ -396,7 +396,7 @@ class CLIServer {
         // For WSL, convert WSL paths back to Windows paths for spawn cwd
         let spawnCwd = workingDir;
         let envVars = { ...process.env };
-        if (shellConfig.type === 'wsl' || shellConfig.type === 'bash') {
+        if (shellConfig.type === 'wsl') {
           if (workingDir.startsWith('/mnt/')) {
             // Convert /mnt/c/path to C:\path
             const match = workingDir.match(/^\/mnt\/([a-z])\/(.*)$/i);
