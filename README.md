@@ -146,6 +146,110 @@ npm run build:gitbash
 }
 ```
 
+## macOS and Unix/Linux Support
+
+While wcli0 is primarily designed for Windows, it also supports Unix-based systems (macOS, Linux) with Bash shell integration.
+
+### Building for Unix Systems
+
+To build wcli0 for Unix-based systems (macOS, Linux):
+
+```bash
+# Unix-only build (Bash shell)
+npm run build:unix
+
+# The output will be: dist/index.unix-only.js
+```
+
+### Starting the Server on macOS
+
+Start the server using npx:
+
+```bash
+# Start with default settings
+npx wcli0 --shell bash
+
+# Start with a configuration file
+npx wcli0 --config ./config.mac.json
+
+# Start with specific allowed directories
+npx wcli0 --shell bash \
+  --allowedDir "/Users/$(whoami)" \
+  --allowedDir "/tmp"
+```
+
+### macOS Configuration Example
+
+Here's a sample configuration for macOS:
+
+```json
+{
+  "global": {
+    "security": {
+      "commandTimeout": 30,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": ["rm -rf /", "dd", "mkfs"],
+      "blockedArguments": ["--force", "-rf"],
+      "blockedOperators": ["&&", "||", ";", "|"]
+    },
+    "paths": {
+      "allowedPaths": ["/Users/$(whoami)", "/tmp"],
+      "initialDir": "/Users/$(whoami)"
+    }
+  },
+  "shells": {
+    "bash_auto": {
+      "type": "bash_auto",
+      "enabled": true
+    }
+  }
+}
+```
+
+### Using with Claude Desktop on macOS
+
+Configure Claude Desktop to use wcli0 on macOS:
+
+```json
+{
+  "mcpServers": {
+    "macos-cli": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "wcli0",
+        "--config",
+        "/path/to/config.mac.json"
+      ]
+    }
+  }
+}
+```
+
+### Important Notes for Unix Systems
+
+- **Path Formats**: Unix systems use forward slashes (`/`) and do not support Windows drive letters
+- **Shell Type**: Use `bash` or `bash_auto` shell types on Unix systems
+- **Home Directory**: Use `$(whoami)` or your actual username in paths
+- **Security Commands**: Some blocked commands in the default configuration are Windows-specific (e.g., `regedit`, `format`)
+
+### CLI Options for macOS
+
+When running on Unix systems, use these CLI options:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `--shell` | string | Shell to use (use `bash` or `bash_auto` on Unix) |
+| `--allowedDir` | string | Add an allowed directory (can be used multiple times) |
+| `--config` | string | Path to configuration file |
+| `--initialDir` | string | Initial working directory |
+| `--allowAllDirs` | flag | Disable directory restrictions |
+| `--unsafe` | flag | Disable all safety checks (not recommended) |
+| `--yolo` | flag | Disable safety except directory restrictions |
+
 ## Log Management
 
 wcli0 automatically stores command execution logs and provides MCP resources for querying historical output with advanced filtering capabilities.
