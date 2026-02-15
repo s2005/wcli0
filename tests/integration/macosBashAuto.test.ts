@@ -1,7 +1,9 @@
 import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import { TestCLIServer } from '../helpers/TestCLIServer.js';
 
-describe('macOS Bash Integration', () => {
+const describeMacOnly = process.platform === 'darwin' ? describe : describe.skip;
+
+describeMacOnly('macOS Bash Integration', () => {
   let server: TestCLIServer;
 
   beforeAll(async () => {

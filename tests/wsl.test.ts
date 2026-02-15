@@ -262,18 +262,19 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
       name: 'execute_command',
       arguments: {
         shell: 'wsl',
-        command: 'ls', // Simple command
+        command: 'pwd',
         workingDir: wslTmpPath
       }
     }) as CallToolResult;
 
     expect(result.isError).toBe(false);
     expect((result.metadata as any)?.exitCode).toBe(0);
-    // `ls` in the emulator will output the contents of the provided
-    // working directory. We simply ensure some output was produced and
-    // that the metadata reflects the directory used.
-    expect(result.content[0].text).not.toBe('');
-    expect(result.content[0].text).not.toContain('Executed successfully'); // No longer part of eval output
+    const firstContent = result.content[0];
+    if (firstContent && firstContent.type === 'text') {
+      expect(firstContent.text.trim()).toBe(wslTmpPath);
+    } else {
+      throw new Error('Expected first content part to be text for pwd test.');
+    }
     expect((result.metadata as any)?.workingDirectory).toBe(wslTmpPath);
   });
 

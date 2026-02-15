@@ -3,6 +3,8 @@ import { CLIServer } from '../../src/index.js';
 import { DEFAULT_CONFIG } from '../../src/utils/config.js';
 import type { ServerConfig } from '../../src/types/config.js';
 
+const describeWithBash = process.platform === 'win32' ? describe.skip : describe;
+
 let server: CLIServer;
 let config: ServerConfig;
 
@@ -30,7 +32,7 @@ beforeEach(() => {
   server = new CLIServer(config);
 });
 
-describe('Bash shell basic execution', () => {
+describeWithBash('Bash shell basic execution', () => {
   test('echo command', async () => {
     const result = await server._executeTool({
       name: 'execute_command',
