@@ -7,6 +7,8 @@ describe('isWslPathAllowed', () => {
   test.each([
     ['/mnt/c/allowed/subdir', true],
     ['/tmp/workdir', true],
+    ['/tmp/tad/sub', true],
+    ['/tmp2/tad/sub', false],
     ['/mnt/c/Windows/allowed/test', true],
     ['/mnt/d/forbidden', false],
     ['/usr/local', false],

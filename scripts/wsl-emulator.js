@@ -1,122 +1,172 @@
 #!/usr/bin/env node
 
-// WSL Emulator for cross-platform testing
-// Mimics basic wsl.exe behavior for development and testing
+// WSL emulator for cross-platform tests.
+// Supports:
+// - `-l -v` / `--list --verbose`
+// - `-e <command> [args...]`
 
-import { spawnSync } from 'child_process';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
 
 const args = process.argv.slice(2);
 
-// Mock file system for 'ls' command emulation
-const mockFileSystem = {
-  '/tmp': [
-    // Mimicking 'ls -la /tmp' output structure for simplicity, even if not all details are used by tests
-    'total 0',
-    'drwxrwxrwt  2 root root  40 Jan  1 00:00 .',
-    'drwxr-xr-x 20 root root 480 Jan  1 00:00 ..'
-    // Add more mock files/dirs for /tmp if needed by other tests, e.g., 'somefile.txt'
-  ],
-  // Example: Add other mock paths as needed by tests
-  // '/mnt/c/Users/testuser/docs': ['document1.txt', 'report.pdf'],
-};
+function normalizePosixPath(inputPath) {
+  const normalized = path.posix.normalize(inputPath);
+  if (normalized === '/') {
+    return normalized;
+  }
+  return normalized.replace(/\/+$/, '');
+}
 
+function isPathInAllowedPaths(testPath, allowedPaths) {
+  const normalizedTestPath = normalizePosixPath(testPath);
 
-// Handle WSL list distributions command
-if ((args.includes('-l') || args.includes('--list')) &&
-    (args.includes('-v') || args.includes('--verbose'))) {
+  return allowedPaths.some((allowedPath) => {
+    const normalizedAllowedPath = normalizePosixPath(allowedPath);
+    const relativePath = path.posix.relative(normalizedAllowedPath, normalizedTestPath);
+    return relativePath === '' || (!relativePath.startsWith('..') && !path.posix.isAbsolute(relativePath));
+  });
+}
+
+function parseAllowedPaths(rawValue) {
+  if (!rawValue) {
+    return [];
+  }
+
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((value) => typeof value === 'string' && value.startsWith('/'));
+    }
+  } catch {
+    // Fall through to delimiter parsing
+  }
+
+  return trimmed
+    .split(/[;,]/)
+    .map((value) => value.trim())
+    .filter((value) => value.startsWith('/'));
+}
+
+function validateWorkingDirFromEnv() {
+  const allowedPathsRaw = process.env.WSL_ALLOWED_PATHS || process.env.ALLOWED_PATHS || '';
+  const allowedPaths = parseAllowedPaths(allowedPathsRaw);
+
+  if (allowedPaths.length === 0) {
+    return;
+  }
+
+  const workingDir = process.env.WSL_ORIGINAL_PATH || process.cwd();
+  if (!workingDir.startsWith('/') || !isPathInAllowedPaths(workingDir, allowedPaths)) {
+    console.error(`WSL working directory is not allowed: ${workingDir}`);
+    process.exit(1);
+  }
+}
+
+if ((args.includes('-l') || args.includes('--list')) && (args.includes('-v') || args.includes('--verbose'))) {
   console.log('NAME            STATE           VERSION');
   console.log('* Ubuntu-Test    Running         2');
   process.exit(0);
 }
 
-// Handle command execution with -e flag
-if (args[0] === '-e') {
-  if (args.length < 2) {
-    console.error('Error: No command provided after -e flag.');
-    console.error('Usage: wsl-emulator -e <command>');
-    process.exit(1);
-  }
-
-  // Get the command and its arguments
-  const command = args[1];
-  const commandArgs = args.slice(2);
-
-  // Special handling for common test commands
-  switch (command) {
-    case 'pwd':
-      // Use original WSL path if available (when called from server)
-      if (process.env.WSL_ORIGINAL_PATH) {
-        console.log(process.env.WSL_ORIGINAL_PATH);
-      } else {
-        // When called directly (like in standalone tests), return actual directory
-        console.log(process.cwd());
-      }
-      process.exit(0);
-      break;
-    case 'exit':
-      if (commandArgs.length === 1) {
-        const exitCode = parseInt(commandArgs[0], 10);
-        if (!isNaN(exitCode)) {
-          process.exit(exitCode);
-        }
-      }
-      process.exit(0);
-      break;
-    case 'ls':
-      const pathArg = commandArgs.find(arg => arg.startsWith('/'));
-
-      if (pathArg) {
-        // Path argument provided, use mockFileSystem
-        if (mockFileSystem.hasOwnProperty(pathArg)) {
-          mockFileSystem[pathArg].forEach(item => console.log(item));
-          process.exit(0);
-        } else {
-          console.error(`ls: cannot access '${pathArg}': No such file or directory`);
-          process.exit(2);
-        }
-      } else {
-        // No path argument, list contents of process.cwd()
-        try {
-          const files = fs.readdirSync(process.cwd());
-          files.forEach(file => {
-            console.log(file); // Test 5.1.1 expects to find 'src'
-          });
-          process.exit(0);
-        } catch (e) {
-          console.error(`ls: cannot read directory '.': ${e.message}`);
-          process.exit(2);
-        }
-      }
-      break;
-    case 'echo':
-      console.log(commandArgs.join(' '));
-      process.exit(0);
-      break;
-    case 'uname':
-      if (commandArgs.includes('-a')) {
-        console.log('Linux Ubuntu-Test 5.10.0-0-generic #0-Ubuntu SMP x86_64 GNU/Linux');
-        process.exit(0);
-      }
-      break;
-  }
-
-  // For other commands, try to execute them
-  try {
-    const result = spawnSync(command, commandArgs, {
-      stdio: 'inherit',
-      shell: true,
-      env: { ...process.env, WSL_DISTRO_NAME: 'Ubuntu-Test' }
-    });
-    process.exit(result.status || 0);
-  } catch (error) {
-    console.error(`Command execution failed: ${error.message}`);
-    process.exit(127);
-  }
+if (args[0] !== '-e' || args.length < 2) {
+  console.error('Error: Invalid arguments. Expected -e <command> [args...] OR --list --verbose');
+  process.exit(1);
 }
 
-// If no recognized command, show error
-console.error('Error: Invalid arguments. Expected -e <command> OR --list --verbose');
-console.error('Received:', args.join(' '));
-process.exit(1);
+validateWorkingDirFromEnv();
+
+const command = args[1];
+const commandArgs = args.slice(2);
+const emulatedWorkingDir = process.env.WSL_ORIGINAL_PATH || process.cwd();
+
+switch (command) {
+  case 'pwd':
+    console.log(emulatedWorkingDir);
+    process.exit(0);
+    break;
+  case 'echo':
+    console.log(commandArgs.join(' '));
+    process.exit(0);
+    break;
+  case 'exit': {
+    const exitCode = commandArgs.length === 1 ? Number.parseInt(commandArgs[0], 10) : 0;
+    process.exit(Number.isNaN(exitCode) ? 0 : exitCode);
+    break;
+  }
+  case 'uname':
+    if (commandArgs.length > 0 && commandArgs[0] === '-a') {
+      console.log('Linux Ubuntu-Test 5.15.0-0-generic x86_64 GNU/Linux');
+    } else {
+      console.log('Linux');
+    }
+    process.exit(0);
+    break;
+  case 'ls': {
+    const resolvedArgs = commandArgs.length > 0 ? commandArgs : [emulatedWorkingDir];
+    const hasAllFlag = resolvedArgs.some((arg) => arg.startsWith('-') && arg.includes('a'));
+    const explicitTmp = resolvedArgs.includes('/tmp');
+
+    if (hasAllFlag && explicitTmp) {
+      console.log('total 8');
+      console.log('drwxrwxrwt 10 root root 4096 Jan 1 00:00 .');
+      console.log('drwxr-xr-x 23 root root 4096 Jan 1 00:00 ..');
+      process.exit(0);
+      break;
+    }
+
+    const lsResult = spawnSync('ls', resolvedArgs, {
+      cwd: process.cwd(),
+      env: process.env,
+      encoding: 'utf8'
+    });
+
+    if (!lsResult.error) {
+      if (lsResult.stdout) {
+        process.stdout.write(lsResult.stdout);
+      }
+      if (lsResult.stderr) {
+        process.stderr.write(lsResult.stderr);
+      }
+      process.exit(typeof lsResult.status === 'number' ? lsResult.status : 0);
+      break;
+    }
+
+    const targetPath = commandArgs.find((arg) => !arg.startsWith('-')) || emulatedWorkingDir;
+    try {
+      const entries = fs.readdirSync(targetPath);
+      entries.forEach((entry) => console.log(entry));
+      process.exit(0);
+    } catch {
+      console.error(`ls: cannot access '${targetPath}': No such file or directory`);
+      process.exit(2);
+    }
+    break;
+  }
+  default: {
+    const result = spawnSync(command, commandArgs, {
+      cwd: process.cwd(),
+      env: process.env,
+      encoding: 'utf8'
+    });
+
+    if (result.error) {
+      console.error(result.error.message);
+      process.exit(typeof result.status === 'number' ? result.status : 1);
+    }
+
+    if (result.stdout) {
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+    process.exit(typeof result.status === 'number' ? result.status : 0);
+  }
+}
