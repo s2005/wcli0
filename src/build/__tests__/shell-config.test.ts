@@ -18,19 +18,19 @@ describe('Build Configuration', () => {
   });
 
   describe('default configuration', () => {
-    it('should return full build config by default', () => {
+    it('should return platform-aware build config by default', () => {
       const config = getBuildConfig();
+      const isUnix = process.platform !== 'win32';
 
-      expect(config.buildName).toBe('full');
-      expect(config.includeAll).toBe(true);
-      expect(config.includedShells).toEqual([
-        'powershell',
-        'cmd',
-        'gitbash',
-        'bash',
-        'bash_auto',
-        'wsl',
-      ]);
+      if (isUnix) {
+        expect(config.buildName).toBe('unix');
+        expect(config.includeAll).toBeUndefined();
+        expect(config.includedShells).toEqual(['bash', 'bash_auto']);
+      } else {
+        expect(config.buildName).toBe('windows');
+        expect(config.includeAll).toBeUndefined();
+        expect(config.includedShells).toEqual(['powershell', 'cmd', 'gitbash', 'bash_auto']);
+      }
     });
 
     it('should not be verbose by default', () => {
@@ -112,7 +112,14 @@ describe('Build Configuration', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("Unknown preset 'unknown-preset'")
       );
-      expect(config.buildName).toBe('full');
+
+      // Default is now platform-aware
+      const isUnix = process.platform !== 'win32';
+      if (isUnix) {
+        expect(config.buildName).toBe('unix');
+      } else {
+        expect(config.buildName).toBe('windows');
+      }
 
       consoleSpy.mockRestore();
     });
