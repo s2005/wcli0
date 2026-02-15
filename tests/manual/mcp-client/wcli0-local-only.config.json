@@ -1,0 +1,43 @@
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 2000,
+      "commandTimeout": 30,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": [
+        "rm",
+        "del",
+        "rmdir",
+        "format",
+        "shutdown",
+        "restart"
+      ],
+      "blockedArguments": [
+        "--exec",
+        "-e",
+        "/c",
+        "-enc",
+        "-encodedcommand",
+        "-command"
+      ],
+      "blockedOperators": ["&", "|", ";", "`"]
+    },
+    "paths": {
+      "allowedPaths": ["/users/stsiplak/projects/wcli0/tests/manual/mcp-client"],
+      "initialDir": "/users/stsiplak/projects/wcli0/tests/manual/mcp-client"
+    }
+  },
+  "shells": {
+    "bash": {
+      "type": "bash",
+      "enabled": true,
+      "executable": {
+        "command": "bash",
+        "args": ["-c"]
+      }
+    }
+  }
+}

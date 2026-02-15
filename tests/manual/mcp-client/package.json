@@ -1,0 +1,11 @@
+{
+  "name": "wcli0-test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ls": "node ./mcp-ls-client.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1"
+  }
+}
