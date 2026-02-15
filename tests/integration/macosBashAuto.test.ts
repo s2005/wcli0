@@ -22,7 +22,7 @@ describe('macOS Bash Integration', () => {
   describe('Unix Path Validation', () => {
     test('accepts /Users paths', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'pwd',
         workingDir: '/tmp'
       });
@@ -32,7 +32,7 @@ describe('macOS Bash Integration', () => {
 
     test('accepts /tmp paths', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'ls /tmp',
         workingDir: '/tmp'
       });
@@ -41,7 +41,7 @@ describe('macOS Bash Integration', () => {
 
     test('accepts relative paths ./ and ../', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'cd .. && pwd',
         workingDir: '/tmp'
       });
@@ -71,7 +71,7 @@ describe('macOS Bash Integration', () => {
   describe('macOS Command Blocking', () => {
     test('blocks rm -rf /', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'rm -rf /',
         workingDir: '/tmp'
       });
@@ -81,7 +81,7 @@ describe('macOS Bash Integration', () => {
 
     test('blocks dd command', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'dd if=/dev/zero of=/tmp/test bs=1024 count=1',
         workingDir: '/tmp'
       });
@@ -91,7 +91,7 @@ describe('macOS Bash Integration', () => {
 
     test('blocks mkfs command', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'mkfs.ext4 /dev/rdisk1',
         workingDir: '/tmp'
       });
@@ -101,7 +101,7 @@ describe('macOS Bash Integration', () => {
 
     test('blocks diskutil formatting commands', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'diskutil eraseDisk /dev/rdisk1',
         workingDir: '/tmp'
       });
@@ -111,7 +111,7 @@ describe('macOS Bash Integration', () => {
 
     test('allows safe commands like ls', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'ls -la /tmp',
         workingDir: '/tmp'
       });
@@ -132,7 +132,7 @@ describe('macOS Bash Integration', () => {
       });
 
       const result = await restrictedServer.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'ls /private',
         workingDir: '/tmp'
       });
@@ -142,12 +142,13 @@ describe('macOS Bash Integration', () => {
 
     test('allows commands in allowed paths', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'ls /tmp',
         workingDir: '/tmp'
       });
       expect(result.exitCode).toBe(0);
     });
+  });
 
     test('supports initialDir for macOS', async () => {
       const homeDir = process.env.HOME || '';
@@ -175,7 +176,7 @@ describe('macOS Bash Integration', () => {
   describe('Operator Blocking', () => {
     test('blocks command chaining with && when enabled', async () => {
       const result = await server.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'echo "first" && echo "second"',
         workingDir: '/tmp'
       });
@@ -194,7 +195,7 @@ describe('macOS Bash Integration', () => {
       });
 
       const result = await unrestrictedServer.executeCommand({
-        shell: 'bash',
+        shell: 'bash_auto',
         command: 'echo "first" && echo "second"',
         workingDir: '/tmp'
       });
