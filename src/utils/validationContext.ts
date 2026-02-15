@@ -20,7 +20,7 @@ export function createValidationContext(
 ): ValidationContext {
   const isWindowsShell = shellConfig.type === 'cmd' || shellConfig.type === 'powershell';
   const isUnixShell = shellConfig.type === 'gitbash' || shellConfig.type === 'wsl' || shellConfig.type === 'bash';
-  const isWslShell = shellConfig.type === 'wsl' || shellConfig.type === 'bash';
+  const isWslShell = shellConfig.type === 'wsl';
   
   return {
     shellName,
