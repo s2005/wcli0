@@ -26,8 +26,8 @@
       "blockedOperators": ["&", "|", ";", "`"]
     },
     "paths": {
-      "allowedPaths": ["/users/stsiplak/projects/wcli0/tests/manual/mcp-client"],
-      "initialDir": "/users/stsiplak/projects/wcli0/tests/manual/mcp-client"
+      "allowedPaths": ["__GENERATED_AT_RUNTIME__"],
+      "initialDir": "__GENERATED_AT_RUNTIME__"
     }
   },
   "shells": {

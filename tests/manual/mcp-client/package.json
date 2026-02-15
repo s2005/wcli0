@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare:config": "node ./prepare-config.mjs",
     "ls": "node ./mcp-ls-client.mjs"
   },
   "dependencies": {
