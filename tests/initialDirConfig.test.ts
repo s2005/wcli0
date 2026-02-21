@@ -45,6 +45,14 @@ const createTempConfig = (config: any): string => {
   return configPath;
 };
 
+const createMissingDirPath = (): string => {
+  let missingPath = path.join(os.tmpdir(), `wcli0-missing-dir-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  while (fs.existsSync(missingPath)) {
+    missingPath = path.join(os.tmpdir(), `wcli0-missing-dir-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  }
+  return missingPath;
+};
+
 describe('loadConfig initialDir handling', () => {
   test('valid initialDir with restrictWorkingDirectory true', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'valid-dir-'));
@@ -71,7 +79,8 @@ describe('loadConfig initialDir handling', () => {
   test('invalid initialDir logs warning and is undefined', () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     setDebugLogging(true);
-    const configPath = createTempConfig({ security: { initialDir: '/nonexistent/path', restrictWorkingDirectory: true } });
+    const missingDir = createMissingDirPath();
+    const configPath = createTempConfig({ security: { initialDir: missingDir, restrictWorkingDirectory: true } });
     const cfg = loadConfig(configPath);
     expect(cfg.global.paths.initialDir).toBeUndefined();
     expect(warnSpy).toHaveBeenCalled();
