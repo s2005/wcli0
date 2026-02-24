@@ -1,0 +1,28 @@
+name: Test GitHub-Hosted Runner
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  test-runner:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Display runner information
+        run: |
+          echo "Runner Name: $RUNNER_NAME"
+          echo "Runner OS: $RUNNER_OS"
+          echo "Runner Arch: $RUNNER_ARCH"
+          echo "Hostname: $(hostname)"
+      
+      - name: Test basic commands
+        run: |
+          echo "Testing basic commands..."
+          node --version
+          python3 --version
+          git --version
