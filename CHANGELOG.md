@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.3] - 2026-02-24
+
+### Fixed
+
+- **set_current_directory metadata bug**: Fixed `previousDirectory` field returning the requested path instead of the actual previous working directory
+- Corrected state consistency when `process.chdir()` fails - `serverActiveCwd` is no longer updated on failed directory changes
+
+### Added
+
+- Comprehensive test coverage (20 tests) for `set_current_directory` tool
+- Tests cover path validation, normalization, state management, metadata verification, and edge cases
+- New test file: `tests/setCurrentDirectory.test.ts`
+
 ## [1.2.2] - 2026-02-14
 
 ### New Features

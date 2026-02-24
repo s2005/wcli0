@@ -1028,10 +1028,13 @@ class CLIServer {
               }
             }
 
+            // Store the actual previous directory for metadata
+            const actualPreviousDir = this.serverActiveCwd;
+
             // Change directory and update server state
             process.chdir(newDir);
             this.serverActiveCwd = newDir;
-            
+
             return {
               content: [{
                 type: "text",
@@ -1039,7 +1042,7 @@ class CLIServer {
               }],
               isError: false,
               metadata: {
-                previousDirectory: args.path,
+                previousDirectory: actualPreviousDir || undefined,
                 newDirectory: newDir
               }
             };
