@@ -196,7 +196,7 @@ class CLIServer {
   constructor(config: ServerConfig) {
     this.config = config;
     this.server = new Server({
-      name: "windows-cli-server",
+      name: "wcli0",
       version: packageJson.version,
     }, {
       capabilities: {
