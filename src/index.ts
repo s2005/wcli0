@@ -397,10 +397,11 @@ class CLIServer {
         let spawnCwd = workingDir;
         let envVars = { ...process.env };
         if (shellConfig.type === 'wsl') {
-          // Only convert paths when the executable is a Windows binary (.exe).
-          // When running inside WSL2 with the emulator (spawned via Linux node),
-          // Linux spawn needs Linux paths — conversion would cause ENOENT.
-          const isWindowsExe = shellConfig.executable.command.toLowerCase().endsWith('.exe');
+          // Convert paths when on native Windows or when the executable is a
+          // Windows binary (.exe). On WSL2 (Linux Node), only .exe-suffixed
+          // commands are Windows interop binaries; other launchers need Linux paths.
+          const isWindowsExe = process.platform === 'win32' ||
+            shellConfig.executable.command.toLowerCase().endsWith('.exe');
           if (isWindowsExe) {
             if (workingDir.startsWith('/mnt/')) {
               const match = workingDir.match(/^\/mnt\/([a-z])\/(.*)$/i);

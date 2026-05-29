@@ -269,13 +269,22 @@ export function validateWslWorkingDirectory(dir: string, allowedPaths: string[])
 
 export function isPathAllowed(testPath: string, allowedPaths: string[]): boolean {
     // Step 1: Normalize testPath
-    let normalizedTestPath = normalizeWindowsPath(testPath).toLowerCase();
+    let normalizedTestPath = normalizeWindowsPath(testPath);
+    // Unix paths are case-sensitive — preserve case; Windows paths are case-insensitive
+    const isUnixPath = normalizedTestPath.startsWith('/');
+    if (!isUnixPath) {
+        normalizedTestPath = normalizedTestPath.toLowerCase();
+    }
     normalizedTestPath = normalizedTestPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
     // Step 2: Iterate through allowedPaths
     return allowedPaths.some(allowedPath => {
         // Step 2a: Normalize current allowedPath
-        let normalizedAllowedPath = normalizeWindowsPath(allowedPath).toLowerCase();
+        let normalizedAllowedPath = normalizeWindowsPath(allowedPath);
+        const isAllowedUnixPath = normalizedAllowedPath.startsWith('/');
+        if (!isAllowedUnixPath) {
+            normalizedAllowedPath = normalizedAllowedPath.toLowerCase();
+        }
         normalizedAllowedPath = normalizedAllowedPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
         let comparisonResult = false;

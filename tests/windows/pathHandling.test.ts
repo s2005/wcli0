@@ -133,25 +133,25 @@ describeOnWindows('Phase 6.4: Windows path handling (C:\... paths)', () => {
 
   describe('UNC path validation', () => {
     test('cmd shell rejects UNC path', async () => {
-      const server = new CLIServer(buildWindowsConfig('cmd'));
+      const server = new CLIServer(buildWindowsConfig('cmd', ['C:\\safe']));
 
       await expect(
         server._executeTool({
           name: 'execute_command',
           arguments: { shell: 'cmd', command: 'echo unc', workingDir: '\\\\server\\share' },
         })
-      ).rejects.toThrow();
+      ).rejects.toThrow(/allowed paths/i);
     });
 
     test('powershell shell rejects UNC path', async () => {
-      const server = new CLIServer(buildWindowsConfig('powershell'));
+      const server = new CLIServer(buildWindowsConfig('powershell', ['C:\\safe']));
 
       await expect(
         server._executeTool({
           name: 'execute_command',
           arguments: { shell: 'powershell', command: 'echo unc', workingDir: '\\\\server\\share' },
         })
-      ).rejects.toThrow();
+      ).rejects.toThrow(/allowed paths/i);
     });
   });
 });
