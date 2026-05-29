@@ -96,10 +96,14 @@ closed here so both transports are fully exercised.
 
 ### Phase 8b: SSE edge-case coverage (gaps #5, #6, #7, #8)
 
-- [ ] Same-session concurrent requests (gap #5)
-- [ ] SSE disconnection / reconnection (gap #6)
-- [ ] Large response over SSE (gap #7)
-- [ ] Malformed JSON-RPC over SSE (gap #8)
+- [x] Same-session concurrent requests (gap #5) -- `sse-edge-cases.test.ts`
+- [x] SSE disconnection / reconnection (gap #6) -- `sse-edge-cases.test.ts`
+- [x] Large response over SSE (gap #7) -- `sse-edge-cases.test.ts`
+- [x] Malformed JSON-RPC over SSE (gap #8) -- `sse-edge-cases.test.ts`
+- [x] Fix production bug surfaced by gap #6: `mcpServer.connect()` overwrote
+      `transport.onclose`, so disconnected sessions were never removed from the
+      session map (leak; POST to a dead session returned 500 instead of 404).
+      Fixed in `src/utils/transport.ts` by registering cleanup after connect().
 
 ### Phase 8c: Documentation sync
 
