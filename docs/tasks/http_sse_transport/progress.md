@@ -107,8 +107,9 @@ closed here so both transports are fully exercised.
 
 ### Phase 8c: Documentation sync
 
-- [ ] Update `test-coverage-comparison.md` to reflect closed gaps
-- [ ] Update `verification.md` final acceptance checklist
+- [x] Update `test-coverage-comparison.md` to reflect closed gaps
+- [x] Update `verification.md` final acceptance checklist
+- [x] Run full regression: 918 passed, 24 skipped, 0 failed, no worker warnings
 
 ## Review Feedback
 

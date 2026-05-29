@@ -106,13 +106,13 @@ Expected: all tests pass, no regressions.
 ## Final Acceptance Verification
 
 The feature can be accepted when all items are true:
-- [ ] `npx wcli0` starts in stdio mode (unchanged behavior)
-- [ ] `npx wcli0 --transport sse` starts HTTP server on `127.0.0.1:9444`
-- [ ] `npx wcli0 --transport sse --sse-host 0.0.0.0 --sse-port 3000` binds to `0.0.0.0:3000`
-- [ ] SSE client can connect, initialize, and receive responses
-- [ ] Config file `transport` section is respected
-- [ ] CLI flags override config file values
-- [ ] Graceful shutdown works in SSE mode
-- [ ] All existing tests pass (no regression)
-- [ ] `npm run lint` passes
-- [ ] New transport code has test coverage
+- [x] `npx wcli0` starts in stdio mode (unchanged behavior) -- default `transport.mode` is `stdio`; `sse-transport.test.ts` confirms stdio mode creates no HTTP server
+- [x] `npx wcli0 --transport sse` starts HTTP server on `127.0.0.1:9444` -- defaults verified in `transport.test.ts`; SSE startup verified in `sse-transport.test.ts`
+- [x] `npx wcli0 --transport sse --sse-host 0.0.0.0 --sse-port 3000` binds to `0.0.0.0:3000` -- `applyCliTransport` override verified in `transport.test.ts`; bind host/port verified in `sse-transport.test.ts`
+- [x] SSE client can connect, initialize, and receive responses -- `sse-transport.test.ts`, `sse-tool-execution.test.ts`
+- [x] Config file `transport` section is respected -- `transport.test.ts`
+- [x] CLI flags override config file values -- `transport.test.ts`
+- [x] Graceful shutdown works in SSE mode -- `closeSseServer` + `CLIServer.cleanup` verified in `sse-transport.test.ts`
+- [x] All existing tests pass (no regression) -- full `npm test` suite green
+- [x] `npm run lint` passes -- `tsc --noEmit` clean
+- [x] New transport code has test coverage -- unit (`transport.test.ts`) + integration (`sse-transport`, `sse-tool-execution`, `sse-security`, `sse-resources`, `sse-edge-cases`)

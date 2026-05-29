@@ -19,29 +19,30 @@ The stdio transport is tested via `TestCLIServer` helper that calls `CLIServer._
 
 | Protocol Method | stdio | HTTP/SSE |
 | --------------- | ----- | -------- |
-| `initialize` handshake | No (bypassed via `_executeTool`) | Yes |
-| `notifications/initialized` | No | Yes |
-| `tools/list` | No (bypassed) | Yes |
+| `initialize` handshake | Yes (Phase 6d) | Yes |
+| `notifications/initialized` | Yes (Phase 6d) | Yes |
+| `tools/list` | Yes (Phase 6d) | Yes |
 | `tools/call` (get_config) | Yes (direct) | Yes (over SSE) |
-| `tools/call` (execute_command) | Yes (direct) | No |
-| `tools/call` (validate_directories) | Yes (direct) | No |
-| `resources/list` | No | No |
-| `resources/read` | No | No |
-| `resources/templates/list` | No | No |
+| `tools/call` (execute_command) | Yes (direct) | Yes (Phase 6b) |
+| `tools/call` (validate_directories) | Yes (direct) | Yes (Phase 6b) |
+| `resources/list` | Yes (Phase 8a) | Yes (Phase 8a) |
+| `resources/read` | Yes (Phase 8a) | Yes (Phase 8a) |
+| `resources/templates/list` | Yes (Phase 8a) | Yes (Phase 8a) |
 
 ## Tool-Level Coverage
 
 | Tool / Feature | stdio | HTTP/SSE |
 | -------------- | ----- | -------- |
 | `get_config` returns valid JSON | Yes | Yes |
-| `validate_directories` valid path | Yes | No |
-| `validate_directories` invalid path | No | No |
-| `execute_command` basic echo | Yes | No |
-| `execute_command` with workingDir | Yes | No |
-| `execute_command` blocked operators | Yes | No |
-| `execute_command` path restriction | Yes | No |
-| `execute_command` output truncation | Yes (unit tests) | No |
-| `execute_command` timeout | Yes (unit tests) | No |
+| `validate_directories` valid path | Yes | Yes (Phase 6b) |
+| `validate_directories` invalid path | No | Yes (Phase 6c) |
+| `execute_command` basic echo | Yes | Yes (Phase 6b) |
+| `execute_command` with workingDir | Yes | Yes (Phase 6b) |
+| `execute_command` blocked operators | Yes | Yes (Phase 6c) |
+| `execute_command` path restriction | Yes | Yes (Phase 6c) |
+| `execute_command` output truncation | Yes (unit tests) | Yes (Phase 6b) |
+| `execute_command` timeout | Yes (unit tests) | Yes (Phase 6b) |
+| `execute_command` large untruncated output | Yes (unit tests) | Yes (Phase 8b) |
 | `execute_command` logging | Yes (unit tests) | No |
 
 ## Transport-Layer Concerns
@@ -56,6 +57,9 @@ The stdio transport is tested via `TestCLIServer` helper that calls `CLIServer._
 | Unknown path returns 404 | N/A | Yes |
 | Server close / cleanup | N/A | Yes |
 | Multiple concurrent SSE sessions | N/A | Yes |
+| Concurrent requests on a single session | N/A | Yes (Phase 8b) |
+| Client disconnect removes session from map | N/A | Yes (Phase 8b) |
+| Reconnect issues a fresh session id | N/A | Yes (Phase 8b) |
 | Transport mode `stdio` produces no HTTP server | N/A | Yes |
 | Transport config defaults (mode, host, port) | Yes (unit) | -- |
 | `applyCliTransport` overrides | Yes (unit) | -- |
@@ -66,33 +70,45 @@ The stdio transport is tested via `TestCLIServer` helper that calls `CLIServer._
 
 | Scenario | stdio | HTTP/SSE |
 | -------- | ----- | -------- |
-| Blocked operator rejection (`;`, `&`, etc.) | Yes | No |
-| Working directory restriction enforcement | Yes | No |
-| Working directory allowed path passes | Yes | No |
+| Blocked operator rejection (`;`, `&`, etc.) | Yes | Yes (Phase 6c) |
+| Working directory restriction enforcement | Yes | Yes (Phase 6c) |
+| Working directory allowed path passes | Yes | Yes (Phase 6c) |
 | Path validation edge cases | Yes (dedicated tests) | No |
 | Path traversal prevention | Yes (unit tests) | No |
-| Injection protection | Yes (integration) | No |
-| Error response format | Yes | No |
+| Injection protection | Yes (integration) | Yes (Phase 6c) |
+| Error response format | Yes | Yes (Phase 6c) |
+| Malformed JSON / non-JSON-RPC body | N/A | Yes (Phase 8b) |
 
 ## Gaps in HTTP/SSE Test Coverage
 
-1. **No `execute_command` tool call over SSE** -- the most important tool is never exercised through the SSE transport
-2. **No `validate_directories` tool call over SSE** -- second tool untested over SSE
-3. **No error scenarios over SSE** -- blocked commands, invalid paths, timeout, truncation
-4. **No resource handlers over SSE** -- `resources/list`, `resources/read`, `resources/templates/list`
-5. **No concurrent request handling** -- multiple requests on the same session
-6. **No SSE disconnection / reconnection** -- client drops and reconnects
-7. **No large response over SSE** -- output truncation edge cases
-8. **No malformed JSON-RPC over SSE** -- invalid request body handling
+All gaps identified in the original analysis are now closed.
+
+1. ~~No `execute_command` tool call over SSE~~ -- CLOSED (Phase 6b, `sse-tool-execution.test.ts`)
+2. ~~No `validate_directories` tool call over SSE~~ -- CLOSED (Phase 6b, `sse-tool-execution.test.ts`)
+3. ~~No error scenarios over SSE~~ -- CLOSED (Phase 6c, `sse-security.test.ts`)
+4. ~~No resource handlers over SSE~~ -- CLOSED (Phase 8a, `sse-resources.test.ts`)
+5. ~~No concurrent request handling on a single session~~ -- CLOSED (Phase 8b, `sse-edge-cases.test.ts`)
+6. ~~No SSE disconnection / reconnection~~ -- CLOSED (Phase 8b, `sse-edge-cases.test.ts`); surfaced and fixed a session-leak bug in `src/utils/transport.ts`
+7. ~~No large response over SSE~~ -- CLOSED (Phase 8b, `sse-edge-cases.test.ts`)
+8. ~~No malformed JSON-RPC over SSE~~ -- CLOSED (Phase 8b, `sse-edge-cases.test.ts`)
+
+### Remaining minor items (not in original gap list)
+
+- `execute_command` logging assertions over SSE (covered by stdio unit tests).
+- Path validation / traversal edge cases over SSE (covered by dedicated stdio tests; the validator is transport-agnostic).
 
 ## Summary
 
 | Metric | stdio | HTTP/SSE |
 | ------ | ----- | -------- |
-| Total test files (integration) | 3 | 1 |
-| Total test cases (integration) | 7 | 11 |
-| Tool calls tested | 3 (get_config, validate_directories, execute_command) | 1 (get_config only) |
-| Security tests | 3 | 0 |
-| Protocol handshake tested | No (bypassed) | Yes |
+| Total test files (integration) | 3 | 4 |
+| Tool calls tested | get_config, validate_directories, execute_command | get_config, validate_directories, execute_command |
+| Resource handlers tested | Yes (Phase 8a) | Yes (Phase 8a) |
+| Security tests | Yes | Yes (Phase 6c) |
+| Protocol handshake tested | Yes (Phase 6d) | Yes |
+| Edge cases (concurrency, disconnect, malformed) | N/A | Yes (Phase 8b) |
 
-The stdio side has broad tool-level coverage but skips the MCP protocol handshake. The SSE side has good transport-layer and protocol-handshake coverage but barely exercises the actual tools over SSE.
+Both transports now have matching coverage across the MCP protocol handshake,
+all tools, resource handlers, and security scenarios. The SSE side additionally
+covers transport-specific edge cases (session lifecycle, concurrency on a single
+session, and malformed input handling).
