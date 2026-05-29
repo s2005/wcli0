@@ -83,14 +83,34 @@
 
 ## Phase 4: Shared HTTP Module and Streamable HTTP Transport
 
-- [ ] Create `src/utils/httpShared.ts` (origin/CORS/socket/close helpers)
-- [ ] Refactor `src/utils/transport.ts` to use `httpShared` (no behavior change)
-- [ ] Create `src/utils/streamableHttp.ts` with `createStreamableHttpServer()`
-- [ ] Implement `/mcp` POST/GET/DELETE routing and session map
-- [ ] Implement new-session creation (sessionIdGenerator + factory + connect)
-- [ ] Register session cleanup before `connect()` (disconnect-during-connect)
-- [ ] Use `randomUUID` from `node:crypto`
-- [ ] Unit tests for shared module + 403 origin path
+- [x] Create `src/utils/httpShared.ts` (origin/CORS/socket/close helpers)
+- [x] Refactor `src/utils/transport.ts` to use `httpShared` (no behavior change)
+- [x] Create `src/utils/streamableHttp.ts` with `createStreamableHttpServer()`
+- [x] Implement `/mcp` POST/GET/DELETE routing and session map
+- [x] Implement new-session creation (sessionIdGenerator + factory + connect)
+- [x] Register session cleanup before `connect()` (disconnect-during-connect)
+- [x] Use `randomUUID` from `node:crypto`
+- [x] Unit tests for shared module + 403 origin path
+
+### Phase 4 Notes
+
+- `httpShared.ts` exports `isOriginAllowed`, `corsOriginToEcho`, `trackSockets`,
+  `closeHttpServer`; `parseAllowedOriginHost`/`LOOPBACK_HOSTS` stay private.
+- `transport.ts` now imports those helpers and keeps `isOriginAllowed`
+  (re-export of the imported binding) and `closeSseServer` (thin wrapper over
+  `closeHttpServer`) so existing importers/tests are unchanged. SSE integration
+  suite (46 tests) still green -> behavior preserved.
+- The SDK's built-in DNS-rebinding options (`allowedHosts`/`allowedOrigins`/
+  `enableDnsRebindingProtection`) are deprecated in favor of external
+  middleware, so the `/mcp` handler does its own origin check via `httpShared`,
+  matching SSE and keeping one implementation.
+- Body is read once (`readJsonBody`, 4 MB guard) and passed to
+  `handleRequest(req, res, body)` as the SDK's pre-parsed-body pattern; GET/DELETE
+  call `handleRequest(req, res)`. Unknown session -> 404; non-initialize without
+  session -> 400; invalid JSON -> 400; unsupported method on `/mcp` -> 405.
+- Unit tests added: shared `isOriginAllowed` parity, plus a live server
+  asserting listen, 403 hostile origin (factory never runs), 404 unknown path,
+  400 bad JSON, 404 unknown GET session, 204 OPTIONS preflight + CORS.
 
 ## Phase 5: CLIServer Integration
 

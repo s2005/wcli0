@@ -1,4 +1,6 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import http from 'http';
+import type { AddressInfo } from 'net';
 import {
   DEFAULT_CONFIG,
   applyCliTransport,
@@ -6,7 +8,36 @@ import {
   validateConfig
 } from '../../src/utils/config.js';
 import { createSerializableConfig } from '../../src/utils/configUtils.js';
+import { isOriginAllowed, closeHttpServer } from '../../src/utils/httpShared.js';
+import { createStreamableHttpServer } from '../../src/utils/streamableHttp.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { ServerConfig } from '../../src/types/config.js';
+
+// Minimal request helper: performs one HTTP request and resolves with the
+// status code, headers, and raw body string.
+function httpRequest(
+  options: http.RequestOptions,
+  body?: string
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(options, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () =>
+        resolve({
+          status: res.statusCode ?? 0,
+          headers: res.headers,
+          body: Buffer.concat(chunks).toString('utf8')
+        })
+      );
+    });
+    req.on('error', reject);
+    if (body !== undefined) {
+      req.write(body);
+    }
+    req.end();
+  });
+}
 
 function cloneDefault(): ServerConfig {
   return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -329,5 +360,139 @@ describe('Streamable HTTP CLI arguments', () => {
       expect(e.message).toMatch(/Invalid values|choices/i);
     }
     expect(threw).toBe(true);
+  });
+});
+
+// The origin allowlist is shared by the SSE and Streamable HTTP transports.
+// This mirrors the SSE-era coverage to confirm the logic behaves identically
+// when imported from the shared module.
+describe('isOriginAllowed (shared httpShared module)', () => {
+  it('allows requests with no Origin header (non-browser clients)', () => {
+    expect(isOriginAllowed(undefined, '127.0.0.1')).toBe(true);
+  });
+
+  it('allows loopback origins regardless of bind host', () => {
+    expect(isOriginAllowed('http://localhost:9444', '127.0.0.1')).toBe(true);
+    expect(isOriginAllowed('http://127.0.0.1:3000', '127.0.0.1')).toBe(true);
+    expect(isOriginAllowed('http://[::1]:9444', '127.0.0.1')).toBe(true);
+  });
+
+  it('allows an origin matching the configured bind host', () => {
+    expect(isOriginAllowed('http://192.168.1.10:3000', '192.168.1.10')).toBe(true);
+  });
+
+  it('rejects a remote origin not in the allowlist', () => {
+    expect(isOriginAllowed('https://evil.example', '127.0.0.1')).toBe(false);
+  });
+
+  it('rejects the literal null origin and malformed values', () => {
+    expect(isOriginAllowed('null', '127.0.0.1')).toBe(false);
+    expect(isOriginAllowed('not-a-url', '127.0.0.1')).toBe(false);
+  });
+
+  it('admits an explicitly configured origin on a wildcard bind', () => {
+    expect(isOriginAllowed('http://192.168.1.10:9444', '0.0.0.0')).toBe(false);
+    expect(
+      isOriginAllowed('http://192.168.1.10:9444', '0.0.0.0', ['http://192.168.1.10:9444'])
+    ).toBe(true);
+  });
+});
+
+describe('createStreamableHttpServer request handling', () => {
+  let server: http.Server | undefined;
+  let port = 0;
+  // The factory is never expected to run in these tests because every request
+  // is rejected before a session is created. Track calls to assert that.
+  let factoryCalls = 0;
+  const stubFactory = (): Server => {
+    factoryCalls += 1;
+    return {} as unknown as Server;
+  };
+
+  beforeEach(async () => {
+    factoryCalls = 0;
+    server = await createStreamableHttpServer(stubFactory, '127.0.0.1', 0, []);
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterEach(async () => {
+    if (server) {
+      await closeHttpServer(server);
+      server = undefined;
+    }
+  });
+
+  it('listens on an ephemeral port', () => {
+    expect(port).toBeGreaterThan(0);
+  });
+
+  it('rejects a POST /mcp from a hostile Origin with 403', async () => {
+    const res = await httpRequest(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/mcp',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          Origin: 'https://evil.example'
+        }
+      },
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+    );
+    expect(res.status).toBe(403);
+    expect(factoryCalls).toBe(0);
+  });
+
+  it('returns 404 for a path other than /mcp', async () => {
+    const res = await httpRequest({
+      host: '127.0.0.1',
+      port,
+      path: '/not-mcp',
+      method: 'GET'
+    });
+    expect(res.status).toBe(404);
+    expect(factoryCalls).toBe(0);
+  });
+
+  it('returns 400 for a POST /mcp with an invalid JSON body', async () => {
+    const res = await httpRequest(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/mcp',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      },
+      '{ not valid json'
+    );
+    expect(res.status).toBe(400);
+    expect(factoryCalls).toBe(0);
+  });
+
+  it('returns 404 for a GET /mcp without a known session id', async () => {
+    const res = await httpRequest({
+      host: '127.0.0.1',
+      port,
+      path: '/mcp',
+      method: 'GET',
+      headers: { 'Mcp-Session-Id': 'does-not-exist' }
+    });
+    expect(res.status).toBe(404);
+    expect(factoryCalls).toBe(0);
+  });
+
+  it('answers an OPTIONS preflight from an allowed origin with 204 and CORS headers', async () => {
+    const res = await httpRequest({
+      host: '127.0.0.1',
+      port,
+      path: '/mcp',
+      method: 'OPTIONS',
+      headers: { Origin: 'http://localhost:5173' }
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    expect(res.headers['access-control-allow-methods']).toMatch(/POST/);
   });
 });
