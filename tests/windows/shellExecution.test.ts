@@ -227,20 +227,18 @@ describeOnWindows('Phase 6.2: powershell shell real commands', () => {
 });
 
 // --- Phase 6.3: gitbash shell comprehensive tests ---
-describeOnWindows('Phase 6.3: gitbash shell real commands', () => {
+const gitBashAvailable = process.platform === 'win32'
+  && fs.existsSync('C:\\Program Files\\Git\\bin\\bash.exe');
+const describeWithGitBash = gitBashAvailable ? describe : describe.skip;
+
+describeWithGitBash('Phase 6.3: gitbash shell real commands', () => {
   let server: CLIServer;
 
   beforeEach(() => {
-    const gitBashPath = 'C:\\Program Files\\Git\\bin\\bash.exe';
-    // Skip if git bash is not available at the default location
-    if (!fs.existsSync(gitBashPath)) {
-      return;
-    }
     server = new CLIServer(buildWindowsTestConfig('gitbash'));
   });
 
   test('echo command', async () => {
-    if (!server) return;
     const result = await server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'gitbash', command: 'echo hello from gitbash' },
@@ -252,7 +250,6 @@ describeOnWindows('Phase 6.3: gitbash shell real commands', () => {
   });
 
   test('pwd returns a path', async () => {
-    if (!server) return;
     const result = await server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'gitbash', command: 'pwd' },
@@ -264,7 +261,6 @@ describeOnWindows('Phase 6.3: gitbash shell real commands', () => {
   });
 
   test('uname returns output', async () => {
-    if (!server) return;
     const result = await server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'gitbash', command: 'uname -a' },
@@ -277,7 +273,6 @@ describeOnWindows('Phase 6.3: gitbash shell real commands', () => {
   });
 
   test('exit code propagation', async () => {
-    if (!server) return;
     const result = await server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'gitbash', command: 'exit 55' },
@@ -288,7 +283,6 @@ describeOnWindows('Phase 6.3: gitbash shell real commands', () => {
   });
 
   test('ls on temp directory', async () => {
-    if (!server) return;
     const tmpDir = os.tmpdir();
     const result = await server._executeTool({
       name: 'execute_command',

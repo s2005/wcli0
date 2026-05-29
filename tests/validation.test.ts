@@ -301,6 +301,21 @@ describe('Allowed Paths Normalization', () => {
     const paths = ['/c/Users', '/d/Projects'];
     expect(normalizeAllowedPaths(paths)).toEqual(['c:\\users', 'd:\\projects']);
   });
+  // P1: Root path '/' must be preserved, not stripped to empty string
+  test('preserves Unix root path "/" as-is (P1)', () => {
+    expect(normalizeAllowedPaths(['/'])).toEqual(['/']);
+  });
+  test('preserves Unix root "/" alongside other paths (P1)', () => {
+    const result = normalizeAllowedPaths(['/home/user', '/']);
+    // Root absorbs all other paths as children
+    expect(result).toEqual(['/']);
+  });
+  test('Unix root "/" allows any absolute path via isPathAllowed (P1)', () => {
+    const allowed = normalizeAllowedPaths(['/']);
+    expect(isPathAllowed('/home/user/docs', allowed)).toBe(true);
+    expect(isPathAllowed('/tmp', allowed)).toBe(true);
+    expect(isPathAllowed('/etc/passwd', allowed)).toBe(true);
+  });
 });
 
 describe('Path Validation', () => {

@@ -440,7 +440,9 @@ export function normalizeAllowedPaths(paths: string[]): string[] {
         const sep = isUnix ? '/' : '\\';
 
         // a. Create a version of currentPath without a trailing separator
-        const comparableCurrentPath = currentPath.replace(trailingSep, '');
+        //    Preserve Unix root '/' — stripping it to '' would match everything.
+        const isUnixRoot = isUnix && currentPath === '/';
+        const comparableCurrentPath = isUnixRoot ? '/' : currentPath.replace(trailingSep, '');
 
         // b. Check for Duplicates
         if (processedPaths.some(existingPath => existingPath.replace(trailingSep, '') === comparableCurrentPath)) {
@@ -450,6 +452,10 @@ export function normalizeAllowedPaths(paths: string[]): string[] {
         // c. Check for Nesting (currentPath is child of an existing path)
         if (processedPaths.some(existingPath => {
             const comparableExistingPath = existingPath.replace(trailingSep, '');
+            // Unix root '/' is parent of all other Unix paths
+            if (comparableExistingPath === '/' && comparableCurrentPath !== '/') {
+                return comparableCurrentPath.startsWith('/');
+            }
             return comparableCurrentPath.startsWith(comparableExistingPath + sep);
         })) {
             continue;
@@ -458,7 +464,11 @@ export function normalizeAllowedPaths(paths: string[]): string[] {
         // d. Remove Existing Nested Children (existing path is child of currentPath)
         for (let i = processedPaths.length - 1; i >= 0; i--) {
             const comparableExistingPath = processedPaths[i].replace(trailingSep, '');
-            if (comparableExistingPath.startsWith(comparableCurrentPath + sep)) {
+            // For Unix root '/', all other Unix paths are children
+            const isChild = isUnixRoot
+                ? comparableExistingPath.startsWith('/') && comparableExistingPath !== '/'
+                : comparableExistingPath.startsWith(comparableCurrentPath + sep);
+            if (isChild) {
                 processedPaths.splice(i, 1);
             }
         }
