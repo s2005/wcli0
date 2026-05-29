@@ -1,5 +1,6 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import { DEFAULT_CONFIG, applyCliTransport, mergeConfigs } from '../../src/utils/config.js';
+import { isOriginAllowed } from '../../src/utils/transport.js';
 import type { ServerConfig } from '../../src/types/config.js';
 
 // parseArgs test helper - imports the module and parses with given args
@@ -165,6 +166,40 @@ describe('TransportConfig', () => {
       expect(merged.transport!.sseHost).toBe('127.0.0.1');
       expect(merged.transport!.ssePort).toBe(9444);
     });
+  });
+});
+
+// P2: Origin allowlist for the SSE transport (DNS-rebinding defense).
+describe('isOriginAllowed (P2)', () => {
+  it('allows requests with no Origin header (non-browser clients)', () => {
+    expect(isOriginAllowed(undefined, '127.0.0.1')).toBe(true);
+  });
+
+  it('allows loopback origins regardless of bind host', () => {
+    expect(isOriginAllowed('http://localhost:9444', '127.0.0.1')).toBe(true);
+    expect(isOriginAllowed('http://127.0.0.1:3000', '127.0.0.1')).toBe(true);
+    expect(isOriginAllowed('http://[::1]:9444', '127.0.0.1')).toBe(true);
+  });
+
+  it('allows an origin matching the configured bind host', () => {
+    expect(isOriginAllowed('http://192.168.1.10:3000', '192.168.1.10')).toBe(true);
+  });
+
+  it('rejects a remote origin not in the allowlist', () => {
+    expect(isOriginAllowed('https://evil.example', '127.0.0.1')).toBe(false);
+    expect(isOriginAllowed('http://attacker.test:3000', '127.0.0.1')).toBe(false);
+  });
+
+  it('rejects the literal null origin', () => {
+    expect(isOriginAllowed('null', '127.0.0.1')).toBe(false);
+  });
+
+  it('rejects a malformed origin', () => {
+    expect(isOriginAllowed('not-a-url', '127.0.0.1')).toBe(false);
+  });
+
+  it('is case-insensitive for the origin hostname', () => {
+    expect(isOriginAllowed('http://LOCALHOST:9444', '127.0.0.1')).toBe(true);
   });
 });
 

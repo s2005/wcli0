@@ -112,8 +112,17 @@ closed here so both transports are fully exercised.
 - [x] Update `verification.md` final acceptance checklist
 - [x] Run full regression: 918 passed, 24 skipped, 0 failed, no worker warnings
 
-## Review Feedback
+## Review Feedback (PR #83)
 
-(Section appears when PR review feedback arrives. Each comment gets a checkbox.)
-
-- [ ] P1: (pending review)
+- [x] P1: Create a fresh MCP server per SSE session (fixed -- `createSseServer()`
+      now takes a `() => Server` factory; `CLIServer.createServerInstance()`
+      builds one wired server per `GET /sse`, so each session owns its transport)
+- [x] P2: Reject untrusted Origin headers (fixed -- added `isOriginAllowed()` and
+      a 403 on disallowed origins for `GET /sse` and `POST /messages`; no-Origin
+      and loopback/bind-host origins still pass)
+- [x] P3: Avoid advertising unauthenticated bind-all example (fixed -- README
+      example now binds `127.0.0.1`; added a prominent security warning about
+      `0.0.0.0`)
+- [x] P4: Validate transport config before use (fixed -- `validateConfig()` now
+      calls `validateTransportConfig()` checking `mode`, `sseHost`, and the
+      `1..65535` port range)

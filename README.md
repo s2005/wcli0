@@ -491,8 +491,8 @@ To get started with configuration:
   # Start with SSE transport on default host/port (127.0.0.1:9444)
   npx wcli0 --transport sse
 
-  # Custom host and port
-  npx wcli0 --transport sse --sse-host 0.0.0.0 --sse-port 3000
+  # Custom port, still bound to localhost
+  npx wcli0 --transport sse --sse-host 127.0.0.1 --sse-port 3000
   ```
 
   | Option | Type | Default | Description |
@@ -503,7 +503,17 @@ To get started with configuration:
 
   When SSE mode is active, clients connect via `GET /sse` to open an SSE
   stream and send messages via `POST /messages?sessionId=<id>`. The server
-  logs the bind address and port on startup.
+  logs the bind address and port on startup. To mitigate DNS-rebinding
+  attacks, the server validates the request `Origin` header: requests whose
+  `Origin` is not a loopback host or the configured bind host are rejected with
+  `403 Forbidden`, while non-browser clients that send no `Origin` are allowed.
+
+  > **Security:** This transport has no built-in authentication and exposes
+  > command-execution tools. Keep it bound to `127.0.0.1` (the default) for
+  > local use. Binding to `0.0.0.0` or any non-loopback address exposes those
+  > tools to every host that can reach the port; only do so behind an
+  > authenticated reverse proxy or equivalent access control. Origin validation
+  > alone does not authenticate non-browser clients.
 
 1. **Update your Claude Desktop configuration** to use your config file:
 

@@ -596,6 +596,31 @@ function validateLoggingConfig(config?: LoggingConfig): void {
   }
 }
 
+function validateTransportConfig(transport?: TransportConfig): void {
+  if (!transport) return;
+
+  if (transport.mode !== 'stdio' && transport.mode !== 'sse') {
+    throw new Error("transport.mode must be 'stdio' or 'sse'");
+  }
+
+  if (transport.sseHost !== undefined) {
+    if (typeof transport.sseHost !== 'string' || transport.sseHost.trim() === '') {
+      throw new Error('transport.sseHost must be a non-empty string');
+    }
+  }
+
+  if (transport.ssePort !== undefined) {
+    if (
+      typeof transport.ssePort !== 'number' ||
+      !Number.isInteger(transport.ssePort) ||
+      transport.ssePort < 1 ||
+      transport.ssePort > 65535
+    ) {
+      throw new Error('transport.ssePort must be an integer between 1 and 65535');
+    }
+  }
+}
+
 export function validateConfig(config: ServerConfig): void {
   // Validate security settings
   if (config.global.security.maxCommandLength < 1) {
@@ -616,6 +641,10 @@ export function validateConfig(config: ServerConfig): void {
 
   // Validate logging configuration
   validateLoggingConfig(config.global.logging);
+
+  // Validate transport configuration (catches malformed config-file values such
+  // as a string ssePort that would otherwise be treated as a named-pipe path)
+  validateTransportConfig(config.transport);
 }
 
 // Helper function to create a default config file

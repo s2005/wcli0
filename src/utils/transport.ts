@@ -3,8 +3,47 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { debugLog, errorLog } from './log.js';
 
+// Loopback hostnames that are always trusted as request origins. `URL.hostname`
+// returns the bracketed form for IPv6, so both `::1` and `[::1]` are listed.
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+/**
+ * Decide whether an incoming request's `Origin` header may use the SSE
+ * transport. Requests with no `Origin` header are treated as non-browser
+ * clients (native MCP clients, curl) and are permitted. A present `Origin` must
+ * point at a loopback host or the configured bind host; everything else --
+ * including malformed values and the literal `null` origin used by sandboxed
+ * iframes and `file://` pages -- is rejected.
+ *
+ * This blocks DNS-rebinding attacks: the browser sets `Origin` to the page's own
+ * domain (for example `https://evil.example`), not the rebound `127.0.0.1`
+ * address, so allowlisting trusted origins rejects the attacker even when their
+ * domain resolves to loopback.
+ */
+export function isOriginAllowed(originHeader: string | undefined, bindHost: string): boolean {
+  // No Origin header => non-browser client. Allow.
+  if (originHeader === undefined) {
+    return true;
+  }
+  // The literal "null" origin and empty values are untrusted.
+  if (originHeader === 'null' || originHeader.trim() === '') {
+    return false;
+  }
+  let hostname: string;
+  try {
+    hostname = new URL(originHeader).hostname.toLowerCase();
+  } catch {
+    // Malformed Origin header.
+    return false;
+  }
+  if (LOOPBACK_HOSTS.has(hostname)) {
+    return true;
+  }
+  return bindHost.trim() !== '' && hostname === bindHost.trim().toLowerCase();
+}
+
 export function createSseServer(
-  mcpServer: Server,
+  createServer: () => Server,
   host: string,
   port: number
 ): Promise<http.Server> {
@@ -13,19 +52,34 @@ export function createSseServer(
   const httpServer = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
+    // Reject browser requests from untrusted origins before doing any work
+    // (DNS-rebinding defense). Non-browser clients send no Origin and pass.
+    if (!isOriginAllowed(req.headers.origin, host)) {
+      errorLog(`Rejected SSE request from disallowed origin: ${req.headers.origin}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Forbidden origin' }));
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/sse') {
       try {
         const transport = new SSEServerTransport('/messages', res);
+        // Each SSE connection gets its own MCP server instance. The MCP Protocol
+        // object owns a single transport at a time (connect() overwrites
+        // this._transport), so sharing one server across sessions would misroute
+        // a session's responses to the most recently connected stream.
+        const sessionServer = createServer();
         sessions.set(transport.sessionId, transport);
 
-        await mcpServer.connect(transport);
+        await sessionServer.connect(transport);
 
-        // mcpServer.connect() assigns its own transport.onclose handler, so any
-        // handler set before connect() is overwritten. Register session cleanup
-        // afterward and chain to the SDK handler so the MCP server's own
+        // sessionServer.connect() assigns its own transport.onclose handler, so
+        // any handler set before connect() is overwritten. Register session
+        // cleanup afterward and chain to the SDK handler so the MCP server's own
         // teardown still runs. Without this the session is never removed from
         // the map on disconnect, leaking entries and making later POSTs to the
-        // dead session return 500 instead of 404.
+        // dead session return 500 instead of 404. The per-session server holds no
+        // OS resources once its transport closes, so it is left for GC.
         const mcpOnClose = transport.onclose;
         transport.onclose = () => {
           sessions.delete(transport.sessionId);

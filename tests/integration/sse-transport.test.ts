@@ -28,13 +28,13 @@ describe('SSE Transport Module', () => {
 
   describe('createSseServer', () => {
     it('should create an HTTP server that listens', async () => {
-      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
       expect(server).toBeDefined();
       expect(server.listening).toBe(true);
     });
 
     it('should return SSE headers on GET /sse', async () => {
-      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -47,7 +47,7 @@ describe('SSE Transport Module', () => {
     });
 
     it('should return 404 for unknown paths', async () => {
-      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -58,7 +58,7 @@ describe('SSE Transport Module', () => {
     });
 
     it('should return 400 for POST /messages without sessionId', async () => {
-      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -75,7 +75,7 @@ describe('SSE Transport Module', () => {
     });
 
     it('should return 404 for POST /messages with non-existent session', async () => {
-      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -91,11 +91,105 @@ describe('SSE Transport Module', () => {
 
       expect(response.statusCode).toBe(404);
     });
+
+    // P1: each SSE connection must get its own MCP server instance, because the
+    // MCP Protocol owns a single transport at a time (connect() overwrites it).
+    it('creates a fresh MCP server per SSE connection (P1)', async () => {
+      let factoryCalls = 0;
+      const created: Server[] = [];
+      server = await createSseServer(
+        () => {
+          factoryCalls++;
+          const s = createTestMcpServer();
+          created.push(s);
+          return s;
+        },
+        '127.0.0.1',
+        0
+      );
+      const addr = server.address() as http.AddressInfo;
+
+      const open = (): Promise<http.IncomingMessage> =>
+        new Promise((resolve, reject) => {
+          http.get(`http://127.0.0.1:${addr.port}/sse`, resolve).on('error', reject);
+        });
+
+      const r1 = await open();
+      const r2 = await open();
+
+      expect(factoryCalls).toBe(2);
+      expect(created[0]).not.toBe(created[1]);
+
+      r1.destroy();
+      r2.destroy();
+    });
+  });
+
+  // P2: reject untrusted Origin headers (DNS-rebinding defense).
+  describe('Origin validation (P2)', () => {
+    function requestWithOrigin(
+      port: number,
+      pathName: string,
+      method: string,
+      origin?: string
+    ): Promise<http.IncomingMessage> {
+      return new Promise((resolve, reject) => {
+        const req = http.request(
+          `http://127.0.0.1:${port}${pathName}`,
+          { method, headers: origin ? { Origin: origin } : {} },
+          resolve
+        );
+        req.on('error', reject);
+        req.end();
+      });
+    }
+
+    it('rejects GET /sse from a disallowed origin with 403', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const res = await requestWithOrigin(addr.port, '/sse', 'GET', 'https://evil.example');
+      expect(res.statusCode).toBe(403);
+      res.destroy();
+    });
+
+    it('rejects POST /messages from a disallowed origin with 403', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const res = await requestWithOrigin(
+        addr.port,
+        '/messages?sessionId=whatever',
+        'POST',
+        'https://evil.example'
+      );
+      expect(res.statusCode).toBe(403);
+      res.destroy();
+    });
+
+    it('allows GET /sse from a loopback origin', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const res = await requestWithOrigin(
+        addr.port,
+        '/sse',
+        'GET',
+        `http://localhost:${addr.port}`
+      );
+      expect(res.statusCode).toBe(200);
+      res.destroy();
+    });
+
+    it('allows GET /sse with no Origin header', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const res = await requestWithOrigin(addr.port, '/sse', 'GET', undefined);
+      expect(res.statusCode).toBe(200);
+      res.destroy();
+    });
   });
 
   describe('closeSseServer', () => {
     it('should close a listening server', async () => {
-      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
       expect(server.listening).toBe(true);
       await closeSseServer(server);
       expect(server.listening).toBe(false);

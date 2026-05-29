@@ -197,15 +197,9 @@ class CLIServer {
 
   constructor(config: ServerConfig) {
     this.config = config;
-    this.server = new Server({
-      name: "wcli0",
-      version: packageJson.version,
-    }, {
-      capabilities: {
-        tools: {},
-        resources: {}
-      }
-    });
+    // Build the primary server (used for stdio mode and shutdown). In SSE mode a
+    // fresh instance is created per connection via createServerInstance().
+    this.server = this.createServerInstance();
 
     // Pre-resolve enabled shell configurations
     this.initializeShellConfigs();
@@ -228,8 +222,26 @@ class CLIServer {
         debugLog('Log storage: in-memory only (no logDirectory configured)');
       }
     }
+  }
 
-    this.setupHandlers();
+  /**
+   * Create a fully-wired MCP Server instance. Used for the primary server and,
+   * in SSE mode, for the per-connection server handed to createSseServer(). Each
+   * instance gets its own request handlers; all handlers close over `this`, so
+   * they share the CLIServer's config, resolved shells, and log storage.
+   */
+  private createServerInstance(): Server {
+    const server = new Server({
+      name: "wcli0",
+      version: packageJson.version,
+    }, {
+      capabilities: {
+        tools: {},
+        resources: {}
+      }
+    });
+    this.setupHandlers(server);
+    return server;
   }
 
   private initializeShellConfigs(): void {
@@ -595,9 +607,9 @@ class CLIServer {
     return createSerializableConfig(this.config);
   }
 
-  private setupHandlers(): void {
+  private setupHandlers(server: Server = this.server): void {
     // List available resources
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler(ListResourcesRequestSchema, async () => {
       const resources: Array<{uri:string,name:string,description:string,mimeType:string}> = [];
       
       // Add resources for configuration
@@ -668,12 +680,12 @@ class CLIServer {
     });
 
     // Provide an empty list of resource templates for now
-    this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
       return { resourceTemplates: [] };
     });
 
     // Read resource content
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       const uri = request.params.uri;
       
       // Handle CLI configuration resource
@@ -805,7 +817,7 @@ class CLIServer {
     });
 
     // List available tools with dynamic descriptions and schemas
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Get enabled shells and their resolved configurations
       const enabledShells = this.getEnabledShells();
       const tools = [];
@@ -876,7 +888,7 @@ class CLIServer {
     });
 
     // Handle tool execution
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Directly call the public tool execution logic
       return this._executeTool(request.params);
     });
@@ -1398,7 +1410,11 @@ class CLIServer {
       const { createSseServer } = await import('./utils/transport.js');
       const host = this.config.transport.sseHost ?? '127.0.0.1';
       const port = this.config.transport.ssePort ?? 9444;
-      this.httpServer = await createSseServer(this.server, host, port);
+      this.httpServer = await createSseServer(
+        () => this.createServerInstance(),
+        host,
+        port
+      );
       debugLog(`Windows CLI MCP Server running on SSE at http://${host}:${port}`);
     } else {
       const transport = new StdioServerTransport();
