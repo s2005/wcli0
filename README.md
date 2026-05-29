@@ -483,6 +483,28 @@ To get started with configuration:
   fully unsafe mode disables those restrictions as well. These two flags are
   mutually exclusive; using both at once will fail.
 
+  You can start the server with HTTP/SSE transport instead of the default
+  stdio transport. This allows remote and web-based MCP clients to connect
+  over HTTP:
+
+  ```bash
+  # Start with SSE transport on default host/port (127.0.0.1:9444)
+  npx wcli0 --transport sse
+
+  # Custom host and port
+  npx wcli0 --transport sse --sse-host 0.0.0.0 --sse-port 3000
+  ```
+
+  | Option | Type | Default | Description |
+  |--------|------|---------|-------------|
+  | `--transport` | string | stdio | Transport protocol: `stdio` or `sse` |
+  | `--sse-host` | string | 127.0.0.1 | Host address for SSE transport |
+  | `--sse-port` | number | 9444 | Port for SSE transport |
+
+  When SSE mode is active, clients connect via `GET /sse` to open an SSE
+  stream and send messages via `POST /messages?sessionId=<id>`. The server
+  logs the bind address and port on startup.
+
 1. **Update your Claude Desktop configuration** to use your config file:
 
    ```json
@@ -784,6 +806,20 @@ WSL shells have additional configuration options for path mapping:
 You can override the mount point at startup using the `--wslMountPoint` CLI flag.
 
 ### Configuration Inheritance
+
+The transport section can also be set in the config file:
+
+```json
+{
+  "transport": {
+    "mode": "sse",
+    "sseHost": "127.0.0.1",
+    "ssePort": 9444
+  }
+}
+```
+
+CLI flags (`--transport`, `--sse-host`, `--sse-port`) override config file values.
 
 The inheritance system works as follows:
 

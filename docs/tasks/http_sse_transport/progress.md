@@ -48,9 +48,9 @@
 - [x] Write regression tests for stdio transport
 
 ## Phase 5: Documentation
-- [ ] Update README.md with transport CLI flags
-- [ ] Add config file transport section example
-- [ ] Add SSE usage example
+- [x] Update README.md with transport CLI flags
+- [x] Add config file transport section example
+- [x] Add SSE usage example
 
 ## Review Feedback
 (Section appears when PR review feedback arrives. Each comment gets a checkbox.)
