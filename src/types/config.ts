@@ -243,6 +243,16 @@ export interface TransportConfig {
   mode: 'stdio' | 'sse';
   sseHost: string;
   ssePort: number;
+  /**
+   * Browser origins permitted to use the SSE transport in addition to loopback
+   * hosts and the configured `sseHost`. Each entry is an origin URL
+   * (`https://app.example.com`) or a bare host (`192.168.1.10`); only the host
+   * component is compared, case-insensitively. Required to admit browser
+   * clients when binding to a wildcard address (`0.0.0.0` / `::`), where the
+   * bind host is not a usable origin, and for reverse-proxy deployments whose
+   * public hostname differs from the bind host. Defaults to an empty list.
+   */
+  sseAllowedOrigins?: string[];
 }
 
 /**

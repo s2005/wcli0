@@ -224,6 +224,51 @@ describe('SSE Edge Cases (raw HTTP)', () => {
     expect(status).toBe(404);
   }, 15000);
 
+  test('P13: an immediate disconnect right after connect still cleans up the session', async () => {
+    const started = await startSseServer();
+    cliServer = started.cliServer;
+
+    // Disconnect the instant the endpoint event arrives -- the closest a test
+    // can get to a client that drops during connect(). The cleanup is registered
+    // on the response's 'close' event before connect() resolves, so the session
+    // entry must still be pruned and a later POST must return 404, not 500.
+    const { sessionId, stream } = await openSseStream(started.port);
+    stream.destroy();
+
+    let status: number | undefined;
+    for (let i = 0; i < 60; i++) {
+      await delay(50);
+      const resp = await rawPost(started.port, sessionId, notificationBody());
+      status = resp.statusCode;
+      if (status === 404) break;
+    }
+    expect(status).toBe(404);
+  }, 15000);
+
+  test('P13: rapid connect/immediate-disconnect cycles do not leak dead sessions', async () => {
+    const started = await startSseServer();
+    cliServer = started.cliServer;
+
+    const deadSessionIds: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const { sessionId, stream } = await openSseStream(started.port);
+      deadSessionIds.push(sessionId);
+      stream.destroy();
+    }
+
+    // Every dropped session must eventually be gone (404), proving none leaked.
+    for (const sessionId of deadSessionIds) {
+      let status: number | undefined;
+      for (let i = 0; i < 60; i++) {
+        await delay(50);
+        const resp = await rawPost(started.port, sessionId, notificationBody());
+        status = resp.statusCode;
+        if (status === 404) break;
+      }
+      expect(status).toBe(404);
+    }
+  }, 30000);
+
   test('allows reconnecting with a fresh session after disconnect (gap #6)', async () => {
     const started = await startSseServer();
     cliServer = started.cliServer;

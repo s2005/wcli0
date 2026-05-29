@@ -14,19 +14,55 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 const serverSockets = new WeakMap<http.Server, Set<Socket>>();
 
 /**
+ * Extract the lowercased host from a configured allowed-origin entry. Accepts
+ * either a full origin URL (`https://app.example.com:8443`) or a bare host
+ * (`app.example.com`, `192.168.1.10`); only the host component is compared,
+ * matching the host-only comparison used for the bind host. Returns `undefined`
+ * for values that cannot be parsed into a host.
+ */
+function parseAllowedOriginHost(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return undefined;
+  }
+  try {
+    return new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    // Bare host without a scheme. Retry with a dummy scheme so `URL` can still
+    // parse `host` and `host:port` forms.
+    try {
+      return new URL(`http://${trimmed}`).hostname.toLowerCase();
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+/**
  * Decide whether an incoming request's `Origin` header may use the SSE
  * transport. Requests with no `Origin` header are treated as non-browser
  * clients (native MCP clients, curl) and are permitted. A present `Origin` must
- * point at a loopback host or the configured bind host; everything else --
- * including malformed values and the literal `null` origin used by sandboxed
- * iframes and `file://` pages -- is rejected.
+ * point at a loopback host, the configured bind host, or one of the explicitly
+ * configured `allowedOrigins`; everything else -- including malformed values
+ * and the literal `null` origin used by sandboxed iframes and `file://` pages
+ * -- is rejected.
  *
  * This blocks DNS-rebinding attacks: the browser sets `Origin` to the page's own
  * domain (for example `https://evil.example`), not the rebound `127.0.0.1`
  * address, so allowlisting trusted origins rejects the attacker even when their
  * domain resolves to loopback.
+ *
+ * The `allowedOrigins` list is required to admit browser clients when binding to
+ * a wildcard address (`0.0.0.0` / `::`): the bind host is then not a usable
+ * origin to compare against, and a reverse-proxy deployment whose public
+ * hostname differs from the bind host needs its origin listed explicitly. The
+ * list is empty by default, so the loopback-only default behavior is unchanged.
  */
-export function isOriginAllowed(originHeader: string | undefined, bindHost: string): boolean {
+export function isOriginAllowed(
+  originHeader: string | undefined,
+  bindHost: string,
+  allowedOrigins: readonly string[] = []
+): boolean {
   // No Origin header => non-browser client. Allow.
   if (originHeader === undefined) {
     return true;
@@ -45,7 +81,16 @@ export function isOriginAllowed(originHeader: string | undefined, bindHost: stri
   if (LOOPBACK_HOSTS.has(hostname)) {
     return true;
   }
-  return bindHost.trim() !== '' && hostname === bindHost.trim().toLowerCase();
+  if (bindHost.trim() !== '' && hostname === bindHost.trim().toLowerCase()) {
+    return true;
+  }
+  // Explicitly configured origins (compared by host).
+  for (const allowed of allowedOrigins) {
+    if (parseAllowedOriginHost(allowed) === hostname) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -64,7 +109,8 @@ function corsOriginToEcho(originHeader: string | undefined): string | undefined 
 export function createSseServer(
   createServer: () => Server,
   host: string,
-  port: number
+  port: number,
+  allowedOrigins: readonly string[] = []
 ): Promise<http.Server> {
   const sessions = new Map<string, SSEServerTransport>();
 
@@ -86,7 +132,7 @@ export function createSseServer(
 
     // Reject browser requests from untrusted origins before doing any work
     // (DNS-rebinding defense). Non-browser clients send no Origin and pass.
-    if (!isOriginAllowed(req.headers.origin, host)) {
+    if (!isOriginAllowed(req.headers.origin, host, allowedOrigins)) {
       errorLog(`Rejected SSE request from disallowed origin: ${req.headers.origin}`);
       res.writeHead(403, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Forbidden origin' }));
@@ -137,21 +183,26 @@ export function createSseServer(
         const sessionServer = createServer();
         sessions.set(transport.sessionId, transport);
 
-        await sessionServer.connect(transport);
-
-        // sessionServer.connect() assigns its own transport.onclose handler, so
-        // any handler set before connect() is overwritten. Register session
-        // cleanup afterward and chain to the SDK handler so the MCP server's own
-        // teardown still runs. Without this the session is never removed from
-        // the map on disconnect, leaking entries and making later POSTs to the
-        // dead session return 500 instead of 404. The per-session server holds no
-        // OS resources once its transport closes, so it is left for GC.
-        const mcpOnClose = transport.onclose;
-        transport.onclose = () => {
+        // Prune the session as soon as its underlying response closes. This is
+        // registered on `res` *before* connect() rather than by overwriting
+        // transport.onclose afterward, which closes a race: connect() calls
+        // transport.start(), which writes the SSE headers and attaches the SDK's
+        // own `res` close listener while connect() is still awaiting. A client
+        // that opens /sse and immediately disconnects can fire that listener
+        // before execution returns here, so an after-the-fact onclose handler
+        // would never run -- leaking this map entry and making later POSTs to the
+        // dead session return 500 instead of 404. Listening on `res` directly is
+        // race-free because the listener is in place before the response can
+        // close. The SDK transport still runs its own onclose for protocol
+        // teardown; this listener only removes the routing entry, and the
+        // per-session server holds no OS resources once its transport closes, so
+        // it is left for GC.
+        res.on('close', () => {
           sessions.delete(transport.sessionId);
           debugLog(`SSE session closed: ${transport.sessionId}`);
-          mcpOnClose?.();
-        };
+        });
+
+        await sessionServer.connect(transport);
 
         debugLog(`SSE session established: ${transport.sessionId}`);
       } catch (err) {

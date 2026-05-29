@@ -124,7 +124,8 @@ export const DEFAULT_CONFIG: ServerConfig = {
   transport: {
     mode: 'stdio',
     sseHost: '127.0.0.1',
-    ssePort: 9444
+    ssePort: 9444,
+    sseAllowedOrigins: []
   }
 };
 
@@ -619,6 +620,17 @@ function validateTransportConfig(transport?: TransportConfig): void {
       throw new Error('transport.ssePort must be an integer between 1 and 65535');
     }
   }
+
+  if (transport.sseAllowedOrigins !== undefined) {
+    if (
+      !Array.isArray(transport.sseAllowedOrigins) ||
+      transport.sseAllowedOrigins.some(
+        origin => typeof origin !== 'string' || origin.trim() === ''
+      )
+    ) {
+      throw new Error('transport.sseAllowedOrigins must be an array of non-empty strings');
+    }
+  }
 }
 
 export function validateConfig(config: ServerConfig): void {
@@ -898,13 +910,15 @@ export function applyCliTransport(
   config: ServerConfig,
   transport?: string,
   sseHost?: string,
-  ssePort?: number
+  ssePort?: number,
+  sseAllowedOrigins?: string
 ): void {
   if (!config.transport) {
     config.transport = {
       mode: 'stdio',
       sseHost: '127.0.0.1',
-      ssePort: 9444
+      ssePort: 9444,
+      sseAllowedOrigins: []
     };
   }
 
@@ -927,5 +941,15 @@ export function applyCliTransport(
     config.transport.ssePort = ssePort;
   } else if (ssePort !== undefined) {
     debugWarn(`WARN: Invalid ssePort '${ssePort}', ignoring.`);
+  }
+
+  if (sseAllowedOrigins !== undefined) {
+    const origins = sseAllowedOrigins
+      .split(',')
+      .map(origin => origin.trim())
+      .filter(origin => origin !== '');
+    if (origins.length > 0) {
+      config.transport.sseAllowedOrigins = origins;
+    }
   }
 }

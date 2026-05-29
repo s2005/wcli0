@@ -153,3 +153,18 @@ closed here so both transports are fully exercised.
 - [x] P10: Include transport in serialized config (fixed --
       `createSerializableConfig()` now copies `config.transport` when present, so
       `get_config` and `cli://config` report the active mode/host/port)
+
+### Fourth review round
+
+- [x] P11: Avoid changing global cwd for per-session SSE directories (fixed --
+      `execute_command` now anchors a relative `workingDir` to the calling
+      session's `activeCwd` via `resolveWorkingDirForSession()`, so it no longer
+      resolves against the shared process cwd that another session changed)
+- [x] P12: Allow origins for wildcard SSE binds (fixed -- added
+      `transport.sseAllowedOrigins` config + `--sse-allowed-origins` CLI flag;
+      `isOriginAllowed()` accepts configured origins in addition to loopback and
+      the bind host, enabling browser clients on a `0.0.0.0` bind)
+- [x] P13: Register SSE cleanup before the connection can close (fixed -- the
+      session-cleanup listener is registered on `res.on('close')` before
+      `connect()`, eliminating the disconnect-during-connect race that leaked
+      session entries and turned later POSTs into 500s instead of 404s)

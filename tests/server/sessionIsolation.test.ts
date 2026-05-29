@@ -1,7 +1,7 @@
 import { describe, test, expect, jest } from '@jest/globals';
 import { CLIServer } from '../../src/index.js';
 import type { SessionState } from '../../src/index.js';
-import { buildTestConfig } from '../helpers/testUtils.js';
+import { buildTestConfig, createWslEmulatorConfig } from '../helpers/testUtils.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 // P7: in SSE mode each connection gets its own MCP server instance, but the
@@ -95,5 +95,80 @@ describe('SSE per-session active directory isolation (P7)', () => {
     expect((server as any).serverActiveCwd).toBe('C:\\primary');
 
     chdirSpy.mockRestore();
+  });
+});
+
+// P11: set_current_directory still calls the process-global process.chdir(), so
+// a relative workingDir handed to spawn({ cwd }) would resolve against whatever
+// directory the most recent session selected. execute_command must anchor a
+// relative workingDir to the calling session's activeCwd so concurrent SSE
+// clients cannot perturb one another's relative paths.
+describe('SSE per-session relative workingDir isolation (P11)', () => {
+  function makeWslServer(): CLIServer {
+    const config = buildTestConfig({
+      global: {
+        security: { restrictWorkingDirectory: false },
+        paths: { allowedPaths: [] },
+      },
+      shells: { wsl: createWslEmulatorConfig() },
+    });
+    return new CLIServer(config);
+  }
+
+  test('a relative workingDir resolves against the calling session, not a shared global cwd', async () => {
+    const server = makeWslServer();
+
+    // Capture the workingDir handed to the spawn step without launching a shell.
+    const captured: string[] = [];
+    jest
+      .spyOn(server as any, 'executeShellCommand')
+      .mockImplementation((...callArgs: unknown[]) => {
+        // executeShellCommand(shellName, shellConfig, command, workingDir, ...)
+        captured.push(callArgs[3] as string);
+        return Promise.resolve({
+          content: [{ type: 'text', text: 'ok' }],
+          isError: false,
+          metadata: {},
+        } as CallToolResult);
+      });
+
+    const sessionA: SessionState = { activeCwd: '/mnt/c/dirA' };
+    const sessionB: SessionState = { activeCwd: '/mnt/c/dirB' };
+
+    await server._executeTool(
+      { name: 'execute_command', arguments: { shell: 'wsl', command: 'echo hi', workingDir: 'sub' } },
+      sessionA
+    );
+    await server._executeTool(
+      { name: 'execute_command', arguments: { shell: 'wsl', command: 'echo hi', workingDir: 'sub' } },
+      sessionB
+    );
+
+    // Identical relative input, but each session anchors to its own activeCwd.
+    expect(captured[0]).toBe('/mnt/c/dirA/sub');
+    expect(captured[1]).toBe('/mnt/c/dirB/sub');
+  });
+
+  test('an absolute workingDir is left untouched', async () => {
+    const server = makeWslServer();
+    const captured: string[] = [];
+    jest
+      .spyOn(server as any, 'executeShellCommand')
+      .mockImplementation((...callArgs: unknown[]) => {
+        captured.push(callArgs[3] as string);
+        return Promise.resolve({
+          content: [{ type: 'text', text: 'ok' }],
+          isError: false,
+          metadata: {},
+        } as CallToolResult);
+      });
+
+    const session: SessionState = { activeCwd: '/mnt/c/dirA' };
+    await server._executeTool(
+      { name: 'execute_command', arguments: { shell: 'wsl', command: 'echo hi', workingDir: '/mnt/c/other' } },
+      session
+    );
+
+    expect(captured[0]).toBe('/mnt/c/other');
   });
 });

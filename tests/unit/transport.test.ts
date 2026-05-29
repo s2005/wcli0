@@ -1,5 +1,5 @@
 import { describe, it, expect, jest } from '@jest/globals';
-import { DEFAULT_CONFIG, applyCliTransport, mergeConfigs } from '../../src/utils/config.js';
+import { DEFAULT_CONFIG, applyCliTransport, mergeConfigs, validateConfig } from '../../src/utils/config.js';
 import { isOriginAllowed } from '../../src/utils/transport.js';
 import type { ServerConfig } from '../../src/types/config.js';
 
@@ -26,6 +26,10 @@ async function parseWithArgs(args: string[]): Promise<any> {
       .option('sse-port', {
         type: 'number',
         description: 'Port for SSE transport (default: 9444)'
+      })
+      .option('sse-allowed-origins', {
+        type: 'string',
+        description: 'Comma-separated browser origins allowed to use the SSE transport'
       })
       .help()
       .parse();
@@ -65,7 +69,8 @@ describe('TransportConfig', () => {
       expect(config.transport).toEqual({
         mode: 'stdio',
         sseHost: '127.0.0.1',
-        ssePort: 9444
+        ssePort: 9444,
+        sseAllowedOrigins: []
       });
     });
 
@@ -106,8 +111,26 @@ describe('TransportConfig', () => {
       expect(config.transport).toEqual({
         mode: 'sse',
         sseHost: '0.0.0.0',
-        ssePort: 3000
+        ssePort: 3000,
+        sseAllowedOrigins: []
       });
+    });
+
+    it('P12: should parse comma-separated sseAllowedOrigins', () => {
+      const config = makeConfig();
+      applyCliTransport(config, 'sse', '0.0.0.0', undefined, 'https://app.example.com, 192.168.1.10');
+      expect(config.transport!.sseAllowedOrigins).toEqual([
+        'https://app.example.com',
+        '192.168.1.10'
+      ]);
+    });
+
+    it('P12: should ignore an sseAllowedOrigins string with only blanks', () => {
+      const config = makeConfig();
+      config.transport!.sseAllowedOrigins = ['https://keep.example'];
+      applyCliTransport(config, undefined, undefined, undefined, ' , , ');
+      // Nothing usable was provided, so the existing value is preserved.
+      expect(config.transport!.sseAllowedOrigins).toEqual(['https://keep.example']);
     });
 
     it('should ignore invalid ssePort values', () => {
@@ -215,6 +238,79 @@ describe('isOriginAllowed (P2)', () => {
   });
 });
 
+// P12: explicit allowed-origin list, required for wildcard binds (0.0.0.0 / ::)
+// where the bind host is not a usable origin and for reverse-proxy hostnames.
+describe('isOriginAllowed allowed-origins list (P12)', () => {
+  it('rejects a LAN browser origin on a wildcard bind when no origins are configured', () => {
+    expect(isOriginAllowed('http://192.168.1.10:9444', '0.0.0.0')).toBe(false);
+    expect(isOriginAllowed('http://192.168.1.10:9444', '0.0.0.0', [])).toBe(false);
+  });
+
+  it('allows an origin whose host is in the configured list (full origin form)', () => {
+    expect(
+      isOriginAllowed('http://192.168.1.10:9444', '0.0.0.0', ['http://192.168.1.10:9444'])
+    ).toBe(true);
+  });
+
+  it('allows an origin whose host is in the configured list (bare host form)', () => {
+    expect(
+      isOriginAllowed('http://192.168.1.10:9444', '0.0.0.0', ['192.168.1.10'])
+    ).toBe(true);
+  });
+
+  it('matches a configured host case-insensitively regardless of port/scheme', () => {
+    expect(
+      isOriginAllowed('https://APP.example.com', '0.0.0.0', ['http://app.example.com:8443'])
+    ).toBe(true);
+  });
+
+  it('still rejects an origin that is not loopback, the bind host, or in the list', () => {
+    expect(
+      isOriginAllowed('https://evil.example', '0.0.0.0', ['192.168.1.10'])
+    ).toBe(false);
+  });
+
+  it('still allows loopback even when an allowed-origins list is configured', () => {
+    expect(
+      isOriginAllowed('http://127.0.0.1:9444', '0.0.0.0', ['192.168.1.10'])
+    ).toBe(true);
+  });
+});
+
+// P12: config-file validation of transport.sseAllowedOrigins.
+describe('validateConfig sseAllowedOrigins (P12)', () => {
+  function configWithOrigins(sseAllowedOrigins: unknown): ServerConfig {
+    return {
+      global: DEFAULT_CONFIG.global,
+      shells: {},
+      transport: {
+        mode: 'sse',
+        sseHost: '0.0.0.0',
+        ssePort: 9444,
+        sseAllowedOrigins
+      }
+    } as unknown as ServerConfig;
+  }
+
+  it('rejects a non-array sseAllowedOrigins', () => {
+    expect(() => validateConfig(configWithOrigins('https://app.example.com'))).toThrow(
+      /sseAllowedOrigins must be an array/
+    );
+  });
+
+  it('rejects empty-string entries', () => {
+    expect(() => validateConfig(configWithOrigins(['https://ok.example', '   ']))).toThrow(
+      /sseAllowedOrigins/
+    );
+  });
+
+  it('accepts a valid array of origins', () => {
+    expect(() =>
+      validateConfig(configWithOrigins(['https://app.example.com', '192.168.1.10']))
+    ).not.toThrow();
+  });
+});
+
 describe('Transport CLI Arguments', () => {
   it('should return undefined transport when no flags given', async () => {
     const args = await parseWithArgs([]);
@@ -252,6 +348,13 @@ describe('Transport CLI Arguments', () => {
     expect(args.transport).toBe('sse');
     expect(args['sse-host']).toBe('0.0.0.0');
     expect(args['sse-port']).toBe(3000);
+  });
+
+  it('P12: should parse --sse-allowed-origins', async () => {
+    const args = await parseWithArgs([
+      '--sse-allowed-origins', 'https://app.example.com,192.168.1.10'
+    ]);
+    expect(args['sse-allowed-origins']).toBe('https://app.example.com,192.168.1.10');
   });
 
   it('should reject invalid transport value', async () => {

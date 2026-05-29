@@ -1,0 +1,3 @@
+# P11 - Avoid changing global cwd for per-session SSE directories
+
+In SSE mode `set_current_directory` (`src/index.ts:1105`) stores `activeCwd` per session but still calls the process-wide `process.chdir()`. When directory restrictions are disabled, a relative `workingDir` passed to `execute_command` is handed to `spawn({ cwd })` without being made absolute, so it resolves against the shared process-global cwd that another session most recently set. A second SSE client can therefore make another client's relative command run in the wrong directory even though `session.activeCwd` itself stays isolated.

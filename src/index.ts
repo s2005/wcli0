@@ -172,6 +172,10 @@ const parseArgs = async () => {
       type: 'number',
       description: 'Port for SSE transport (default: 9444)'
     })
+    .option('sse-allowed-origins', {
+      type: 'string',
+      description: 'Comma-separated browser origins allowed to use the SSE transport, in addition to loopback hosts and the bind host (e.g. "https://app.example.com,192.168.1.10"). Required for browser clients when binding to 0.0.0.0.'
+    })
     .help()
     .parse();
 };
@@ -428,6 +432,33 @@ class CLIServer {
       `Validation error: ${message}`,
       -1
     );
+  }
+
+  /**
+   * Resolve a working directory to an absolute path anchored to this session's
+   * active directory. A relative `workingDir` would otherwise be handed to
+   * spawn({ cwd }) verbatim and resolved against the process-global cwd, which
+   * set_current_directory mutates via process.chdir(). Because that global is
+   * shared by every concurrent SSE session, one client's set_current_directory
+   * could silently change the base another client's relative path resolves
+   * against. Anchoring relative paths to session.activeCwd keeps each session
+   * isolated. Absolute paths (Windows drive/UNC or POSIX/WSL `/`-rooted) are
+   * returned unchanged, as is any path when the session has no active directory.
+   */
+  private resolveWorkingDirForSession(workingDir: string, session: SessionState): string {
+    const isAbsolute = workingDir.startsWith('/') || path.win32.isAbsolute(workingDir);
+    if (isAbsolute) {
+      return workingDir;
+    }
+    const base = session.activeCwd;
+    if (!base) {
+      return workingDir;
+    }
+    // Resolve with the path flavor of the base so the result keeps the base's
+    // separator style (POSIX for `/`-rooted WSL paths, Windows otherwise).
+    return base.startsWith('/')
+      ? path.posix.resolve(base, workingDir)
+      : path.win32.resolve(base, workingDir);
   }
 
   private async executeShellCommand(
@@ -1006,6 +1037,10 @@ class CLIServer {
           let workingDir: string;
           if (args.workingDir) {
             workingDir = normalizePathForShell(args.workingDir, context);
+            // Anchor a relative workingDir to this session's active directory so
+            // it never resolves against the shared process-global cwd (which
+            // another SSE session can change via set_current_directory).
+            workingDir = this.resolveWorkingDirForSession(workingDir, session);
             if (shellConfig.security.restrictWorkingDirectory) {
               try {
                 validateWorkingDirectoryWithContext(workingDir, context);
@@ -1447,13 +1482,15 @@ class CLIServer {
       const { createSseServer } = await import('./utils/transport.js');
       const host = this.config.transport.sseHost ?? '127.0.0.1';
       const port = this.config.transport.ssePort ?? 9444;
+      const allowedOrigins = this.config.transport.sseAllowedOrigins ?? [];
       this.httpServer = await createSseServer(
         // Each SSE connection gets a fresh SessionState seeded from the primary
         // session's initial cwd, so one client's set_current_directory cannot
         // change another client's active working directory.
         () => this.createServerInstance({ activeCwd: this.primarySession.activeCwd }),
         host,
-        port
+        port,
+        allowedOrigins
       );
       debugLog(`Windows CLI MCP Server running on SSE at http://${host}:${port}`);
     } else {
@@ -1543,7 +1580,8 @@ const main = async () => {
       config,
       args.transport as string | undefined,
       args['sse-host'] as string | undefined,
-      args['sse-port'] as number | undefined
+      args['sse-port'] as number | undefined,
+      args['sse-allowed-origins'] as string | undefined
     );
 
     const server = new CLIServer(config);

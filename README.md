@@ -500,13 +500,15 @@ To get started with configuration:
   | `--transport` | string | stdio | Transport protocol: `stdio` or `sse` |
   | `--sse-host` | string | 127.0.0.1 | Host address for SSE transport |
   | `--sse-port` | number | 9444 | Port for SSE transport |
+  | `--sse-allowed-origins` | string | (none) | Comma-separated browser origins allowed in addition to loopback hosts and the bind host (e.g. `https://app.example.com,192.168.1.10`). Only the host component is compared. Required for browser clients on a wildcard (`0.0.0.0`) bind. |
 
   When SSE mode is active, clients connect via `GET /sse` to open an SSE
   stream and send messages via `POST /messages?sessionId=<id>`. The server
   logs the bind address and port on startup. To mitigate DNS-rebinding
   attacks, the server validates the request `Origin` header: requests whose
-  `Origin` is not a loopback host or the configured bind host are rejected with
-  `403 Forbidden`, while non-browser clients that send no `Origin` are allowed.
+  `Origin` is not a loopback host, the configured bind host, or one of the
+  configured `--sse-allowed-origins` are rejected with `403 Forbidden`, while
+  non-browser clients that send no `Origin` are allowed.
 
   > **Security:** This transport has no built-in authentication and exposes
   > command-execution tools. Keep it bound to `127.0.0.1` (the default) for
@@ -514,6 +516,14 @@ To get started with configuration:
   > tools to every host that can reach the port; only do so behind an
   > authenticated reverse proxy or equivalent access control. Origin validation
   > alone does not authenticate non-browser clients.
+  >
+  > **Wildcard binds and browser origins:** When binding to a wildcard address
+  > (`0.0.0.0` / `::`), the bind host is not a usable origin to compare against,
+  > so browser clients reaching the server through its real LAN address (or a
+  > reverse proxy whose public hostname differs from the bind host) are rejected
+  > unless their origin is listed in `--sse-allowed-origins` (or the
+  > `transport.sseAllowedOrigins` config array). Non-browser clients are
+  > unaffected, since they send no `Origin`.
 
 1. **Update your Claude Desktop configuration** to use your config file:
 
@@ -824,12 +834,17 @@ The transport section can also be set in the config file:
   "transport": {
     "mode": "sse",
     "sseHost": "127.0.0.1",
-    "ssePort": 9444
+    "ssePort": 9444,
+    "sseAllowedOrigins": ["https://app.example.com", "192.168.1.10"]
   }
 }
 ```
 
-CLI flags (`--transport`, `--sse-host`, `--sse-port`) override config file values.
+`sseAllowedOrigins` is optional and defaults to an empty list. Each entry is an
+origin URL or a bare host; only the host component is compared (case-insensitively).
+
+CLI flags (`--transport`, `--sse-host`, `--sse-port`, `--sse-allowed-origins`)
+override config file values.
 
 The inheritance system works as follows:
 
