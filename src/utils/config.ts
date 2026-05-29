@@ -918,7 +918,12 @@ export function applyCliTransport(
     config.transport.sseHost = sseHost.trim();
   }
 
-  if (ssePort !== undefined && ssePort > 0 && ssePort <= 65535) {
+  if (
+    ssePort !== undefined &&
+    Number.isInteger(ssePort) &&
+    ssePort > 0 &&
+    ssePort <= 65535
+  ) {
     config.transport.ssePort = ssePort;
   } else if (ssePort !== undefined) {
     debugWarn(`WARN: Invalid ssePort '${ssePort}', ignoring.`);

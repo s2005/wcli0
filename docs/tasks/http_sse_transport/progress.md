@@ -143,3 +143,13 @@ closed here so both transports are fully exercised.
 - [x] P8: Return CORS headers for allowed browser origins (fixed -- allowed
       origins are echoed via `Access-Control-Allow-Origin`/`Vary`, and `OPTIONS`
       preflight requests are answered with 204)
+
+### Third review round
+
+- [x] P9: Reject fractional SSE ports from the CLI (fixed -- `applyCliTransport()`
+      now requires `Number.isInteger(ssePort)`, so `--sse-port 9444.5` is warned
+      about and ignored instead of crashing `httpServer.listen()` with
+      `ERR_SOCKET_BAD_PORT`)
+- [x] P10: Include transport in serialized config (fixed --
+      `createSerializableConfig()` now copies `config.transport` when present, so
+      `get_config` and `cli://config` report the active mode/host/port)

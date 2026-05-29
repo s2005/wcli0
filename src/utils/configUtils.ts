@@ -89,6 +89,16 @@ export function createSerializableConfig(config: ServerConfig): any {
     serializable.shells[shellName] = shellInfo;
   }
 
+  // Include the active transport configuration so clients can inspect the
+  // real connection settings (mode/host/port) via get_config and cli://config.
+  if (config.transport) {
+    serializable.transport = {
+      mode: config.transport.mode,
+      sseHost: config.transport.sseHost,
+      ssePort: config.transport.ssePort
+    };
+  }
+
   return serializable;
 }
 

@@ -128,6 +128,18 @@ describe('TransportConfig', () => {
       expect(config.transport!.ssePort).toBe(9444);
     });
 
+    it('P9: should ignore fractional ssePort values', () => {
+      const config = makeConfig();
+      applyCliTransport(config, undefined, undefined, 9444.5);
+      expect(config.transport!.ssePort).toBe(9444);
+    });
+
+    it('P9: should ignore NaN ssePort values', () => {
+      const config = makeConfig();
+      applyCliTransport(config, undefined, undefined, Number.NaN);
+      expect(config.transport!.ssePort).toBe(9444);
+    });
+
     it('should ignore empty sseHost', () => {
       const config = makeConfig();
       applyCliTransport(config, undefined, '  ');
