@@ -60,7 +60,9 @@ describe('loadConfig initialDir handling', () => {
     const cfg = loadConfig(configPath);
     const normalized = normalizeWindowsPath(dir);
     expect(cfg.global.paths.initialDir).toBe(normalized);
-    expect(cfg.global.paths.allowedPaths).toContain(normalized.toLowerCase());
+    // Unix paths preserve case through normalizeAllowedPaths
+    const expectedInAllowed = normalized.startsWith('/') ? normalized : normalized.toLowerCase();
+    expect(cfg.global.paths.allowedPaths).toContain(expectedInAllowed);
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -71,7 +73,9 @@ describe('loadConfig initialDir handling', () => {
     const cfg = loadConfig(configPath);
     const normalized = normalizeWindowsPath(dir);
     expect(cfg.global.paths.initialDir).toBe(normalized);
-    expect(cfg.global.paths.allowedPaths).not.toContain(normalized.toLowerCase());
+    // Unix paths preserve case through normalizeAllowedPaths
+    const expectedNotInAllowed = normalized.startsWith('/') ? normalized : normalized.toLowerCase();
+    expect(cfg.global.paths.allowedPaths).not.toContain(expectedNotInAllowed);
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
     fs.rmSync(dir, { recursive: true, force: true });
   });
