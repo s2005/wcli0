@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.4] - 2026-05-29
+
+### Fixed
+
+- Preserve case for Unix/WSL paths in `normalizeAllowedPaths` -- stops lowercasing on case-sensitive filesystems
+- WSL path conversion now gated on `.exe` suffix -- only converts `/mnt/c/` to `C:\` when spawning a Windows binary
+- Replace bare `'node'` with `process.execPath` in test helpers to fix `spawn ENOENT` errors
+
+### Added
+
+- WSL2 integration tests (12 tests) using real `bash -c` instead of the wsl-emulator, gated on WSL2 detection
+- Windows shell tests for cmd, powershell, and gitbash, gated on `process.platform === 'win32'`
+- Path case preservation unit tests
+- Gitignore cleanup (added `.mcp.json` and `.claude/`)
+
 ## [1.2.3] - 2026-02-24
 
 ### Fixed
