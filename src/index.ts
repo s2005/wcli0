@@ -1364,6 +1364,22 @@ class CLIServer {
       process.removeListener('SIGINT', this.sigintHandler);
       this.sigintHandler = undefined;
     }
+    // Disconnect the MCP transport. In stdio mode this removes the 'data'
+    // listener that StdioServerTransport attaches to process.stdin (which keeps
+    // stdin in flowing mode and the process alive); in SSE mode it ends the
+    // active SSE response. Best-effort: the server may never have been connected.
+    try {
+      await this.server.close();
+    } catch {
+      // ignore - server may not be connected to a transport
+    }
+    // StdioServerTransport.close() only removes its stdin 'data' listener; it
+    // does not take stdin out of flowing mode, so the stdin handle stays
+    // referenced and keeps the process alive. Pause it explicitly so the event
+    // loop can drain (harmless when stdin was never used, e.g. SSE mode).
+    if (this.config.transport?.mode !== 'sse') {
+      process.stdin.pause();
+    }
     // Close HTTP server if in SSE mode
     if (this.httpServer) {
       const { closeSseServer } = await import('./utils/transport.js');

@@ -12,31 +12,44 @@ ensure that .unref() was called on them.
 ```
 
 The original commit message attributed this to "other test files" (LogStorageManager
-timers or Windows shell child processes). This document records the actual root cause,
-the evidence gathered, and what does and does not remove the warning.
+timers or Windows shell child processes). This document records the actual root cause
+and the fix.
 
 ## Summary of findings
 
 - The warning is NOT produced by the shell-execution or LogStorageManager tests.
-- It is produced by `tests/integration/sse-transport.test.ts` (the HTTP/SSE tests).
-- There is NO real resource leak. `jest --detectOpenHandles` reports zero open handles.
-- It is a known interaction between Jest worker processes and Node's
-  `--experimental-vm-modules` ESM loader, triggered by the volume of HTTP server and
-  socket churn in that single file.
+- It is produced by `tests/integration/sse-transport.test.ts`, and specifically by its
+  one test that starts the server in stdio mode.
+- Root cause: starting the stdio transport leaves `process.stdin` in flowing (referenced)
+  mode, which keeps the worker process alive. `CLIServer.cleanup()` did not close the MCP
+  transport, so stdin was never released.
+- Fix: `CLIServer.cleanup()` now closes the MCP server transport and pauses `process.stdin`.
+  The warning is gone in normal parallel execution and all tests pass.
 
 ## Root cause
 
-At the moment a Jest worker finishes `sse-transport.test.ts` and is asked to exit, the
-worker still holds transient handles from the just-closed HTTP/SSE servers:
+`StdioServerTransport.start()` (MCP SDK) attaches a `data` listener to `process.stdin`:
 
-- 2 `Server` handles with `listening=false` and `connections=0` (already closed).
-- 6 `Socket` handles with `destroyed=true` (already destroyed) but still listed as
-  active by `process._getActiveHandles()`.
+```js
+this._stdin.on("data", this._ondata);
+```
 
-These handles are reaped by libuv within roughly 50 ms. The worker, however, is
-force-exited by `jest-worker` before that happens, which prints the warning. Under
-`--experimental-vm-modules` the worker does not self-terminate even after the handles
-are gone, because the VM module context keeps a reference the event loop cannot drain.
+Adding a `data` listener puts `process.stdin` into flowing mode, which references the
+stdin handle and keeps the Node process (the Jest worker) alive.
+
+The test `should use stdio mode when transport is stdio` calls `cliServer.run()`, which
+in stdio mode does `new StdioServerTransport()` + `server.connect(transport)` and starts
+reading stdin. `CLIServer.cleanup()` (run in `afterEach`) removed the SIGINT handler and
+closed the HTTP server, but never closed the MCP server, so the stdin `data` listener was
+left attached. Even calling `transport.close()` is not enough on its own:
+`StdioServerTransport.close()` only removes the `data` listener; it does not take stdin
+out of flowing mode, so the handle stays referenced.
+
+Only `sse-transport.test.ts` exercises stdio mode, which is why only that file triggered
+the warning.
+
+Why `--detectOpenHandles` looked clean: Jest's open-handle detector ignores the standard
+streams (`stdin`/`stdout`/`stderr`), so a referenced `process.stdin` is never reported.
 
 ## Evidence
 
@@ -48,75 +61,71 @@ are gone, because the VM module context keeps a reference the event loop cannot 
 | All non-subdirectory tests | no |
 | Spawn-heavy shell/timeout/process tests | no |
 | `tests/wsl/**` | no |
-| `tests/integration/**` | yes |
 | `tests/integration/**` minus the three `sse-*` files | no |
 | `sse-transport.test.ts` alone (paired with a trivial file) | yes |
 | `sse-security.test.ts` alone (paired with a trivial file) | no |
 | `sse-tool-execution.test.ts` alone (paired with a trivial file) | no |
-| Each `sse-transport.test.ts` describe block run on its own | no |
 
-Conclusion: only `sse-transport.test.ts` triggers it, and only when its three describe
-blocks run together (a cumulative, not per-test, effect).
-
-### Open handle analysis
-
-`jest --detectOpenHandles` (which implies `--runInBand`) reports zero open handles for
-the SSE tests, both for the full suite and for the SSE files in isolation. There is no
-permanently leaked timer, socket, or child process.
-
-Note: `--detectOpenHandles` is also unreliable under `--experimental-vm-modules`, so a
-direct handle snapshot was taken inside the worker to confirm the above.
+`sse-security` and `sse-tool-execution` only use the SSE client helper; `sse-transport` is
+the only one that starts a stdio-mode server.
 
 ### Handle snapshot at worker exit
 
 Instrumenting the worker (`process._getActiveHandles()`) immediately after the file's
-tests complete shows, for `sse-transport.test.ts`:
+tests complete showed, among the standard worker pipes:
 
 ```text
-Server listening=false connections=0          (x2)
-Socket destroyed=true reading=true fd=undefined (x6, mix of client and server side)
-+ the standard worker stdio pipes and IPC channel
+Socket fd=0 reading=true   <- process.stdin, still in flowing mode
 ```
 
-All application handles are already closed/destroyed; they clear on their own within
-~50 ms.
+Polling `process.getActiveResourcesInfo()` into the worker's exit window showed only the
+standard `PipeWrap` stream handles remained - no leaked sockets, servers, timers, or
+requests. The referenced stdin stream was what kept the worker from exiting before Jest's
+500 ms force-exit deadline (`FORCE_EXIT_DELAY` in `jest-worker`).
 
-## What does NOT remove the warning
+### Confirmation
 
-The following were each tried and verified to NOT remove the worker warning:
+Adding `process.stdin.pause()` to `CLIServer.cleanup()` removed the warning in parallel
+worker mode immediately and deterministically.
 
-- `forceExit: true` in the Jest config. It only force-exits the main process at the end
-  of the run; the worker warning is emitted earlier by `jest-worker` and is unaffected.
-- `server.closeAllConnections()` in `closeSseServer()` (see below). It makes the
-  isolated `SseTestClient` flow clean but does not fix the full `sse-transport.test.ts`
-  file.
-- Converting the dynamic `import('./utils/transport.js')` in `CLIServer` to a static
-  import.
-- Yielding the event loop (`setImmediate`) in `SseTestClient.close()`.
-- A 100 ms delay after every test.
+## Fix
 
-The only thing that removes it is running the tests serially (no worker child
-processes): `jest --runInBand` (or `maxWorkers: 1`) produces a fully clean run
-(exit 0, 0 warnings, all tests pass) in ~35 s versus ~20 s in parallel.
+`src/index.ts` - `CLIServer.cleanup()`:
 
-## Related production-correctness fix
+- `await this.server.close()` - disconnects the MCP transport (stdio or SSE).
+- `process.stdin.pause()` for non-SSE modes - takes stdin out of flowing mode so the
+  handle is released and the event loop can drain.
 
-Independently of the test warning, `closeSseServer()` in `src/utils/transport.ts` was
-improved to call `server.closeAllConnections()`. `http.Server.close()` only stops
-accepting new connections and waits for existing ones to end on their own; long-lived
-SSE streams would otherwise keep the server (and a SIGINT shutdown) from completing.
-This is a real improvement for production shutdown and is kept regardless of the test
-strategy chosen for the warning.
+`src/utils/transport.ts` - `closeSseServer()` was also hardened to call
+`server.closeAllConnections()`. `http.Server.close()` only stops accepting new
+connections and waits for existing ones to end; long-lived SSE streams would otherwise
+keep a SIGINT shutdown from completing. This is an independent production-shutdown
+improvement.
+
+### Verified outcome
+
+`npm test` (normal parallel execution, no `--runInBand`, no `forceExit`):
+
+- 0 worker warnings, exit code 0.
+- 900 passed, 24 skipped, 0 failed (3 consecutive runs).
+- Run time ~17 s (full parallelism preserved).
+
+## Approaches that were rejected
+
+| Approach | Result |
+| -------- | ------ |
+| `forceExit: true` | Only force-exits the main process; the worker warning (emitted earlier by `jest-worker`) is unaffected. |
+| `maxWorkers: 1` / `--runInBand` | Removes the warning but only by disabling parallelism (~35 s vs ~17 s). A workaround, not a fix. |
+| `workerThreads: true` | Removes the warning but breaks `process.chdir()` (unsupported in worker threads), failing the `set_current_directory` test. |
+| `server.closeAllConnections()` alone | Good for SSE shutdown, but did not address the stdin handle. |
+| Static import of the transport module, `setImmediate` yields, 100 ms per-test delays | No effect. |
 
 ## How to re-verify
 
 ```bash
-# Reproduce the warning (parallel workers)
+# Should be clean (no warning), full parallel run
+node --experimental-vm-modules node_modules/jest/bin/jest.js
+
+# The previously-offending file on its own
 node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration/sse-transport
-
-# Confirm no real leak (serial + handle detection)
-npm run test:debug -- tests/integration/sse-transport
-
-# Confirm a clean serial run
-node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand
 ```

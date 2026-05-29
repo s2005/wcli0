@@ -77,11 +77,11 @@ See [worker-exit-investigation.md](worker-exit-investigation.md) for full detail
 - [x] Verify SIGINT handler leak fix is implemented (`src/index.ts`)
 - [x] Reproduce the `worker process has failed to exit gracefully` warning
 - [x] Bisect the warning to `tests/integration/sse-transport.test.ts`
-- [x] Confirm there is no real resource leak (`--detectOpenHandles`, handle snapshot)
+- [x] Identify the root cause: stdio transport leaves `process.stdin` flowing/referenced
 - [x] Add `server.closeAllConnections()` to `closeSseServer()` (production shutdown fix)
+- [x] Fix `CLIServer.cleanup()` to close the MCP transport and pause `process.stdin`
 - [x] Document findings in `worker-exit-investigation.md`
-- [ ] Apply a fix that removes the worker warning from `npm test`
-- [ ] Re-run full regression and confirm a clean run
+- [x] Re-run full regression in parallel: 900 passed, 0 warnings, ~17s (3 runs)
 
 ## Review Feedback
 
