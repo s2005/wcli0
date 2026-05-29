@@ -75,8 +75,22 @@ export function createSseServer(
 }
 
 export function closeSseServer(server: http.Server): Promise<void> {
+  // http.Server.close() only stops accepting new connections and waits for
+  // existing ones to end on their own. SSE streams are long-lived, so without
+  // forcibly destroying open sockets the server never finishes closing and the
+  // event loop stays alive (surfacing as the Jest "worker failed to exit
+  // gracefully" warning). closeAllConnections() was added in Node 18.2, so it
+  // is called defensively to remain compatible with older 18.x runtimes.
+  const destroyOpenConnections = () => {
+    const closeAll = (server as { closeAllConnections?: () => void }).closeAllConnections;
+    if (typeof closeAll === 'function') {
+      closeAll.call(server);
+    }
+  };
+
   return new Promise((resolve, reject) => {
     if (!server.listening) {
+      destroyOpenConnections();
       resolve();
       return;
     }
@@ -87,5 +101,7 @@ export function closeSseServer(server: http.Server): Promise<void> {
         resolve();
       }
     });
+    // Destroy lingering sockets so close() can complete promptly.
+    destroyOpenConnections();
   });
 }

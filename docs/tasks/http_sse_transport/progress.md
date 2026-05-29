@@ -1,15 +1,17 @@
 # Progress: HTTP/SSE Transport for MCP Server
 
 ## Status Legend
-| Marker | Meaning |
-| ------ | ------- |
-| `[ ]`  | Not started |
-| `[x]`  | Complete |
-| `[~]`  | In progress |
+
+| Marker | Meaning                   |
+| ------ | ------------------------- |
+| `[ ]`  | Not started               |
+| `[x]`  | Complete                  |
+| `[~]`  | In progress               |
 | `[!]`  | Blocked or needs decision |
-| `[-]`  | Skipped / not applicable |
+| `[-]`  | Skipped / not applicable  |
 
 ## Planning Checklist
+
 - [x] Analyze current behavior.
 - [x] Create analysis.md
 - [x] Create PRD.md
@@ -18,6 +20,7 @@
 - [x] Create progress.md
 
 ## Phase 1: Types and Configuration
+
 - [x] Add `TransportConfig` interface to `src/types/config.ts`
 - [x] Add `transport` field to `ServerConfig`
 - [x] Add default transport config to `DEFAULT_CONFIG` in `src/utils/config.ts`
@@ -26,6 +29,7 @@
 - [x] Write unit tests for transport config defaults and overrides
 
 ## Phase 2: CLI Arguments
+
 - [x] Add `--transport` flag to `parseArgs()` in `src/index.ts`
 - [x] Add `--sse-host` flag to `parseArgs()`
 - [x] Add `--sse-port` flag to `parseArgs()`
@@ -33,6 +37,7 @@
 - [x] Write unit tests for CLI argument parsing
 
 ## Phase 3: SSE Transport Module
+
 - [x] Create `src/utils/transport.ts`
 - [x] Implement `createSseServer()` function
 - [x] Implement SSE connection handling (GET `/sse`)
@@ -41,6 +46,7 @@
 - [x] Write unit tests for transport module
 
 ## Phase 4: CLIServer Integration
+
 - [x] Update `CLIServer.run()` to support both transports
 - [x] Store HTTP server reference for cleanup
 - [x] Update cleanup handler for SSE mode
@@ -48,6 +54,7 @@
 - [x] Write regression tests for stdio transport
 
 ## Phase 5: Documentation
+
 - [x] Update README.md with transport CLI flags
 - [x] Add config file transport section example
 - [x] Add SSE usage example
@@ -63,6 +70,21 @@ See [test-implementation-plan.md](test-implementation-plan.md) for full details.
 - [x] Phase 6e: Refactor existing SSE tests to use `SseTestClient` helper
 - [x] Run full regression: `npm test`
 
+## Phase 7: Worker Exit Warning
+
+See [worker-exit-investigation.md](worker-exit-investigation.md) for full details.
+
+- [x] Verify SIGINT handler leak fix is implemented (`src/index.ts`)
+- [x] Reproduce the `worker process has failed to exit gracefully` warning
+- [x] Bisect the warning to `tests/integration/sse-transport.test.ts`
+- [x] Confirm there is no real resource leak (`--detectOpenHandles`, handle snapshot)
+- [x] Add `server.closeAllConnections()` to `closeSseServer()` (production shutdown fix)
+- [x] Document findings in `worker-exit-investigation.md`
+- [ ] Apply a fix that removes the worker warning from `npm test`
+- [ ] Re-run full regression and confirm a clean run
+
 ## Review Feedback
+
 (Section appears when PR review feedback arrives. Each comment gets a checkbox.)
+
 - [ ] P1: (pending review)
