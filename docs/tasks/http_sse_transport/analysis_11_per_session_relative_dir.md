@@ -27,4 +27,4 @@ followed by a relative path) and, because resolution happens before the
 `restrictWorkingDirectory` validation, the resolved path is still checked
 against the allowed paths, so security is unchanged.
 
-**Commit:** e8cfa0f -- fix(transport): address fourth-round Codex review feedback for PR #83
+**Commit:** 16d7070 -- fix(transport): address fourth-round Codex review feedback for PR #83

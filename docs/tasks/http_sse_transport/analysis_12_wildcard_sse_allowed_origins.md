@@ -26,4 +26,4 @@ disallowed origin is still rejected with `403` before any work) while the
 documented remote-binding use case becomes possible. The empty default keeps the
 prior loopback-only behavior unchanged for existing deployments.
 
-**Commit:** e8cfa0f -- fix(transport): address fourth-round Codex review feedback for PR #83
+**Commit:** 16d7070 -- fix(transport): address fourth-round Codex review feedback for PR #83

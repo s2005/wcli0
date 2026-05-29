@@ -26,4 +26,4 @@ client can disconnect. It also avoids depending on the SDK's internal ordering
 of `onclose` assignment versus `start()`, which the previous approach implicitly
 relied on.
 
-**Commit:** e8cfa0f -- fix(transport): address fourth-round Codex review feedback for PR #83
+**Commit:** 16d7070 -- fix(transport): address fourth-round Codex review feedback for PR #83
