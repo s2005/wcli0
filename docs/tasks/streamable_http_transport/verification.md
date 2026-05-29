@@ -140,15 +140,15 @@ Expected: all tests pass, no regressions, no worker-exit warning.
 
 The feature can be accepted when all items are true:
 
-- [ ] SDK upgraded to a version exporting `StreamableHTTPServerTransport`; lint + full suite green
-- [ ] `npx wcli0 --transport http` serves `/mcp` on `127.0.0.1:9444` and logs the bind address (with `--debug`)
-- [ ] `--http-host` / `--http-port` change the bind address
-- [ ] A Streamable HTTP client can initialize, receive `Mcp-Session-Id`, and run `tools/list`, `tools/call`, `resources/read`
-- [ ] Two concurrent sessions have isolated active working directories
-- [ ] `DELETE /mcp` terminates a session; later requests for it return `404`
-- [ ] Untrusted `Origin` -> `403`; no-origin allowed; configured origin admitted with CORS headers
-- [ ] Malformed `Host` header -> `400` and the server stays alive
-- [ ] `transport` config respected from file and overridden by CLI; `get_config` / `cli://config` report the active transport
-- [ ] `SIGINT` shuts down cleanly and releases the port with an open `/mcp` stream
-- [ ] `npx wcli0` (no flags) still starts stdio; `--transport sse` still starts legacy SSE, both unchanged
-- [ ] New transport code has unit + integration coverage; `npm run lint` passes
+- [x] SDK upgraded to a version exporting `StreamableHTTPServerTransport`; lint + full suite green
+- [x] `npx wcli0 --transport http` serves `/mcp` on `127.0.0.1:9444` and logs the bind address (with `--debug`)
+- [x] `--http-host` / `--http-port` change the bind address
+- [x] A Streamable HTTP client can initialize, receive `Mcp-Session-Id`, and run `tools/list`, `tools/call`, `resources/read`
+- [x] Two concurrent sessions have isolated active working directories
+- [x] `DELETE /mcp` terminates a session; later requests for it return `404`
+- [x] Untrusted `Origin` -> `403`; no-origin allowed; configured origin admitted with CORS headers
+- [x] Malformed `Host` header -> `400` and the server stays alive
+- [x] `transport` config respected from file and overridden by CLI; `get_config` / `cli://config` report the active transport
+- [x] `SIGINT` shuts down cleanly and releases the port with an open `/mcp` stream (cleanup() closes httpServer via the shared force-destroy path; covered by the port-release test)
+- [x] `npx wcli0` (no flags) still starts stdio; `--transport sse` still starts legacy SSE, both unchanged (full stdio + SSE suites remain green)
+- [x] New transport code has unit + integration coverage; `npm run lint` passes

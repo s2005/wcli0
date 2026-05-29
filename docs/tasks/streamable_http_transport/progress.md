@@ -165,10 +165,31 @@
 
 ## Phase 7: Documentation
 
-- [ ] Document `http` mode and `/mcp` semantics in `README.md`
-- [ ] Document `--http-host` / `--http-port` / `--http-allowed-origins` flags
-- [ ] Document `transport` config fields and security guidance
-- [ ] Markdown lint clean
+- [x] Document `http` mode and `/mcp` semantics in `README.md`
+- [x] Document `--http-host` / `--http-port` / `--http-allowed-origins` flags
+- [x] Document `transport` config fields and security guidance
+- [x] Markdown lint clean
+
+### Phase 7 Notes
+
+- README transport section rewritten to cover both `http` (Streamable HTTP,
+  recommended) and `sse` (legacy, deprecated) modes, with the `--http-*` flags
+  added to the options table, `/mcp` POST/GET/DELETE + `Mcp-Session-Id`
+  semantics, stateful per-session isolation, and the origin/CORS/security
+  guidance generalized to both HTTP transports.
+- Config-file `transport` section now documents the `http*` fields in a table
+  alongside the `sse*` fields, and lists all overriding CLI flags.
+- Markdown lint clean (0 errors) on README + task docs. New bullet lists are at
+  column 0 to satisfy MD007 (the surrounding prose is loosely 2-space indented).
+
+## Final Verification
+
+- `npm run lint` (tsc --noEmit): clean.
+- `npm test`: 1047 passed, 24 skipped, no failures, no worker-exit warning.
+- `node dist/index.js --transport http --debug` smoke test: bind log, initialize
+  -> 200 + `Mcp-Session-Id` (protocol 2025-03-26), unknown path -> 404, OPTIONS
+  -> 204 with CORS.
+- SDK confirmed exporting `StreamableHTTPServerTransport` (`1.29.0`).
 
 ## Review Feedback
 
