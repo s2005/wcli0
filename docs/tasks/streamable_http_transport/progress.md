@@ -134,13 +134,34 @@
 
 ## Phase 6: Integration Tests
 
-- [ ] Create `tests/helpers/StreamableHttpTestClient.ts`
-- [ ] `streamable-http-transport.test.ts` (handshake, lifecycle, port released)
-- [ ] `streamable-http-tool-execution.test.ts` (tools + per-call options)
-- [ ] `streamable-http-resources.test.ts` (resources/list + read)
-- [ ] `streamable-http-security.test.ts` (origin/CORS/Host)
-- [ ] `streamable-http-sessions.test.ts` (isolation, unknown session, DELETE, edge cases)
-- [ ] Full regression: `npm test` green, no worker warnings
+- [x] Create `tests/helpers/StreamableHttpTestClient.ts`
+- [x] `streamable-http-transport.test.ts` (handshake, lifecycle, port released)
+- [x] `streamable-http-tool-execution.test.ts` (tools + per-call options)
+- [x] `streamable-http-resources.test.ts` (resources/list + read)
+- [x] `streamable-http-security.test.ts` (origin/CORS/Host)
+- [x] `streamable-http-sessions.test.ts` (isolation, unknown session, DELETE, edge cases)
+- [x] Full regression: `npm test` green, no worker warnings
+
+### Phase 6 Notes
+
+- `StreamableHttpTestClient` starts a CLIServer in http mode on `httpPort: 0`,
+  mirrors the SSE client's WSL-emulator setup, performs the initialize handshake
+  (Accept: application/json, text/event-stream), captures `Mcp-Session-Id`, and
+  parses JSON-or-SSE responses. Exposes `call`/`callTool`/`terminate`/`close`
+  plus a standalone `mcpHttpRequest` for raw requests.
+- Verified per-session isolation by opening TWO sessions on ONE server (not two
+  servers): `set_current_directory` on session 1 moves only session 1's
+  `activeCwd`; session 2 stays at the initial dir. The handler also calls
+  `process.chdir()` (process-global, pre-existing), so the test captures the
+  original cwd up front and restores it in `afterEach` to avoid polluting the
+  WSL-emulator path resolution for later tests in the worker.
+- Security: untrusted origin 403, no-origin 200, loopback + configured origin
+  CORS echo, OPTIONS 204 (and 403 for hostile origin), malformed Host 400 via a
+  raw TCP socket (the http client rejects bad Host before sending).
+- Sessions: unknown session 404, DELETE terminates (2xx) then later 404,
+  malformed JSON 400 with session still usable, rapid initialize-and-abort does
+  not wedge the server.
+- Full suite: 1047 passed / 24 skipped, no worker-exit warning.
 
 ## Phase 7: Documentation
 
