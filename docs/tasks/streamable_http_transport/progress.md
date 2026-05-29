@@ -114,10 +114,23 @@
 
 ## Phase 5: CLIServer Integration
 
-- [ ] Add `mode === 'http'` branch in `CLIServer.run()`
-- [ ] Store `this.httpServer`; emit debug bind log
-- [ ] Update `cleanup()` stdin-pause guard (stdio only)
-- [ ] Manual smoke: `node dist/index.js --transport http --debug`
+- [x] Add `mode === 'http'` branch in `CLIServer.run()`
+- [x] Store `this.httpServer`; emit debug bind log
+- [x] Update `cleanup()` stdin-pause guard (stdio only)
+- [x] Manual smoke: `node dist/index.js --transport http --debug`
+
+### Phase 5 Notes
+
+- `run()` now branches sse / http / stdio. The http branch resolves
+  `httpHost`/`httpPort`/`httpAllowedOrigins` and calls
+  `createStreamableHttpServer(() => createServerInstance(...))`, storing
+  `this.httpServer` and logging the `/mcp` bind address.
+- `cleanup()` pauses stdin only when mode is neither `sse` nor `http` (i.e.
+  stdio), and now closes `this.httpServer` via the shared `closeHttpServer()`
+  (serves both HTTP transports).
+- Manual smoke on `--transport http --http-port 9555 --debug`: bind log shown;
+  `POST /mcp` initialize -> 200 with `Mcp-Session-Id` and protocolVersion
+  2025-03-26; unknown path -> 404; `OPTIONS` preflight -> 204 with CORS.
 
 ## Phase 6: Integration Tests
 

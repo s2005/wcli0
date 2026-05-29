@@ -1473,14 +1473,18 @@ class CLIServer {
     // StdioServerTransport.close() only removes its stdin 'data' listener; it
     // does not take stdin out of flowing mode, so the stdin handle stays
     // referenced and keeps the process alive. Pause it explicitly so the event
-    // loop can drain (harmless when stdin was never used, e.g. SSE mode).
-    if (this.config.transport?.mode !== 'sse') {
+    // loop can drain. Only stdio mode ever touches stdin, so the HTTP-based
+    // transports (sse, http) are left alone.
+    const transportMode = this.config.transport?.mode;
+    if (transportMode !== 'sse' && transportMode !== 'http') {
       process.stdin.pause();
     }
-    // Close HTTP server if in SSE mode
+    // Close the HTTP server (used by both the sse and http transports). The
+    // shared closeHttpServer() force-destroys lingering sockets so long-lived
+    // /sse or /mcp streams cannot hang shutdown or keep the port bound.
     if (this.httpServer) {
-      const { closeSseServer } = await import('./utils/transport.js');
-      await closeSseServer(this.httpServer);
+      const { closeHttpServer } = await import('./utils/httpShared.js');
+      await closeHttpServer(this.httpServer);
       this.httpServer = undefined;
     }
     // Stop and clear log storage
@@ -1506,6 +1510,21 @@ class CLIServer {
         allowedOrigins
       );
       debugLog(`Windows CLI MCP Server running on SSE at http://${host}:${port}`);
+    } else if (this.config.transport?.mode === 'http') {
+      const { createStreamableHttpServer } = await import('./utils/streamableHttp.js');
+      const host = this.config.transport.httpHost ?? '127.0.0.1';
+      const port = this.config.transport.httpPort ?? 9444;
+      const allowedOrigins = this.config.transport.httpAllowedOrigins ?? [];
+      this.httpServer = await createStreamableHttpServer(
+        // Each Streamable HTTP session gets a fresh SessionState seeded from the
+        // primary session's initial cwd, so one client's set_current_directory
+        // cannot change another client's active working directory.
+        () => this.createServerInstance({ activeCwd: this.primarySession.activeCwd }),
+        host,
+        port,
+        allowedOrigins
+      );
+      debugLog(`Windows CLI MCP Server running on Streamable HTTP at http://${host}:${port}/mcp`);
     } else {
       const transport = new StdioServerTransport();
       await this.server.connect(transport);
