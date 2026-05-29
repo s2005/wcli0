@@ -240,7 +240,15 @@ export interface WslShellConfig extends BaseShellConfig {
  * Controls how clients connect to the server (stdio or HTTP/SSE).
  */
 export interface TransportConfig {
-  mode: 'stdio' | 'sse';
+  /**
+   * Transport the server uses to talk to clients.
+   * - `stdio`: default, communicates over stdin/stdout.
+   * - `sse`: legacy HTTP+SSE transport (protocol revision 2024-11-05), two
+   *   endpoints (`GET /sse`, `POST /messages`).
+   * - `http`: modern Streamable HTTP transport (protocol revision 2025-03-26),
+   *   a single `/mcp` endpoint. Deprecates `sse` per the MCP spec.
+   */
+  mode: 'stdio' | 'sse' | 'http';
   sseHost: string;
   ssePort: number;
   /**
@@ -253,6 +261,24 @@ export interface TransportConfig {
    * public hostname differs from the bind host. Defaults to an empty list.
    */
   sseAllowedOrigins?: string[];
+  /**
+   * Host the Streamable HTTP transport binds to (only used in `http` mode).
+   * Defaults to `127.0.0.1` (loopback). Set to `0.0.0.0` to accept connections
+   * from other hosts; pair that with `httpAllowedOrigins` for browser clients.
+   */
+  httpHost?: string;
+  /**
+   * Port the Streamable HTTP transport binds to (only used in `http` mode).
+   * Must be an integer in `1..65535`. Defaults to `9444`.
+   */
+  httpPort?: number;
+  /**
+   * Browser origins permitted to use the Streamable HTTP transport in addition
+   * to loopback hosts and the configured `httpHost`. Same semantics as
+   * `sseAllowedOrigins` but applies to the `/mcp` endpoint in `http` mode.
+   * Defaults to an empty list.
+   */
+  httpAllowedOrigins?: string[];
 }
 
 /**

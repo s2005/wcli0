@@ -42,14 +42,28 @@
 
 ## Phase 2: Types and Configuration
 
-- [ ] Add `'http'` to `TransportConfig.mode` in `src/types/config.ts`
-- [ ] Add `httpHost`, `httpPort`, `httpAllowedOrigins` fields
-- [ ] Extend `DEFAULT_CONFIG.transport` defaults
-- [ ] Extend transport merge block for http fields
-- [ ] Extend `applyCliTransport()` for `http` mode + http flags
-- [ ] Extend `validateTransportConfig()` for http fields
-- [ ] Confirm `createSerializableConfig()` copies http fields
-- [ ] Unit tests for http config defaults/overrides/validation
+- [x] Add `'http'` to `TransportConfig.mode` in `src/types/config.ts`
+- [x] Add `httpHost`, `httpPort`, `httpAllowedOrigins` fields
+- [x] Extend `DEFAULT_CONFIG.transport` defaults
+- [x] Extend transport merge block for http fields
+- [x] Extend `applyCliTransport()` for `http` mode + http flags
+- [x] Extend `validateTransportConfig()` for http fields
+- [x] Confirm `createSerializableConfig()` copies http fields
+- [x] Unit tests for http config defaults/overrides/validation
+
+### Phase 2 Notes
+
+- Merge block already spread-merges `transport`, so file-provided http fields
+  survive automatically once defaults include them; no merge-code change needed.
+- `applyCliTransport()` gained three trailing positional params
+  (`httpHost`, `httpPort`, `httpAllowedOrigins`) so existing 5-arg callers and
+  tests are unaffected.
+- `createSerializableConfig()` now reports `httpHost`/`httpPort` alongside
+  `sseHost`/`ssePort`; Jest `toEqual` ignores undefined fields so the existing
+  P10 getConfig test still passes for sse-only configs.
+- Updated two pre-existing tests whose contract changed: `configValidation`
+  "invalid mode" now uses `websocket` (http is valid) and asserts the new
+  message; `transport.test.ts` full-object `toEqual`s include the http defaults.
 
 ## Phase 3: CLI Arguments
 

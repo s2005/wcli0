@@ -91,11 +91,15 @@ export function createSerializableConfig(config: ServerConfig): any {
 
   // Include the active transport configuration so clients can inspect the
   // real connection settings (mode/host/port) via get_config and cli://config.
+  // Both the sse* and http* bind settings are reported; the pair that matters
+  // depends on `mode`. Fields left undefined are omitted by JSON serialization.
   if (config.transport) {
     serializable.transport = {
       mode: config.transport.mode,
       sseHost: config.transport.sseHost,
-      ssePort: config.transport.ssePort
+      ssePort: config.transport.ssePort,
+      httpHost: config.transport.httpHost,
+      httpPort: config.transport.httpPort
     };
   }
 

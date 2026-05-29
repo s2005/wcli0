@@ -70,7 +70,10 @@ describe('TransportConfig', () => {
         mode: 'stdio',
         sseHost: '127.0.0.1',
         ssePort: 9444,
-        sseAllowedOrigins: []
+        sseAllowedOrigins: [],
+        httpHost: '127.0.0.1',
+        httpPort: 9444,
+        httpAllowedOrigins: []
       });
     });
 
@@ -112,7 +115,10 @@ describe('TransportConfig', () => {
         mode: 'sse',
         sseHost: '0.0.0.0',
         ssePort: 3000,
-        sseAllowedOrigins: []
+        sseAllowedOrigins: [],
+        httpHost: '127.0.0.1',
+        httpPort: 9444,
+        httpAllowedOrigins: []
       });
     });
 

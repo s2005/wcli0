@@ -63,8 +63,8 @@ describe('validateConfig helper', () => {
 
     test('throws for invalid mode', () => {
       const cfg = cloneDefault();
-      cfg.transport = { mode: 'http' as any, sseHost: '127.0.0.1', ssePort: 9444 };
-      expect(() => validateConfig(cfg)).toThrow("transport.mode must be 'stdio' or 'sse'");
+      cfg.transport = { mode: 'websocket' as any, sseHost: '127.0.0.1', ssePort: 9444 };
+      expect(() => validateConfig(cfg)).toThrow("transport.mode must be 'stdio', 'sse', or 'http'");
     });
 
     test('throws for empty sseHost', () => {
@@ -77,6 +77,42 @@ describe('validateConfig helper', () => {
       const cfg = cloneDefault();
       cfg.transport = { mode: 'sse', sseHost: '0.0.0.0', ssePort: 3000 };
       expect(() => validateConfig(cfg)).not.toThrow();
+    });
+
+    test('passes for valid http transport', () => {
+      const cfg = cloneDefault();
+      cfg.transport = {
+        mode: 'http',
+        sseHost: '127.0.0.1',
+        ssePort: 9444,
+        httpHost: '0.0.0.0',
+        httpPort: 3000
+      };
+      expect(() => validateConfig(cfg)).not.toThrow();
+    });
+
+    test('throws for non-integer httpPort from config file', () => {
+      const cfg = cloneDefault();
+      cfg.transport = {
+        mode: 'http',
+        sseHost: '127.0.0.1',
+        ssePort: 9444,
+        httpPort: '3000' as any
+      };
+      expect(() => validateConfig(cfg)).toThrow(
+        'transport.httpPort must be an integer between 1 and 65535'
+      );
+    });
+
+    test('throws for empty httpHost', () => {
+      const cfg = cloneDefault();
+      cfg.transport = {
+        mode: 'http',
+        sseHost: '127.0.0.1',
+        ssePort: 9444,
+        httpHost: '   '
+      };
+      expect(() => validateConfig(cfg)).toThrow('transport.httpHost must be a non-empty string');
     });
 
     test('passes when transport section is absent', () => {
