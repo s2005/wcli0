@@ -52,6 +52,17 @@
 - [x] Add config file transport section example
 - [x] Add SSE usage example
 
+## Phase 6: Integration Test Coverage (Test Implementation Plan)
+
+See [test-implementation-plan.md](test-implementation-plan.md) for full details.
+
+- [ ] Phase 6a: Create `SseTestClient` helper in `tests/helpers/SseTestClient.ts`
+- [ ] Phase 6b: Add tool execution tests over SSE (`sse-tool-execution.test.ts`) -- 11 test cases
+- [ ] Phase 6c: Add security scenario tests over SSE (`sse-security.test.ts`) -- 11 test cases
+- [ ] Phase 6d: Add stdio protocol handshake tests (update `mcpProtocol.test.ts`) -- 5 test cases
+- [ ] Phase 6e: Refactor existing SSE tests to use `SseTestClient` helper
+- [ ] Run full regression: `npm test`
+
 ## Review Feedback
 (Section appears when PR review feedback arrives. Each comment gets a checkbox.)
 - [ ] P1: (pending review)
