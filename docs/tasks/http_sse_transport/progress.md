@@ -33,12 +33,12 @@
 - [x] Write unit tests for CLI argument parsing
 
 ## Phase 3: SSE Transport Module
-- [ ] Create `src/utils/transport.ts`
-- [ ] Implement `createSseServer()` function
-- [ ] Implement SSE connection handling (GET `/sse`)
-- [ ] Implement message routing (POST `/messages`)
-- [ ] Implement `closeSseServer()` helper
-- [ ] Write unit tests for transport module
+- [x] Create `src/utils/transport.ts`
+- [x] Implement `createSseServer()` function
+- [x] Implement SSE connection handling (GET `/sse`)
+- [x] Implement message routing (POST `/messages`)
+- [x] Implement `closeSseServer()` helper
+- [x] Write unit tests for transport module
 
 ## Phase 4: CLIServer Integration
 - [ ] Update `CLIServer.run()` to support both transports
