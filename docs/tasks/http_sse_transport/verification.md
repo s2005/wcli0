@@ -40,6 +40,7 @@ npm test -- tests/unit/ --testNamePattern="transport config"
 ```
 
 Expected:
+
 - Transport config defaults to stdio mode.
 - `applyCliTransport()` overrides mode, host, port.
 - CLI flags override config file values.
@@ -51,6 +52,7 @@ npm test -- tests/unit/ --testNamePattern="parseArgs.*transport"
 ```
 
 Expected:
+
 - `--transport stdio` and `--transport sse` are accepted.
 - `--sse-host` and `--sse-port` are parsed.
 - Invalid `--transport` value is rejected by yargs choices.
@@ -62,6 +64,7 @@ npm test -- tests/unit/transport.test.ts
 ```
 
 Expected:
+
 - HTTP server starts and listens.
 - GET `/sse` returns SSE headers.
 - POST `/messages` routes to correct session.
@@ -74,6 +77,7 @@ npm test -- tests/integration/sse-transport.test.ts
 ```
 
 Expected:
+
 - Server starts in SSE mode when configured.
 - Full MCP initialize handshake completes over SSE.
 - Server shuts down cleanly.
@@ -106,6 +110,7 @@ Expected: all tests pass, no regressions.
 ## Final Acceptance Verification
 
 The feature can be accepted when all items are true:
+
 - [x] `npx wcli0` starts in stdio mode (unchanged behavior) -- default `transport.mode` is `stdio`; `sse-transport.test.ts` confirms stdio mode creates no HTTP server
 - [x] `npx wcli0 --transport sse` starts HTTP server on `127.0.0.1:9444` -- defaults verified in `transport.test.ts`; SSE startup verified in `sse-transport.test.ts`
 - [x] `npx wcli0 --transport sse --sse-host 0.0.0.0 --sse-port 3000` binds to `0.0.0.0:3000` -- `applyCliTransport` override verified in `transport.test.ts`; bind host/port verified in `sse-transport.test.ts`

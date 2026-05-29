@@ -32,7 +32,7 @@ flowchart TB
 
 ## Phase 1: Types and Configuration
 
-### Implementation Work
+### Implementation Work (Phase 1)
 
 - Add `TransportConfig` interface to `src/types/config.ts`:
 
@@ -58,13 +58,13 @@ transport: {
 - Add `applyCliTransport()` function in `src/utils/config.ts` that applies `--transport`, `--sse-host`, `--sse-port` overrides to the loaded config.
 - Load transport section from config file (if present) in the existing config loading flow.
 
-### Test Work
+### Test Work (Phase 1)
 
 - Unit test: verify `TransportConfig` defaults are correct.
 - Unit test: verify `applyCliTransport()` overrides config values.
 - Unit test: verify CLI flags take precedence over config file values.
 
-### Verification
+### Verification (Phase 1)
 
 ```bash
 npm run lint
@@ -73,7 +73,7 @@ npm test -- tests/unit/
 
 ## Phase 2: CLI Arguments
 
-### Implementation Work
+### Implementation Work (Phase 2)
 
 - Add to `parseArgs()` in `src/index.ts`:
 
@@ -95,13 +95,13 @@ npm test -- tests/unit/
 
 - Call `applyCliTransport()` in the `main()` function after loading config.
 
-### Test Work
+### Test Work (Phase 2)
 
 - Unit test: `parseArgs` returns correct defaults when no transport flags.
 - Unit test: `parseArgs` returns `--transport sse` correctly.
 - Unit test: `parseArgs` returns `--sse-host` and `--sse-port` correctly.
 
-### Verification
+### Verification (Phase 2)
 
 ```bash
 npm run lint
@@ -110,7 +110,7 @@ npm test -- tests/unit/
 
 ## Phase 3: SSE Transport Module
 
-### Implementation Work
+### Implementation Work (Phase 3)
 
 - Create `src/utils/transport.ts` with:
 
@@ -130,14 +130,14 @@ export function createSseServer(
   5. Returns a promise that resolves with the `http.Server` once it's listening.
 - Export a `closeSseServer(server)` helper for clean shutdown.
 
-### Test Work
+### Test Work (Phase 3)
 
 - Unit test: `createSseServer` creates an HTTP server that listens.
 - Unit test: GET `/sse` returns SSE content type headers.
 - Unit test: POST to non-existent session returns error.
 - Unit test: session map is populated after SSE connection.
 
-### Verification
+### Verification (Phase 3)
 
 ```bash
 npm run lint
@@ -146,7 +146,7 @@ npm test -- tests/unit/transport.test.ts
 
 ## Phase 4: CLIServer Integration
 
-### Implementation Work
+### Implementation Work (Phase 4)
 
 - Update `CLIServer.run()` in `src/index.ts`:
 
@@ -169,14 +169,14 @@ async run(): Promise<void> {
 - Update cleanup handler to close HTTP server if in SSE mode.
 - Store the HTTP server reference on `CLIServer` for cleanup.
 
-### Test Work
+### Test Work (Phase 4)
 
 - Integration test: start `CLIServer` in SSE mode on port 0.
 - Integration test: client connects to SSE, sends `initialize` request, receives response.
 - Integration test: server shuts down cleanly on signal.
 - Regression test: stdio mode still works end-to-end.
 
-### Verification
+### Verification (Phase 4)
 
 ```bash
 npm run lint
@@ -186,7 +186,7 @@ npm test
 
 ## Phase 5: Documentation
 
-### Implementation Work
+### Implementation Work (Phase 5)
 
 - Update `README.md` to document:
   - `--transport` flag with choices and default.
@@ -194,11 +194,11 @@ npm test
   - Config file `transport` section example.
   - Usage example: `npx wcli0 --transport sse`.
 
-### Test Work
+### Test Work (Phase 5)
 
 - Verify README examples are syntactically correct.
 
-### Verification
+### Verification (Phase 5)
 
 ```bash
 npm run lint

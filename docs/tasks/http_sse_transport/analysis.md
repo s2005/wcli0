@@ -41,6 +41,7 @@ No breaking changes to existing code paths.
 ### Recommended: Extract transport logic into a dedicated module
 
 Create `src/utils/transport.ts` that exports:
+
 - `createSseServer(mcpServer, host, port)` - sets up HTTP server with SSE routing
 - `TransportConfig` type for host/port/mode
 
@@ -74,12 +75,14 @@ The `CLIServer.run()` method selects transport based on config and delegates.
 ## Test Strategy
 
 ### Unit Tests (`tests/unit/transport.test.ts`)
+
 - Transport selection logic: given config with transport mode, verify correct transport is created.
 - CLI argument parsing: verify `--transport`, `--sse-host`, `--sse-port` are parsed correctly.
 - Config override precedence: CLI > config file > default.
 - Default values: verify stdio when no transport config, `127.0.0.1:9444` when SSE defaults.
 
 ### Integration Tests (`tests/integration/sse-transport.test.ts`)
+
 - Start server in SSE mode on port 0 (ephemeral).
 - Connect via HTTP GET to `/sse`, verify SSE stream opens.
 - Send a JSON-RPC `initialize` message via POST `/messages`.

@@ -25,6 +25,7 @@ The server must accept a `--sse-port` CLI flag to configure the listening port f
 ### REQ-4: HTTP Server Lifecycle
 
 When running in SSE mode, the server must:
+
 - Create an `http.createServer` instance
 - Handle GET requests on `/sse` to establish SSE connections via `SSEServerTransport`
 - Handle POST requests on `/messages` to receive client messages, routing them by session ID
@@ -42,6 +43,7 @@ All existing stdio behavior must remain unchanged. When no `--transport` flag is
 ### REQ-7: Tests
 
 All new transport code must be covered by unit and integration tests:
+
 - Unit tests for transport selection logic (stdio vs SSE based on config/CLI args)
 - Unit tests for CLI argument parsing of `--transport`, `--sse-host`, `--sse-port`
 - Integration tests verifying SSE transport starts, accepts connections, and processes requests

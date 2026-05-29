@@ -110,7 +110,7 @@ INCLUDED_SHELLS=gitbash,powershell npm run build:custom
 ### Bundle Size Comparison
 
 | Build | Size Reduction | Shells Included |
-|-------|---------------|-----------------|
+| ----- | -------------- | --------------- |
 | Full | Baseline | All 5 shells |
 | Windows | ~40% smaller | PowerShell, CMD, Git Bash |
 | Git Bash Only | ~60% smaller | Git Bash |
@@ -241,7 +241,7 @@ Configure Claude Desktop to use wcli0 on macOS:
 When running on Unix systems, use these CLI options:
 
 | Option | Type | Description |
-|--------|------|-------------|
+| ------ | ---- | ----------- |
 | `--shell` | string | Shell to use (use `bash` or `bash_auto` on Unix) |
 | `--allowedDir` | string | Add an allowed directory (can be used multiple times) |
 | `--config` | string | Path to configuration file |
@@ -414,7 +414,7 @@ To get started with configuration:
     ```
 
    | Option | Type | Default | Description |
-   |--------|------|---------|-------------|
+   | ------ | ---- | ------- | ----------- |
    | `--maxOutputLines` | number | 20 | Maximum output lines before truncation |
    | `--enableTruncation` | boolean | true | Enable output truncation |
    | `--enableLogResources` | boolean | true | Enable log resources for `get_command_output` |
@@ -496,7 +496,7 @@ To get started with configuration:
   ```
 
   | Option | Type | Default | Description |
-  |--------|------|---------|-------------|
+  | ------ | ---- | ------- | ----------- |
   | `--transport` | string | stdio | Transport protocol: `stdio` or `sse` |
   | `--sse-host` | string | 127.0.0.1 | Host address for SSE transport |
   | `--sse-port` | number | 9444 | Port for SSE transport |

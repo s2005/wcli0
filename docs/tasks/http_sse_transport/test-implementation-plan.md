@@ -16,11 +16,11 @@ Close the test coverage gaps identified in `test-coverage-comparison.md`. The ex
 
 ## Phase 1: Shared SSE Test Helper
 
-### Why
+### Why (Phase 1)
 
 The existing `sse-transport.test.ts` has inline `connectSSE`, `postMessage`, `waitForMessage` helpers duplicated in every test. Extracting these into a reusable module reduces boilerplate and ensures consistent test patterns across new test files.
 
-### Implementation
+### Implementation (Phase 1)
 
 Create `tests/helpers/SseTestClient.ts`:
 
@@ -41,7 +41,7 @@ export class SseTestClient {
 }
 ```
 
-### Verification
+### Verification (Phase 1)
 
 ```bash
 npm test -- tests/integration/sse-transport.test.ts
@@ -51,11 +51,11 @@ Existing tests should continue to pass after refactoring to use the new helper.
 
 ## Phase 2: Tool Execution Over SSE
 
-### Why
+### Why (Phase 2)
 
 The comparison shows that only `get_config` is tested over SSE. The primary tool `execute_command` and the validation tool `validate_directories` have zero SSE coverage.
 
-### Test Cases
+### Test Cases (Phase 2)
 
 File: `tests/integration/sse-tool-execution.test.ts`
 
@@ -73,7 +73,7 @@ File: `tests/integration/sse-tool-execution.test.ts`
 | set_current_directory | Call `set_current_directory` with a valid path, then `get_current_directory` to confirm |
 | tools/list includes all tools | Verify `execute_command`, `get_config`, `get_current_directory`, `set_current_directory`, `validate_directories` are listed |
 
-### Verification
+### Verification (Phase 2)
 
 ```bash
 npm test -- tests/integration/sse-tool-execution.test.ts
@@ -81,11 +81,11 @@ npm test -- tests/integration/sse-tool-execution.test.ts
 
 ## Phase 3: Security Scenarios Over SSE
 
-### Why
+### Why (Phase 3)
 
 The comparison shows zero security tests over SSE. Blocked operators, path restrictions, and injection protection are only tested via direct `_executeTool` calls. These must also work through the full SSE transport path.
 
-### Test Cases
+### Test Cases (Phase 3)
 
 File: `tests/integration/sse-security.test.ts`
 
@@ -103,7 +103,7 @@ File: `tests/integration/sse-security.test.ts`
 | unknown session POST | POST a message to a non-existent session ID, verify HTTP 404 |
 | concurrent sessions isolated | Open two SSE sessions on separate servers, verify each gets its own responses |
 
-### Verification
+### Verification (Phase 3)
 
 ```bash
 npm test -- tests/integration/sse-security.test.ts
@@ -111,11 +111,11 @@ npm test -- tests/integration/sse-security.test.ts
 
 ## Phase 4: Stdio Protocol Handshake Tests
 
-### Why
+### Why (Phase 4)
 
 The comparison shows stdio tests bypass the MCP protocol handshake entirely by calling `_executeTool` directly. While the transport is implicitly tested by the fact that tools work, the protocol-level behavior (initialize, capabilities negotiation, notifications) is not verified for stdio.
 
-### Test Cases
+### Test Cases (Phase 4)
 
 Update `tests/integration/mcpProtocol.test.ts`:
 
@@ -131,7 +131,7 @@ Update `tests/integration/mcpProtocol.test.ts`:
 
 This requires spawning the server as a child process or using `StdioServerTransport` in-memory. The MCP SDK provides `Client` class that can connect to a `Server` via in-memory transport for testing. See `@modelcontextprotocol/sdk/dist/inMemory.test.js` for the pattern.
 
-### Verification
+### Verification (Phase 4)
 
 ```bash
 npm test -- tests/integration/mcpProtocol.test.ts
@@ -139,17 +139,17 @@ npm test -- tests/integration/mcpProtocol.test.ts
 
 ## Phase 5: Refactor Existing SSE Tests
 
-### Why
+### Why (Phase 5)
 
 The existing `sse-transport.test.ts` has inline helper functions (`connectSSE`, `postMessage`, `waitForMessage`) that are duplicated. Once the shared `SseTestClient` helper exists, refactor to use it. This reduces maintenance burden and ensures consistency.
 
-### Implementation
+### Implementation (Phase 5)
 
 - Replace inline helpers in `sse-transport.test.ts` with `SseTestClient`
 - Keep the transport-layer tests (server start, SSE headers, 404/400 responses, close) as-is since they test lower-level HTTP behavior
 - Move protocol-handshake tests that are already passing to use `SseTestClient` for brevity
 
-### Verification
+### Verification (Phase 5)
 
 ```bash
 npm test -- tests/integration/sse-transport.test.ts
