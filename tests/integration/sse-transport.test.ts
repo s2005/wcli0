@@ -111,20 +111,12 @@ describe('SSE Transport Module', () => {
 
 describe('CLIServer SSE Integration', () => {
   let cliServer: CLIServer | null = null;
-  let httpServer: http.Server | null = null;
 
   afterEach(async () => {
     if (cliServer) {
-      const internalServer = (cliServer as any).httpServer as http.Server | undefined;
-      if (internalServer) {
-        await closeSseServer(internalServer);
-      }
+      await (cliServer as any).cleanup();
+      cliServer = null;
     }
-    if (httpServer) {
-      await closeSseServer(httpServer);
-      httpServer = null;
-    }
-    cliServer = null;
   });
 
   function makeSseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {

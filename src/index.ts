@@ -192,6 +192,8 @@ class CLIServer {
   private logStorage?: LogStorageManager;
   // HTTP server reference for SSE mode cleanup
   private httpServer?: import('http').Server;
+  // Stored SIGINT handler reference for cleanup removal
+  private sigintHandler?: () => Promise<void>;
 
   constructor(config: ServerConfig) {
     this.config = config;
@@ -1356,7 +1358,12 @@ class CLIServer {
     }
   }
 
-  private async cleanup(): Promise<void> {
+  async cleanup(): Promise<void> {
+    // Remove SIGINT handler
+    if (this.sigintHandler) {
+      process.removeListener('SIGINT', this.sigintHandler);
+      this.sigintHandler = undefined;
+    }
     // Close HTTP server if in SSE mode
     if (this.httpServer) {
       const { closeSseServer } = await import('./utils/transport.js');
@@ -1384,10 +1391,11 @@ class CLIServer {
     }
 
     // Set up cleanup handler
-    process.on('SIGINT', async () => {
+    this.sigintHandler = async () => {
       await this.cleanup();
       process.exit(0);
-    });
+    };
+    process.on('SIGINT', this.sigintHandler);
   }
 }
 

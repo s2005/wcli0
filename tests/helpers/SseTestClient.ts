@@ -144,7 +144,7 @@ export class SseTestClient {
 
   async close(): Promise<void> {
     this.stream.destroy();
-    await closeSseServer(this.httpServer);
+    await (this.cliServer as any).cleanup();
   }
 
   get port(): number {
