@@ -8,6 +8,7 @@ import {
   ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   CallToolResult, // Changed from CallToolResultPayload
+  CallToolRequest,
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -958,7 +959,7 @@ class CLIServer {
   // defaults to the primary session so existing callers (stdio, tests) are
   // unaffected; SSE handlers pass their own per-connection SessionState.
   public async _executeTool(
-    toolParams: z.infer<typeof CallToolRequestSchema>['params'],
+    toolParams: CallToolRequest['params'],
     session: SessionState = this.primarySession
   ): Promise<CallToolResult> { // Changed return type
     try {

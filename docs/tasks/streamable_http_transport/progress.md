@@ -21,13 +21,24 @@
 
 ## Phase 1: SDK Upgrade and Regression
 
-- [ ] Confirm latest SDK version exporting `StreamableHTTPServerTransport`
-- [ ] Bump `@modelcontextprotocol/sdk` in `package.json`
-- [ ] Run `npm install` (regenerate `package-lock.json`)
-- [ ] `npm run build` clean; fix any breaking API/type changes
-- [ ] Verify `server/streamableHttp.js` present in installed SDK
-- [ ] `npm test` green (adjust `SseTestClient` protocolVersion only if needed)
-- [ ] `npm run lint` clean
+- [x] Confirm latest SDK version exporting `StreamableHTTPServerTransport`
+- [x] Bump `@modelcontextprotocol/sdk` in `package.json`
+- [x] Run `npm install` (regenerate `package-lock.json`)
+- [x] `npm run build` clean; fix any breaking API/type changes
+- [x] Verify `server/streamableHttp.js` present in installed SDK
+- [x] `npm test` green (adjust `SseTestClient` protocolVersion only if needed)
+- [x] `npm run lint` clean
+
+### Phase 1 Notes
+
+- SDK upgraded `1.0.1` -> `1.29.0` (latest stable; exports `StreamableHTTPServerTransport`).
+- SDK 1.29.0 imports `zod/v4` internally. Fixed one type error in `src/index.ts`
+  by typing `_executeTool(toolParams)` via the SDK's exported `CallToolRequest['params']`
+  instead of the project's v3 `z.infer<typeof CallToolRequestSchema>['params']`.
+- Corrected stale `@modelcontextprotocol/sdk/dist/*` subpaths in
+  `tests/helpers/InMemoryTransport.ts` to the modern `shared/transport.js` / `types.js`
+  export-map subpaths.
+- No `SseTestClient` protocolVersion change needed; SSE suite remained green.
 
 ## Phase 2: Types and Configuration
 
