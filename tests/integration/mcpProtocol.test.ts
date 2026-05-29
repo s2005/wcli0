@@ -137,3 +137,92 @@ describe('Stdio Protocol Handshake', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('Stdio Resource Handlers', () => {
+  let cliServer: CLIServer | null = null;
+  let mcpClient: Client | null = null;
+  let clientTransport: InMemoryTransport | null = null;
+
+  afterEach(async () => {
+    if (clientTransport) {
+      await clientTransport.close();
+      clientTransport = null;
+    }
+    mcpClient = null;
+    cliServer = null;
+  });
+
+  function createTestConfig(): ServerConfig {
+    const config: ServerConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    config.global.security.restrictWorkingDirectory = false;
+    return config;
+  }
+
+  async function setupConnectedPair(): Promise<{
+    cliServer: CLIServer;
+    client: Client;
+    clientTransport: InMemoryTransport;
+  }> {
+    const config = createTestConfig();
+    const srv = new CLIServer(config);
+    const [clientSide, serverSide] = InMemoryTransport.createConnectedPair();
+
+    await (srv as any).server.connect(serverSide);
+
+    const cl = new Client(
+      { name: 'test-client', version: '1.0.0' },
+      { capabilities: {} }
+    );
+    await cl.connect(clientSide);
+
+    return { cliServer: srv, client: cl, clientTransport: clientSide };
+  }
+
+  test('listResources via stdio client', async () => {
+    const { cliServer: srv, client: cl, clientTransport: ct } = await setupConnectedPair();
+    cliServer = srv;
+    mcpClient = cl;
+    clientTransport = ct;
+
+    const result = await cl.listResources();
+    const uris = result.resources.map((r) => r.uri);
+    expect(uris).toContain('cli://config');
+    expect(uris).toContain('cli://config/global');
+    expect(uris).toContain('cli://info/security');
+  });
+
+  test('listResourceTemplates via stdio client', async () => {
+    const { cliServer: srv, client: cl, clientTransport: ct } = await setupConnectedPair();
+    cliServer = srv;
+    mcpClient = cl;
+    clientTransport = ct;
+
+    const result = await cl.listResourceTemplates();
+    expect(Array.isArray(result.resourceTemplates)).toBe(true);
+    expect(result.resourceTemplates).toHaveLength(0);
+  });
+
+  test('readResource cli://config via stdio client', async () => {
+    const { cliServer: srv, client: cl, clientTransport: ct } = await setupConnectedPair();
+    cliServer = srv;
+    mcpClient = cl;
+    clientTransport = ct;
+
+    const result = await cl.readResource({ uri: 'cli://config' });
+    expect(result.contents[0].mimeType).toBe('application/json');
+    const cfg = JSON.parse(result.contents[0].text as string);
+    expect(cfg).toHaveProperty('global');
+    expect(cfg).toHaveProperty('shells');
+  });
+
+  test('readResource of unknown URI rejects via stdio client', async () => {
+    const { cliServer: srv, client: cl, clientTransport: ct } = await setupConnectedPair();
+    cliServer = srv;
+    mcpClient = cl;
+    clientTransport = ct;
+
+    await expect(
+      cl.readResource({ uri: 'cli://does/not/exist' })
+    ).rejects.toThrow();
+  });
+});

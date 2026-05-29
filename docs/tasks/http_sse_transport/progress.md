@@ -83,6 +83,29 @@ See [worker-exit-investigation.md](worker-exit-investigation.md) for full detail
 - [x] Document findings in `worker-exit-investigation.md`
 - [x] Re-run full regression in parallel: 900 passed, 0 warnings, ~17s (3 runs)
 
+## Phase 8: Close Remaining Coverage Gaps
+
+See [test-coverage-comparison.md](test-coverage-comparison.md) "Gaps in HTTP/SSE Test
+Coverage". Gaps 1-3 (and partial 7) were closed in Phase 6. The remaining gaps are
+closed here so both transports are fully exercised.
+
+### Phase 8a: Resource handler coverage (gap #4)
+
+- [x] Create `tests/integration/sse-resources.test.ts` (resources over SSE) -- 7 test cases
+- [x] Add stdio resource handler tests to `tests/integration/mcpProtocol.test.ts` -- 4 test cases
+
+### Phase 8b: SSE edge-case coverage (gaps #5, #6, #7, #8)
+
+- [ ] Same-session concurrent requests (gap #5)
+- [ ] SSE disconnection / reconnection (gap #6)
+- [ ] Large response over SSE (gap #7)
+- [ ] Malformed JSON-RPC over SSE (gap #8)
+
+### Phase 8c: Documentation sync
+
+- [ ] Update `test-coverage-comparison.md` to reflect closed gaps
+- [ ] Update `verification.md` final acceptance checklist
+
 ## Review Feedback
 
 (Section appears when PR review feedback arrives. Each comment gets a checkbox.)
