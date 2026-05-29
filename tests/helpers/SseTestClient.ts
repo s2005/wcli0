@@ -1,4 +1,5 @@
 import http from 'http';
+import path from 'path';
 import { CLIServer } from '../../src/index.js';
 import { DEFAULT_CONFIG } from '../../src/utils/config.js';
 import type { ServerConfig } from '../../src/types/config.js';
@@ -32,6 +33,31 @@ export class SseTestClient {
     const config: ServerConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     config.transport = { mode: 'sse', sseHost: '127.0.0.1', ssePort: 0 };
     config.global.security.restrictWorkingDirectory = false;
+
+    // Set up WSL emulator for cross-platform testing
+    const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
+    config.shells.wsl = {
+      type: 'wsl',
+      enabled: true,
+      executable: {
+        command: process.execPath,
+        args: [wslEmulatorPath, '-e'],
+      },
+      overrides: {
+        restrictions: { blockedOperators: ['&', '|', ';', '`'] },
+      },
+      wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true },
+    };
+
+    // Disable non-WSL shells for cross-platform reliability
+    if (config.shells.powershell) config.shells.powershell.enabled = false;
+    if (config.shells.cmd) config.shells.cmd.enabled = false;
+    if (config.shells.gitbash) config.shells.gitbash.enabled = false;
+    if (config.shells.bash) config.shells.bash.enabled = false;
+
+    // Allow -e argument for the emulator
+    config.global.restrictions.blockedArguments =
+      (config.global.restrictions.blockedArguments || []).filter((a) => a !== '-e');
 
     // Apply overrides deeply
     if (configOverrides.global) {
