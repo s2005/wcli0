@@ -269,13 +269,22 @@ export function validateWslWorkingDirectory(dir: string, allowedPaths: string[])
 
 export function isPathAllowed(testPath: string, allowedPaths: string[]): boolean {
     // Step 1: Normalize testPath
-    let normalizedTestPath = normalizeWindowsPath(testPath).toLowerCase();
+    let normalizedTestPath = normalizeWindowsPath(testPath);
+    // Unix paths are case-sensitive — preserve case; Windows paths are case-insensitive
+    const isUnixPath = normalizedTestPath.startsWith('/');
+    if (!isUnixPath) {
+        normalizedTestPath = normalizedTestPath.toLowerCase();
+    }
     normalizedTestPath = normalizedTestPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
     // Step 2: Iterate through allowedPaths
     return allowedPaths.some(allowedPath => {
         // Step 2a: Normalize current allowedPath
-        let normalizedAllowedPath = normalizeWindowsPath(allowedPath).toLowerCase();
+        let normalizedAllowedPath = normalizeWindowsPath(allowedPath);
+        const isAllowedUnixPath = normalizedAllowedPath.startsWith('/');
+        if (!isAllowedUnixPath) {
+            normalizedAllowedPath = normalizedAllowedPath.toLowerCase();
+        }
         normalizedAllowedPath = normalizedAllowedPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
         let comparisonResult = false;
@@ -422,37 +431,58 @@ export function normalizeWindowsPath(inputPath: string): string {
 export function normalizeAllowedPaths(paths: string[]): string[] {
     // Step 1: Initial Normalization
     // For each path, normalize it with its own fresh history for normalizeWindowsPath
-    const normalizedInputPaths = paths.map(p => normalizeWindowsPath(p).toLowerCase());
+    const normalizedInputPaths = paths.map(p => {
+        const normalized = normalizeWindowsPath(p);
+        // Preserve case for Unix/WSL paths (case-sensitive filesystems)
+        if (normalized.startsWith('/')) {
+            return normalized;
+        }
+        return normalized.toLowerCase();
+    });
 
     // Step 2: Processing and Filtering
     const processedPaths: string[] = [];
 
     for (const currentPath of normalizedInputPaths) {
-        // a. Create a version of currentPath without a trailing backslash
-        const comparableCurrentPath = currentPath.replace(/\\$/, '');
+        const isUnix = currentPath.startsWith('/');
+        const trailingSep = isUnix ? /\/$/ : /\\$/;
+        const sep = isUnix ? '/' : '\\';
+
+        // a. Create a version of currentPath without a trailing separator
+        //    Preserve Unix root '/' — stripping it to '' would match everything.
+        const isUnixRoot = isUnix && currentPath === '/';
+        const comparableCurrentPath = isUnixRoot ? '/' : currentPath.replace(trailingSep, '');
 
         // b. Check for Duplicates
-        if (processedPaths.some(existingPath => existingPath.replace(/\\$/, '') === comparableCurrentPath)) {
+        if (processedPaths.some(existingPath => existingPath.replace(trailingSep, '') === comparableCurrentPath)) {
             continue;
         }
 
         // c. Check for Nesting (currentPath is child of an existing path)
         if (processedPaths.some(existingPath => {
-            const comparableExistingPath = existingPath.replace(/\\$/, '');
-            return comparableCurrentPath.startsWith(comparableExistingPath + '\\');
+            const comparableExistingPath = existingPath.replace(trailingSep, '');
+            // Unix root '/' is parent of all other Unix paths
+            if (comparableExistingPath === '/' && comparableCurrentPath !== '/') {
+                return comparableCurrentPath.startsWith('/');
+            }
+            return comparableCurrentPath.startsWith(comparableExistingPath + sep);
         })) {
             continue;
         }
 
         // d. Remove Existing Nested Children (existing path is child of currentPath)
         for (let i = processedPaths.length - 1; i >= 0; i--) {
-            const comparableExistingPath = processedPaths[i].replace(/\\$/, '');
-            if (comparableExistingPath.startsWith(comparableCurrentPath + '\\')) {
+            const comparableExistingPath = processedPaths[i].replace(trailingSep, '');
+            // For Unix root '/', all other Unix paths are children
+            const isChild = isUnixRoot
+                ? comparableExistingPath.startsWith('/') && comparableExistingPath !== '/'
+                : comparableExistingPath.startsWith(comparableCurrentPath + sep);
+            if (isChild) {
                 processedPaths.splice(i, 1);
             }
         }
-        
-        // e. Add comparableCurrentPath (the version without the trailing slash)
+
+        // e. Add comparableCurrentPath (the version without the trailing separator)
         processedPaths.push(comparableCurrentPath);
     }
 

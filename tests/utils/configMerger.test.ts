@@ -116,7 +116,7 @@ describe('Config Merger', () => {
     test('includes WSL config for WSL shells', () => {
       const shell: WslShellConfig = {
         enabled: true,
-        executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
+        executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
         wslConfig: {
           mountPoint: '/mnt/',
           inheritGlobalPaths: true
@@ -135,7 +135,7 @@ describe('Config Merger', () => {
     test('converts and merges Windows paths for WSL', () => {
       const resolved: ResolvedShellConfig = {
         enabled: true,
-        executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
+        executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
         security: mockGlobal.security,
         restrictions: mockGlobal.restrictions,
         paths: {
@@ -159,7 +159,7 @@ describe('Config Merger', () => {
     test('does not convert paths when inheritance disabled', () => {
       const resolved: ResolvedShellConfig = {
         enabled: true,
-        executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
+        executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
         security: mockGlobal.security,
         restrictions: mockGlobal.restrictions,
         paths: {
@@ -183,7 +183,7 @@ describe('Config Merger', () => {
     test('uses specified mount point', () => {
       const resolved: ResolvedShellConfig = {
         enabled: true,
-        executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
+        executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
         security: mockGlobal.security,
         restrictions: mockGlobal.restrictions,
         paths: {

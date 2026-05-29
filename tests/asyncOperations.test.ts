@@ -65,7 +65,7 @@ describe('Async Command Execution', () => {
       type: 'wsl',
       enabled: true,
       executable: {
-        command: 'node',
+        command: process.execPath,
         args: [wslEmulatorPath, '-e']
       },
       overrides: {

@@ -46,7 +46,7 @@ describe('Tool Handlers', () => {
         shells: {
           wsl: {
             enabled: true,
-            executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
+            executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
             overrides: { paths: { allowedPaths: ['/home/user', '/tmp'] } }
           }
         }

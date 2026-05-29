@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.mcp.json
 .DS_Store
 *.log
 tests/config*.json
@@ -11,6 +12,9 @@ performance-results.json
 
 # VS Code
 .vscode/
+
+# Claude Code
+.claude/
 coverage/
 
 # Private documentation

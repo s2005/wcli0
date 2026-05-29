@@ -15,7 +15,7 @@ describe('Config Normalization', () => {
   test.each([
     [
       ['C:\\SomeFolder\\Test', '/c/other/PATH', 'C:/Another/Folder', '/mnt/d/Incorrect/Path'],
-      ['c:\\somefolder\\test', 'c:\\other\\path', 'c:\\another\\folder', '/mnt/d/incorrect/path']
+      ['c:\\somefolder\\test', 'c:\\other\\path', 'c:\\another\\folder', '/mnt/d/Incorrect/Path']
     ],
     [
       ['D:\\Work\\Project', '\\\\server\\share', '/e/temp'],
@@ -119,7 +119,7 @@ describe('Config Normalization', () => {
         },
         powershell: { enabled: false, executable: { command: 'powershell.exe', args: [] } },
         cmd: { enabled: false, executable: { command: 'cmd.exe', args: ['/c'] } },
-        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } },
+        wsl: { enabled: false, executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } },
         bash: { enabled: false, executable: { command: 'bash', args: ['-c'] } }
       }
     };
@@ -160,7 +160,7 @@ describe('Config Normalization', () => {
         cmd: { enabled: false, executable: { command: 'cmd.exe', args: ['/c'] } },
         gitbash: { enabled: false, executable: { command: 'bash.exe', args: ['-c'] } },
         bash: { enabled: false, executable: { command: 'bash', args: ['-c'] } },
-        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
+        wsl: { enabled: false, executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     });
 
@@ -209,7 +209,7 @@ describe('Config Normalization', () => {
         },
         gitbash: { enabled: false, executable: { command: 'bash.exe', args: ['-c'] } },
         bash: { enabled: false, executable: { command: 'bash', args: ['-c'] } },
-        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
+        wsl: { enabled: false, executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     };
 
@@ -250,7 +250,7 @@ describe('Config Normalization', () => {
         }
       },
       shells: {
-        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
+        wsl: { enabled: false, executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     });
 
@@ -387,7 +387,7 @@ describe('Shell Config Resolution', () => {
           type: 'wsl',
           enabled: true,
           executable: {
-            command: 'node',
+            command: process.execPath,
             args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e']
           },
           wslConfig: {
