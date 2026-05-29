@@ -18,12 +18,21 @@ export function createSseServer(
         const transport = new SSEServerTransport('/messages', res);
         sessions.set(transport.sessionId, transport);
 
+        await mcpServer.connect(transport);
+
+        // mcpServer.connect() assigns its own transport.onclose handler, so any
+        // handler set before connect() is overwritten. Register session cleanup
+        // afterward and chain to the SDK handler so the MCP server's own
+        // teardown still runs. Without this the session is never removed from
+        // the map on disconnect, leaking entries and making later POSTs to the
+        // dead session return 500 instead of 404.
+        const mcpOnClose = transport.onclose;
         transport.onclose = () => {
           sessions.delete(transport.sessionId);
           debugLog(`SSE session closed: ${transport.sessionId}`);
+          mcpOnClose?.();
         };
 
-        await mcpServer.connect(transport);
         debugLog(`SSE session established: ${transport.sessionId}`);
       } catch (err) {
         errorLog('Error establishing SSE connection:', err);
