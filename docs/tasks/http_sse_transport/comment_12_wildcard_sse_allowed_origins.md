@@ -1,0 +1,3 @@
+# P12 - Allow origins for wildcard SSE binds
+
+When the server is started with the documented remote binding `--sse-host 0.0.0.0`, browser clients reaching it through the machine's real address send an origin such as `http://192.168.1.10:9444`, but the comparison in `isOriginAllowed` (`src/utils/transport.ts:48`) only accepts the literal configured bind host (`0.0.0.0`) or loopback, so those web clients are rejected with `403`. The same problem occurs behind a reverse proxy unless `sseHost` is set to the public hostname, so wildcard binds need an allowed-origin configuration instead of comparing the origin host directly to `0.0.0.0`.

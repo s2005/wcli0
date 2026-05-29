@@ -33,7 +33,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetCommandOutputSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging, applyCliUnsafeMode, applyDebugLogDirectory } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging, applyCliUnsafeMode, applyDebugLogDirectory, applyCliTransport } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig, LoggingConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -159,6 +159,23 @@ const parseArgs = async () => {
       type: 'string',
       description: 'Directory to store command output log files (enables file-based logging)'
     })
+    .option('transport', {
+      type: 'string',
+      choices: ['stdio', 'sse'],
+      description: 'Transport protocol (default: stdio)'
+    })
+    .option('sse-host', {
+      type: 'string',
+      description: 'Host address for SSE transport (default: 127.0.0.1)'
+    })
+    .option('sse-port', {
+      type: 'number',
+      description: 'Port for SSE transport (default: 9444)'
+    })
+    .option('sse-allowed-origins', {
+      type: 'string',
+      description: 'Comma-separated browser origins allowed to use the SSE transport, in addition to loopback hosts and the bind host (e.g. "https://app.example.com,192.168.1.10"). Required for browser clients when binding to 0.0.0.0.'
+    })
     .help()
     .parse();
 };
@@ -169,26 +186,35 @@ const ValidateDirectoriesArgsSchema = z.object({
 });
 
 
+/**
+ * Mutable per-session state. In stdio mode there is a single session
+ * (`primarySession`); in SSE mode each connection gets its own SessionState so
+ * the active working directory selected by one client cannot leak into another.
+ */
+export interface SessionState {
+  activeCwd: string | undefined;
+}
+
 class CLIServer {
   private server: Server;
   private config: ServerConfig;
-  private serverActiveCwd: string | undefined;
+  // State for the primary (stdio) session. Each SSE connection carries its own
+  // SessionState instead (see createServerInstance / run).
+  private primarySession: SessionState = { activeCwd: undefined };
   // Cache resolved configurations for performance
   private resolvedConfigs: Map<string, ResolvedShellConfig> = new Map();
   // Log storage manager
   private logStorage?: LogStorageManager;
+  // HTTP server reference for SSE mode cleanup
+  private httpServer?: import('http').Server;
+  // Stored SIGINT handler reference for cleanup removal
+  private sigintHandler?: () => Promise<void>;
 
   constructor(config: ServerConfig) {
     this.config = config;
-    this.server = new Server({
-      name: "windows-cli-server",
-      version: packageJson.version,
-    }, {
-      capabilities: {
-        tools: {},
-        resources: {}
-      }
-    });
+    // Build the primary server (used for stdio mode and shutdown). In SSE mode a
+    // fresh instance is created per connection via createServerInstance().
+    this.server = this.createServerInstance();
 
     // Pre-resolve enabled shell configurations
     this.initializeShellConfigs();
@@ -211,8 +237,43 @@ class CLIServer {
         debugLog('Log storage: in-memory only (no logDirectory configured)');
       }
     }
+  }
 
-    this.setupHandlers();
+  /**
+   * Backwards-compatible accessor for the primary session's active working
+   * directory. Stdio-mode code paths, initialization, and tests read and write
+   * `serverActiveCwd`; it now proxies to `primarySession`. SSE connections each
+   * carry their own SessionState (see createServerInstance / _executeTool), so
+   * concurrent SSE clients no longer share a directory.
+   */
+  private get serverActiveCwd(): string | undefined {
+    return this.primarySession.activeCwd;
+  }
+
+  private set serverActiveCwd(value: string | undefined) {
+    this.primarySession.activeCwd = value;
+  }
+
+  /**
+   * Create a fully-wired MCP Server instance. Used for the primary server and,
+   * in SSE mode, for the per-connection server handed to createSseServer(). Each
+   * instance gets its own request handlers; all handlers close over `this`, so
+   * they share the CLIServer's config, resolved shells, and log storage. The
+   * `session` argument holds the per-instance mutable state (active working
+   * directory); it defaults to the primary session used by stdio mode.
+   */
+  private createServerInstance(session: SessionState = this.primarySession): Server {
+    const server = new Server({
+      name: "wcli0",
+      version: packageJson.version,
+    }, {
+      capabilities: {
+        tools: {},
+        resources: {}
+      }
+    });
+    this.setupHandlers(server, session);
+    return server;
   }
 
   private initializeShellConfigs(): void {
@@ -371,6 +432,33 @@ class CLIServer {
       `Validation error: ${message}`,
       -1
     );
+  }
+
+  /**
+   * Resolve a working directory to an absolute path anchored to this session's
+   * active directory. A relative `workingDir` would otherwise be handed to
+   * spawn({ cwd }) verbatim and resolved against the process-global cwd, which
+   * set_current_directory mutates via process.chdir(). Because that global is
+   * shared by every concurrent SSE session, one client's set_current_directory
+   * could silently change the base another client's relative path resolves
+   * against. Anchoring relative paths to session.activeCwd keeps each session
+   * isolated. Absolute paths (Windows drive/UNC or POSIX/WSL `/`-rooted) are
+   * returned unchanged, as is any path when the session has no active directory.
+   */
+  private resolveWorkingDirForSession(workingDir: string, session: SessionState): string {
+    const isAbsolute = workingDir.startsWith('/') || path.win32.isAbsolute(workingDir);
+    if (isAbsolute) {
+      return workingDir;
+    }
+    const base = session.activeCwd;
+    if (!base) {
+      return workingDir;
+    }
+    // Resolve with the path flavor of the base so the result keeps the base's
+    // separator style (POSIX for `/`-rooted WSL paths, Windows otherwise).
+    return base.startsWith('/')
+      ? path.posix.resolve(base, workingDir)
+      : path.win32.resolve(base, workingDir);
   }
 
   private async executeShellCommand(
@@ -578,9 +666,9 @@ class CLIServer {
     return createSerializableConfig(this.config);
   }
 
-  private setupHandlers(): void {
+  private setupHandlers(server: Server = this.server, session: SessionState = this.primarySession): void {
     // List available resources
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler(ListResourcesRequestSchema, async () => {
       const resources: Array<{uri:string,name:string,description:string,mimeType:string}> = [];
       
       // Add resources for configuration
@@ -651,12 +739,12 @@ class CLIServer {
     });
 
     // Provide an empty list of resource templates for now
-    this.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
       return { resourceTemplates: [] };
     });
 
     // Read resource content
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       const uri = request.params.uri;
       
       // Handle CLI configuration resource
@@ -788,7 +876,7 @@ class CLIServer {
     });
 
     // List available tools with dynamic descriptions and schemas
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Get enabled shells and their resolved configurations
       const enabledShells = this.getEnabledShells();
       const tools = [];
@@ -859,14 +947,20 @@ class CLIServer {
     });
 
     // Handle tool execution
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      // Directly call the public tool execution logic
-      return this._executeTool(request.params);
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      // Directly call the public tool execution logic, scoped to this server
+      // instance's session so the active working directory stays per-session.
+      return this._executeTool(request.params, session);
     });
   }
 
-  // Public method for testing or direct invocation of tool logic
-  public async _executeTool(toolParams: z.infer<typeof CallToolRequestSchema>['params']): Promise<CallToolResult> { // Changed return type
+  // Public method for testing or direct invocation of tool logic. `session`
+  // defaults to the primary session so existing callers (stdio, tests) are
+  // unaffected; SSE handlers pass their own per-connection SessionState.
+  public async _executeTool(
+    toolParams: z.infer<typeof CallToolRequestSchema>['params'],
+    session: SessionState = this.primarySession
+  ): Promise<CallToolResult> { // Changed return type
     try {
       switch (toolParams.name) {
         case "execute_command": {
@@ -943,6 +1037,10 @@ class CLIServer {
           let workingDir: string;
           if (args.workingDir) {
             workingDir = normalizePathForShell(args.workingDir, context);
+            // Anchor a relative workingDir to this session's active directory so
+            // it never resolves against the shared process-global cwd (which
+            // another SSE session can change via set_current_directory).
+            workingDir = this.resolveWorkingDirForSession(workingDir, session);
             if (shellConfig.security.restrictWorkingDirectory) {
               try {
                 validateWorkingDirectoryWithContext(workingDir, context);
@@ -954,7 +1052,7 @@ class CLIServer {
               }
             }
           } else {
-            if (!this.serverActiveCwd) {
+            if (!session.activeCwd) {
               return {
                 content: [{
                   type: "text",
@@ -964,7 +1062,7 @@ class CLIServer {
                 metadata: {}
               };
             }
-            workingDir = this.serverActiveCwd;
+            workingDir = session.activeCwd;
 
             if (shellConfig.security.restrictWorkingDirectory) {
               try {
@@ -993,7 +1091,7 @@ class CLIServer {
         }
 
         case "get_current_directory": {
-          if (!this.serverActiveCwd) {
+          if (!session.activeCwd) {
             return {
               content: [{
                 type: "text",
@@ -1003,7 +1101,7 @@ class CLIServer {
               metadata: {}
             };
           }
-          const currentDir = this.serverActiveCwd;
+          const currentDir = session.activeCwd;
           return {
             content: [{
               type: "text",
@@ -1033,11 +1131,14 @@ class CLIServer {
             }
 
             // Store the actual previous directory for metadata
-            const actualPreviousDir = this.serverActiveCwd;
+            const actualPreviousDir = session.activeCwd;
 
-            // Change directory and update server state
+            // Change directory and update the session's state. process.chdir is
+            // process-global, but command execution always uses an explicit cwd
+            // resolved from session.activeCwd, so concurrent SSE sessions keep
+            // independent working directories for routing.
             process.chdir(newDir);
-            this.serverActiveCwd = newDir;
+            session.activeCwd = newDir;
 
             return {
               content: [{
@@ -1341,7 +1442,34 @@ class CLIServer {
     }
   }
 
-  private async cleanup(): Promise<void> {
+  async cleanup(): Promise<void> {
+    // Remove SIGINT handler
+    if (this.sigintHandler) {
+      process.removeListener('SIGINT', this.sigintHandler);
+      this.sigintHandler = undefined;
+    }
+    // Disconnect the MCP transport. In stdio mode this removes the 'data'
+    // listener that StdioServerTransport attaches to process.stdin (which keeps
+    // stdin in flowing mode and the process alive); in SSE mode it ends the
+    // active SSE response. Best-effort: the server may never have been connected.
+    try {
+      await this.server.close();
+    } catch {
+      // ignore - server may not be connected to a transport
+    }
+    // StdioServerTransport.close() only removes its stdin 'data' listener; it
+    // does not take stdin out of flowing mode, so the stdin handle stays
+    // referenced and keeps the process alive. Pause it explicitly so the event
+    // loop can drain (harmless when stdin was never used, e.g. SSE mode).
+    if (this.config.transport?.mode !== 'sse') {
+      process.stdin.pause();
+    }
+    // Close HTTP server if in SSE mode
+    if (this.httpServer) {
+      const { closeSseServer } = await import('./utils/transport.js');
+      await closeSseServer(this.httpServer);
+      this.httpServer = undefined;
+    }
     // Stop and clear log storage
     if (this.logStorage) {
       this.logStorage.stopCleanup();
@@ -1350,16 +1478,33 @@ class CLIServer {
   }
 
   async run(): Promise<void> {
-    const transport = new StdioServerTransport();
-    
+    if (this.config.transport?.mode === 'sse') {
+      const { createSseServer } = await import('./utils/transport.js');
+      const host = this.config.transport.sseHost ?? '127.0.0.1';
+      const port = this.config.transport.ssePort ?? 9444;
+      const allowedOrigins = this.config.transport.sseAllowedOrigins ?? [];
+      this.httpServer = await createSseServer(
+        // Each SSE connection gets a fresh SessionState seeded from the primary
+        // session's initial cwd, so one client's set_current_directory cannot
+        // change another client's active working directory.
+        () => this.createServerInstance({ activeCwd: this.primarySession.activeCwd }),
+        host,
+        port,
+        allowedOrigins
+      );
+      debugLog(`Windows CLI MCP Server running on SSE at http://${host}:${port}`);
+    } else {
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      debugLog("Windows CLI MCP Server running on stdio");
+    }
+
     // Set up cleanup handler
-    process.on('SIGINT', async () => {
+    this.sigintHandler = async () => {
       await this.cleanup();
       process.exit(0);
-    });
-    
-    await this.server.connect(transport);
-    debugLog("Windows CLI MCP Server running on stdio");
+    };
+    process.on('SIGINT', this.sigintHandler);
   }
 }
 
@@ -1431,6 +1576,13 @@ const main = async () => {
       unsafe: args.unsafe as boolean | undefined,
       yolo: args.yolo as boolean | undefined
     });
+    applyCliTransport(
+      config,
+      args.transport as string | undefined,
+      args['sse-host'] as string | undefined,
+      args['sse-port'] as number | undefined,
+      args['sse-allowed-origins'] as string | undefined
+    );
 
     const server = new CLIServer(config);
     await server.run();

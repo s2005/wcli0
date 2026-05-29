@@ -110,7 +110,7 @@ INCLUDED_SHELLS=gitbash,powershell npm run build:custom
 ### Bundle Size Comparison
 
 | Build | Size Reduction | Shells Included |
-|-------|---------------|-----------------|
+| ----- | -------------- | --------------- |
 | Full | Baseline | All 5 shells |
 | Windows | ~40% smaller | PowerShell, CMD, Git Bash |
 | Git Bash Only | ~60% smaller | Git Bash |
@@ -241,7 +241,7 @@ Configure Claude Desktop to use wcli0 on macOS:
 When running on Unix systems, use these CLI options:
 
 | Option | Type | Description |
-|--------|------|-------------|
+| ------ | ---- | ----------- |
 | `--shell` | string | Shell to use (use `bash` or `bash_auto` on Unix) |
 | `--allowedDir` | string | Add an allowed directory (can be used multiple times) |
 | `--config` | string | Path to configuration file |
@@ -414,7 +414,7 @@ To get started with configuration:
     ```
 
    | Option | Type | Default | Description |
-   |--------|------|---------|-------------|
+   | ------ | ---- | ------- | ----------- |
    | `--maxOutputLines` | number | 20 | Maximum output lines before truncation |
    | `--enableTruncation` | boolean | true | Enable output truncation |
    | `--enableLogResources` | boolean | true | Enable log resources for `get_command_output` |
@@ -482,6 +482,48 @@ To get started with configuration:
   protection. YOLO mode leaves working directory restrictions active, while
   fully unsafe mode disables those restrictions as well. These two flags are
   mutually exclusive; using both at once will fail.
+
+  You can start the server with HTTP/SSE transport instead of the default
+  stdio transport. This allows remote and web-based MCP clients to connect
+  over HTTP:
+
+  ```bash
+  # Start with SSE transport on default host/port (127.0.0.1:9444)
+  npx wcli0 --transport sse
+
+  # Custom port, still bound to localhost
+  npx wcli0 --transport sse --sse-host 127.0.0.1 --sse-port 3000
+  ```
+
+  | Option | Type | Default | Description |
+  | ------ | ---- | ------- | ----------- |
+  | `--transport` | string | stdio | Transport protocol: `stdio` or `sse` |
+  | `--sse-host` | string | 127.0.0.1 | Host address for SSE transport |
+  | `--sse-port` | number | 9444 | Port for SSE transport |
+  | `--sse-allowed-origins` | string | (none) | Comma-separated browser origins allowed in addition to loopback hosts and the bind host (e.g. `https://app.example.com,192.168.1.10`). Only the host component is compared. Required for browser clients on a wildcard (`0.0.0.0`) bind. |
+
+  When SSE mode is active, clients connect via `GET /sse` to open an SSE
+  stream and send messages via `POST /messages?sessionId=<id>`. The server
+  logs the bind address and port on startup. To mitigate DNS-rebinding
+  attacks, the server validates the request `Origin` header: requests whose
+  `Origin` is not a loopback host, the configured bind host, or one of the
+  configured `--sse-allowed-origins` are rejected with `403 Forbidden`, while
+  non-browser clients that send no `Origin` are allowed.
+
+  > **Security:** This transport has no built-in authentication and exposes
+  > command-execution tools. Keep it bound to `127.0.0.1` (the default) for
+  > local use. Binding to `0.0.0.0` or any non-loopback address exposes those
+  > tools to every host that can reach the port; only do so behind an
+  > authenticated reverse proxy or equivalent access control. Origin validation
+  > alone does not authenticate non-browser clients.
+  >
+  > **Wildcard binds and browser origins:** When binding to a wildcard address
+  > (`0.0.0.0` / `::`), the bind host is not a usable origin to compare against,
+  > so browser clients reaching the server through its real LAN address (or a
+  > reverse proxy whose public hostname differs from the bind host) are rejected
+  > unless their origin is listed in `--sse-allowed-origins` (or the
+  > `transport.sseAllowedOrigins` config array). Non-browser clients are
+  > unaffected, since they send no `Origin`.
 
 1. **Update your Claude Desktop configuration** to use your config file:
 
@@ -784,6 +826,25 @@ WSL shells have additional configuration options for path mapping:
 You can override the mount point at startup using the `--wslMountPoint` CLI flag.
 
 ### Configuration Inheritance
+
+The transport section can also be set in the config file:
+
+```json
+{
+  "transport": {
+    "mode": "sse",
+    "sseHost": "127.0.0.1",
+    "ssePort": 9444,
+    "sseAllowedOrigins": ["https://app.example.com", "192.168.1.10"]
+  }
+}
+```
+
+`sseAllowedOrigins` is optional and defaults to an empty list. Each entry is an
+origin URL or a bare host; only the host component is compared (case-insensitively).
+
+CLI flags (`--transport`, `--sse-host`, `--sse-port`, `--sse-allowed-origins`)
+override config file values.
 
 The inheritance system works as follows:
 

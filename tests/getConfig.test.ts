@@ -184,6 +184,27 @@ describe('get_config tool', () => {
     expect(Object.keys(safeConfig.shells)).toHaveLength(0);
   });
 
+  test('P10: createSerializableConfig includes transport section when present', () => {
+    const configWithTransport: ServerConfig = {
+      ...testConfig,
+      transport: { mode: 'sse', sseHost: '0.0.0.0', ssePort: 3000 }
+    };
+
+    const safeConfig = createSerializableConfig(configWithTransport);
+
+    expect(safeConfig.transport).toEqual({
+      mode: 'sse',
+      sseHost: '0.0.0.0',
+      ssePort: 3000
+    });
+  });
+
+  test('P10: createSerializableConfig omits transport when absent', () => {
+    const safeConfig = createSerializableConfig(testConfig);
+
+    expect(safeConfig.transport).toBeUndefined();
+  });
+
   test('createSerializableConfig omits restrictions when injection protection disabled', () => {
     const disabledConfig: ServerConfig = {
       ...testConfig,

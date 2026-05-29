@@ -102,4 +102,24 @@ describe('Configuration Examples', () => {
       expect(config.shells.cmd?.enabled).toBe(true);
     }
   });
+
+  // P3: the README must not advertise an unauthenticated bind-all-interfaces
+  // example and must warn before binding to a non-loopback address.
+  describe('README SSE transport documentation (P3)', () => {
+    const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf8');
+
+    test('does not present a runnable 0.0.0.0 SSE example', () => {
+      expect(readme).not.toMatch(/npx wcli0 --transport sse --sse-host 0\.0\.0\.0/);
+    });
+
+    test('documents the custom-port example bound to localhost', () => {
+      expect(readme).toMatch(/--sse-host 127\.0\.0\.1 --sse-port 3000/);
+    });
+
+    test('includes a security warning about binding to all interfaces', () => {
+      const warning = readme.match(/> \*\*Security:\*\*[\s\S]*?authenticated[\s\S]*?\n\n/i);
+      expect(warning).not.toBeNull();
+      expect(warning![0]).toMatch(/0\.0\.0\.0/);
+    });
+  });
 });

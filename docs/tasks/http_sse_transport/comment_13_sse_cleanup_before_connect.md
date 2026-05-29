@@ -1,0 +1,3 @@
+# P13 - Register SSE cleanup before the connection can close
+
+The transport is inserted into `sessions` before the cleanup callback is installed, and `await sessionServer.connect(transport)` (`src/utils/transport.ts:140`) starts the SSE response and attaches the SDK close listener first. If a client opens `/sse` and immediately disconnects before execution resumes to replace `transport.onclose`, only the SDK close handler runs, so the map entry is never deleted; later POSTs to that dead session can hit `handlePostMessage()` and return `500` instead of `404`, and repeated rapid connects leak session entries.

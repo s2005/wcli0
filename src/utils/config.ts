@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig, LoggingConfig } from '../types/config.js';
+import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig, LoggingConfig, TransportConfig } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 import { debugWarn, errorLog } from './log.js';
@@ -120,6 +120,12 @@ export const DEFAULT_CONFIG: ServerConfig = {
         inheritGlobalPaths: true
       }
     }
+  },
+  transport: {
+    mode: 'stdio',
+    sseHost: '127.0.0.1',
+    ssePort: 9444,
+    sseAllowedOrigins: []
   }
 };
 
@@ -478,12 +484,16 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     }
   }
 
+  // Merge transport config
+  if (defaultConfig.transport || (userConfig as any).transport) {
+    merged.transport = {
+      ...defaultConfig.transport,
+      ...((userConfig as any).transport || {})
+    };
+  }
+
   return merged;
 }
-
-/**
- * Validates logging configuration values
- */
 function validateLoggingConfig(config?: LoggingConfig): void {
   if (!config) return;
 
@@ -587,6 +597,42 @@ function validateLoggingConfig(config?: LoggingConfig): void {
   }
 }
 
+function validateTransportConfig(transport?: TransportConfig): void {
+  if (!transport) return;
+
+  if (transport.mode !== 'stdio' && transport.mode !== 'sse') {
+    throw new Error("transport.mode must be 'stdio' or 'sse'");
+  }
+
+  if (transport.sseHost !== undefined) {
+    if (typeof transport.sseHost !== 'string' || transport.sseHost.trim() === '') {
+      throw new Error('transport.sseHost must be a non-empty string');
+    }
+  }
+
+  if (transport.ssePort !== undefined) {
+    if (
+      typeof transport.ssePort !== 'number' ||
+      !Number.isInteger(transport.ssePort) ||
+      transport.ssePort < 1 ||
+      transport.ssePort > 65535
+    ) {
+      throw new Error('transport.ssePort must be an integer between 1 and 65535');
+    }
+  }
+
+  if (transport.sseAllowedOrigins !== undefined) {
+    if (
+      !Array.isArray(transport.sseAllowedOrigins) ||
+      transport.sseAllowedOrigins.some(
+        origin => typeof origin !== 'string' || origin.trim() === ''
+      )
+    ) {
+      throw new Error('transport.sseAllowedOrigins must be an array of non-empty strings');
+    }
+  }
+}
+
 export function validateConfig(config: ServerConfig): void {
   // Validate security settings
   if (config.global.security.maxCommandLength < 1) {
@@ -607,6 +653,10 @@ export function validateConfig(config: ServerConfig): void {
 
   // Validate logging configuration
   validateLoggingConfig(config.global.logging);
+
+  // Validate transport configuration (catches malformed config-file values such
+  // as a string ssePort that would otherwise be treated as a named-pipe path)
+  validateTransportConfig(config.transport);
 }
 
 // Helper function to create a default config file
@@ -852,6 +902,54 @@ export function applyCliUnsafeMode(
         shell.overrides.restrictions.blockedArguments = [];
         shell.overrides.restrictions.blockedOperators = [];
       }
+    }
+  }
+}
+
+export function applyCliTransport(
+  config: ServerConfig,
+  transport?: string,
+  sseHost?: string,
+  ssePort?: number,
+  sseAllowedOrigins?: string
+): void {
+  if (!config.transport) {
+    config.transport = {
+      mode: 'stdio',
+      sseHost: '127.0.0.1',
+      ssePort: 9444,
+      sseAllowedOrigins: []
+    };
+  }
+
+  if (transport === 'sse') {
+    config.transport.mode = 'sse';
+  } else if (transport === 'stdio') {
+    config.transport.mode = 'stdio';
+  }
+
+  if (sseHost !== undefined && sseHost.trim() !== '') {
+    config.transport.sseHost = sseHost.trim();
+  }
+
+  if (
+    ssePort !== undefined &&
+    Number.isInteger(ssePort) &&
+    ssePort > 0 &&
+    ssePort <= 65535
+  ) {
+    config.transport.ssePort = ssePort;
+  } else if (ssePort !== undefined) {
+    debugWarn(`WARN: Invalid ssePort '${ssePort}', ignoring.`);
+  }
+
+  if (sseAllowedOrigins !== undefined) {
+    const origins = sseAllowedOrigins
+      .split(',')
+      .map(origin => origin.trim())
+      .filter(origin => origin !== '');
+    if (origins.length > 0) {
+      config.transport.sseAllowedOrigins = origins;
     }
   }
 }

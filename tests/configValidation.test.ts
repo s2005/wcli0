@@ -32,4 +32,57 @@ describe('validateConfig helper', () => {
     const cfg = cloneDefault();
     expect(() => validateConfig(cfg)).not.toThrow();
   });
+
+  // P4: validateConfig must check the transport section, not only CLI flags.
+  describe('transport section (P4)', () => {
+    test('throws for non-numeric ssePort from config file', () => {
+      const cfg = cloneDefault();
+      cfg.transport = { mode: 'sse', sseHost: '127.0.0.1', ssePort: '3000' as any };
+      expect(() => validateConfig(cfg)).toThrow(
+        'transport.ssePort must be an integer between 1 and 65535'
+      );
+    });
+
+    test('throws for ssePort below 1', () => {
+      const cfg = cloneDefault();
+      cfg.transport = { mode: 'sse', sseHost: '127.0.0.1', ssePort: 0 };
+      expect(() => validateConfig(cfg)).toThrow(/transport\.ssePort/);
+    });
+
+    test('throws for ssePort above 65535', () => {
+      const cfg = cloneDefault();
+      cfg.transport = { mode: 'sse', sseHost: '127.0.0.1', ssePort: 70000 };
+      expect(() => validateConfig(cfg)).toThrow(/transport\.ssePort/);
+    });
+
+    test('throws for non-integer ssePort', () => {
+      const cfg = cloneDefault();
+      cfg.transport = { mode: 'sse', sseHost: '127.0.0.1', ssePort: 3000.5 };
+      expect(() => validateConfig(cfg)).toThrow(/transport\.ssePort/);
+    });
+
+    test('throws for invalid mode', () => {
+      const cfg = cloneDefault();
+      cfg.transport = { mode: 'http' as any, sseHost: '127.0.0.1', ssePort: 9444 };
+      expect(() => validateConfig(cfg)).toThrow("transport.mode must be 'stdio' or 'sse'");
+    });
+
+    test('throws for empty sseHost', () => {
+      const cfg = cloneDefault();
+      cfg.transport = { mode: 'sse', sseHost: '   ', ssePort: 9444 };
+      expect(() => validateConfig(cfg)).toThrow('transport.sseHost must be a non-empty string');
+    });
+
+    test('passes for valid sse transport', () => {
+      const cfg = cloneDefault();
+      cfg.transport = { mode: 'sse', sseHost: '0.0.0.0', ssePort: 3000 };
+      expect(() => validateConfig(cfg)).not.toThrow();
+    });
+
+    test('passes when transport section is absent', () => {
+      const cfg = cloneDefault();
+      cfg.transport = undefined;
+      expect(() => validateConfig(cfg)).not.toThrow();
+    });
+  });
 });
