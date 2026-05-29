@@ -18,12 +18,12 @@
 - [x] Create progress.md
 
 ## Phase 1: Types and Configuration
-- [ ] Add `TransportConfig` interface to `src/types/config.ts`
-- [ ] Add `transport` field to `ServerConfig`
-- [ ] Add default transport config to `DEFAULT_CONFIG` in `src/utils/config.ts`
-- [ ] Add `applyCliTransport()` function in `src/utils/config.ts`
-- [ ] Load transport section from config file
-- [ ] Write unit tests for transport config defaults and overrides
+- [x] Add `TransportConfig` interface to `src/types/config.ts`
+- [x] Add `transport` field to `ServerConfig`
+- [x] Add default transport config to `DEFAULT_CONFIG` in `src/utils/config.ts`
+- [x] Add `applyCliTransport()` function in `src/utils/config.ts`
+- [x] Load transport section from config file
+- [x] Write unit tests for transport config defaults and overrides
 
 ## Phase 2: CLI Arguments
 - [ ] Add `--transport` flag to `parseArgs()` in `src/index.ts`

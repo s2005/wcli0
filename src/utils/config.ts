@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig, LoggingConfig } from '../types/config.js';
+import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig, LoggingConfig, TransportConfig } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 import { debugWarn, errorLog } from './log.js';
@@ -120,6 +120,11 @@ export const DEFAULT_CONFIG: ServerConfig = {
         inheritGlobalPaths: true
       }
     }
+  },
+  transport: {
+    mode: 'stdio',
+    sseHost: '127.0.0.1',
+    ssePort: 9444
   }
 };
 
@@ -478,12 +483,16 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     }
   }
 
+  // Merge transport config
+  if (defaultConfig.transport || (userConfig as any).transport) {
+    merged.transport = {
+      ...defaultConfig.transport,
+      ...((userConfig as any).transport || {})
+    };
+  }
+
   return merged;
 }
-
-/**
- * Validates logging configuration values
- */
 function validateLoggingConfig(config?: LoggingConfig): void {
   if (!config) return;
 
@@ -853,5 +862,36 @@ export function applyCliUnsafeMode(
         shell.overrides.restrictions.blockedOperators = [];
       }
     }
+  }
+}
+
+export function applyCliTransport(
+  config: ServerConfig,
+  transport?: string,
+  sseHost?: string,
+  ssePort?: number
+): void {
+  if (!config.transport) {
+    config.transport = {
+      mode: 'stdio',
+      sseHost: '127.0.0.1',
+      ssePort: 9444
+    };
+  }
+
+  if (transport === 'sse') {
+    config.transport.mode = 'sse';
+  } else if (transport === 'stdio') {
+    config.transport.mode = 'stdio';
+  }
+
+  if (sseHost !== undefined && sseHost.trim() !== '') {
+    config.transport.sseHost = sseHost.trim();
+  }
+
+  if (ssePort !== undefined && ssePort > 0 && ssePort <= 65535) {
+    config.transport.ssePort = ssePort;
+  } else if (ssePort !== undefined) {
+    debugWarn(`WARN: Invalid ssePort '${ssePort}', ignoring.`);
   }
 }

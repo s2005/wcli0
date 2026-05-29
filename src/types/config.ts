@@ -236,6 +236,16 @@ export interface WslShellConfig extends BaseShellConfig {
 }
 
 /**
+ * Transport protocol configuration for the MCP server.
+ * Controls how clients connect to the server (stdio or HTTP/SSE).
+ */
+export interface TransportConfig {
+  mode: 'stdio' | 'sse';
+  sseHost: string;
+  ssePort: number;
+}
+
+/**
  * Complete server configuration
  */
 export interface ServerConfig {
@@ -243,7 +253,7 @@ export interface ServerConfig {
    * Global configuration that applies to all shells by default
    */
   global: GlobalConfig;
-  
+
   /**
    * Configuration for specific shell types
    */
@@ -254,6 +264,11 @@ export interface ServerConfig {
     bash?: WslShellConfig;
     wsl?: WslShellConfig;
   };
+
+  /**
+   * Transport protocol configuration (default: stdio)
+   */
+  transport?: TransportConfig;
 }
 
 /**
