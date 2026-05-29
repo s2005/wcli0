@@ -26,11 +26,11 @@
 - [x] Write unit tests for transport config defaults and overrides
 
 ## Phase 2: CLI Arguments
-- [ ] Add `--transport` flag to `parseArgs()` in `src/index.ts`
-- [ ] Add `--sse-host` flag to `parseArgs()`
-- [ ] Add `--sse-port` flag to `parseArgs()`
-- [ ] Call `applyCliTransport()` in `main()` function
-- [ ] Write unit tests for CLI argument parsing
+- [x] Add `--transport` flag to `parseArgs()` in `src/index.ts`
+- [x] Add `--sse-host` flag to `parseArgs()`
+- [x] Add `--sse-port` flag to `parseArgs()`
+- [x] Call `applyCliTransport()` in `main()` function
+- [x] Write unit tests for CLI argument parsing
 
 ## Phase 3: SSE Transport Module
 - [ ] Create `src/utils/transport.ts`

@@ -33,7 +33,7 @@ import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetCommandOutputSchema } from './utils/toolSchemas.js';
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging, applyCliUnsafeMode, applyDebugLogDirectory } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging, applyCliUnsafeMode, applyDebugLogDirectory, applyCliTransport } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig, LoggingConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -158,6 +158,19 @@ const parseArgs = async () => {
     .option('logDirectory', {
       type: 'string',
       description: 'Directory to store command output log files (enables file-based logging)'
+    })
+    .option('transport', {
+      type: 'string',
+      choices: ['stdio', 'sse'],
+      description: 'Transport protocol (default: stdio)'
+    })
+    .option('sse-host', {
+      type: 'string',
+      description: 'Host address for SSE transport (default: 127.0.0.1)'
+    })
+    .option('sse-port', {
+      type: 'number',
+      description: 'Port for SSE transport (default: 9444)'
     })
     .help()
     .parse();
@@ -1431,6 +1444,12 @@ const main = async () => {
       unsafe: args.unsafe as boolean | undefined,
       yolo: args.yolo as boolean | undefined
     });
+    applyCliTransport(
+      config,
+      args.transport as string | undefined,
+      args['sse-host'] as string | undefined,
+      args['sse-port'] as number | undefined
+    );
 
     const server = new CLIServer(config);
     await server.run();
