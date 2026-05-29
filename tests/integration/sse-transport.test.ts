@@ -1,6 +1,10 @@
 import { describe, it, expect, afterEach } from '@jest/globals';
 import http from 'http';
 import { createSseServer, closeSseServer } from '../../src/utils/transport.js';
+import { CLIServer } from '../../src/index.js';
+import { DEFAULT_CONFIG } from '../../src/utils/config.js';
+import type { ServerConfig } from '../../src/types/config.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 
 describe('SSE Transport Module', () => {
   let server: http.Server | null = null;
@@ -12,23 +16,24 @@ describe('SSE Transport Module', () => {
     }
   });
 
-  // Minimal MCP Server stub for testing
-  function createMockMcpServer() {
-    return {
-      connect: async () => {},
-      close: async () => {},
-    } as any;
+  function createTestMcpServer(): Server {
+    return new Server({
+      name: 'test-server',
+      version: '1.0.0',
+    }, {
+      capabilities: {},
+    });
   }
 
   describe('createSseServer', () => {
     it('should create an HTTP server that listens', async () => {
-      server = await createSseServer(createMockMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
       expect(server).toBeDefined();
       expect(server.listening).toBe(true);
     });
 
     it('should return SSE headers on GET /sse', async () => {
-      server = await createSseServer(createMockMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -41,7 +46,7 @@ describe('SSE Transport Module', () => {
     });
 
     it('should return 404 for unknown paths', async () => {
-      server = await createSseServer(createMockMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -52,7 +57,7 @@ describe('SSE Transport Module', () => {
     });
 
     it('should return 400 for POST /messages without sessionId', async () => {
-      server = await createSseServer(createMockMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -69,7 +74,7 @@ describe('SSE Transport Module', () => {
     });
 
     it('should return 404 for POST /messages with non-existent session', async () => {
-      server = await createSseServer(createMockMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
       const addr = server.address() as http.AddressInfo;
 
       const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -89,7 +94,7 @@ describe('SSE Transport Module', () => {
 
   describe('closeSseServer', () => {
     it('should close a listening server', async () => {
-      server = await createSseServer(createMockMcpServer(), '127.0.0.1', 0);
+      server = await createSseServer(createTestMcpServer(), '127.0.0.1', 0);
       expect(server.listening).toBe(true);
       await closeSseServer(server);
       expect(server.listening).toBe(false);
@@ -100,5 +105,58 @@ describe('SSE Transport Module', () => {
       const closedServer = http.createServer();
       await expect(closeSseServer(closedServer)).resolves.toBeUndefined();
     });
+  });
+});
+
+describe('CLIServer SSE Integration', () => {
+  let cliServer: CLIServer | null = null;
+  let httpServer: http.Server | null = null;
+
+  afterEach(async () => {
+    if (cliServer) {
+      const internalServer = (cliServer as any).httpServer as http.Server | undefined;
+      if (internalServer) {
+        await closeSseServer(internalServer);
+      }
+    }
+    if (httpServer) {
+      await closeSseServer(httpServer);
+      httpServer = null;
+    }
+    cliServer = null;
+  });
+
+  function makeSseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
+    const config: ServerConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    config.transport = { mode: 'sse', sseHost: '127.0.0.1', ssePort: 0 };
+    return { ...config, ...overrides };
+  }
+
+  it('should start CLIServer in SSE mode and accept connections', async () => {
+    const config = makeSseConfig();
+    cliServer = new CLIServer(config);
+    await cliServer.run();
+
+    const internalServer = (cliServer as any).httpServer as http.Server;
+    expect(internalServer).toBeDefined();
+    expect(internalServer.listening).toBe(true);
+
+    const addr = internalServer.address() as http.AddressInfo;
+    const response = await new Promise<http.IncomingMessage>((resolve, reject) => {
+      http.get(`http://127.0.0.1:${addr.port}/sse`, resolve).on('error', reject);
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toMatch(/text\/event-stream/);
+    response.destroy();
+  });
+
+  it('should use stdio mode when transport is stdio', async () => {
+    const config = makeSseConfig();
+    config.transport = { mode: 'stdio', sseHost: '127.0.0.1', ssePort: 9444 };
+    cliServer = new CLIServer(config);
+    await cliServer.run();
+
+    const internalServer = (cliServer as any).httpServer;
+    expect(internalServer).toBeUndefined();
   });
 });

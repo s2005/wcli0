@@ -23,7 +23,6 @@ export function createSseServer(
           debugLog(`SSE session closed: ${transport.sessionId}`);
         };
 
-        await transport.start();
         await mcpServer.connect(transport);
         debugLog(`SSE session established: ${transport.sessionId}`);
       } catch (err) {

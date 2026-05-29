@@ -190,6 +190,8 @@ class CLIServer {
   private resolvedConfigs: Map<string, ResolvedShellConfig> = new Map();
   // Log storage manager
   private logStorage?: LogStorageManager;
+  // HTTP server reference for SSE mode cleanup
+  private httpServer?: import('http').Server;
 
   constructor(config: ServerConfig) {
     this.config = config;
@@ -1355,6 +1357,12 @@ class CLIServer {
   }
 
   private async cleanup(): Promise<void> {
+    // Close HTTP server if in SSE mode
+    if (this.httpServer) {
+      const { closeSseServer } = await import('./utils/transport.js');
+      await closeSseServer(this.httpServer);
+      this.httpServer = undefined;
+    }
     // Stop and clear log storage
     if (this.logStorage) {
       this.logStorage.stopCleanup();
@@ -1363,16 +1371,23 @@ class CLIServer {
   }
 
   async run(): Promise<void> {
-    const transport = new StdioServerTransport();
-    
+    if (this.config.transport?.mode === 'sse') {
+      const { createSseServer } = await import('./utils/transport.js');
+      const host = this.config.transport.sseHost ?? '127.0.0.1';
+      const port = this.config.transport.ssePort ?? 9444;
+      this.httpServer = await createSseServer(this.server, host, port);
+      debugLog(`Windows CLI MCP Server running on SSE at http://${host}:${port}`);
+    } else {
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      debugLog("Windows CLI MCP Server running on stdio");
+    }
+
     // Set up cleanup handler
     process.on('SIGINT', async () => {
       await this.cleanup();
       process.exit(0);
     });
-    
-    await this.server.connect(transport);
-    debugLog("Windows CLI MCP Server running on stdio");
   }
 }
 

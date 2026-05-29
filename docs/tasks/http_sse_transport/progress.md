@@ -41,11 +41,11 @@
 - [x] Write unit tests for transport module
 
 ## Phase 4: CLIServer Integration
-- [ ] Update `CLIServer.run()` to support both transports
-- [ ] Store HTTP server reference for cleanup
-- [ ] Update cleanup handler for SSE mode
-- [ ] Write integration tests for SSE transport
-- [ ] Write regression tests for stdio transport
+- [x] Update `CLIServer.run()` to support both transports
+- [x] Store HTTP server reference for cleanup
+- [x] Update cleanup handler for SSE mode
+- [x] Write integration tests for SSE transport
+- [x] Write regression tests for stdio transport
 
 ## Phase 5: Documentation
 - [ ] Update README.md with transport CLI flags
