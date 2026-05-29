@@ -28,7 +28,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
         type: 'wsl',
         enabled: true,
         executable: {
-          command: 'node',
+          command: process.execPath,
           args: [wslEmulatorPath, '-e']
         },
         overrides: {
@@ -138,11 +138,11 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
     expect(result.content[0].text).toContain('..'); // parent directory
   });
 
-  test('Test 4.3: Command with non-existent path argument (ls /mnt/c)', async () => {
-    // The emulator runs in `/app` and does not have `/mnt/c`. This command should fail.
+  test('Test 4.3: Command with non-existent path argument', async () => {
+    // Use a path that truly doesn't exist on any system (not /mnt/c which exists in WSL2)
     const result = await serverInstance._executeTool({
       name: 'execute_command',
-      arguments: { shell: 'wsl', command: 'ls /mnt/c' }
+      arguments: { shell: 'wsl', command: 'ls /no/such/path/at/all' }
     }) as CallToolResult;
     expect(result.isError).toBe(true); // Expect an error
     expect((result.metadata as any)?.exitCode).not.toBe(0); // Expect non-zero exit code
@@ -166,7 +166,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
         type: 'wsl',
         enabled: true,
         executable: {
-          command: 'node',
+          command: process.execPath,
           args: [wslEmulatorPath, '-e']
         },
         overrides: {

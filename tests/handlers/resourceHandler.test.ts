@@ -11,7 +11,7 @@ describe('Resource Handler', () => {
       const config = buildTestConfig({
         shells: {
           cmd: { enabled: true, executable: { command: 'cmd.exe', args: ['/c'] } },
-          wsl: { enabled: true, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
+          wsl: { enabled: true, executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
         }
       });
 
@@ -95,7 +95,7 @@ describe('Resource Handler', () => {
         shells: {
           wsl: {
             enabled: true,
-            executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
+            executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
             overrides: {
               security: { commandTimeout: 120 },
               restrictions: { blockedCommands: ['wsl-cmd'] }

@@ -422,37 +422,48 @@ export function normalizeWindowsPath(inputPath: string): string {
 export function normalizeAllowedPaths(paths: string[]): string[] {
     // Step 1: Initial Normalization
     // For each path, normalize it with its own fresh history for normalizeWindowsPath
-    const normalizedInputPaths = paths.map(p => normalizeWindowsPath(p).toLowerCase());
+    const normalizedInputPaths = paths.map(p => {
+        const normalized = normalizeWindowsPath(p);
+        // Preserve case for Unix/WSL paths (case-sensitive filesystems)
+        if (normalized.startsWith('/')) {
+            return normalized;
+        }
+        return normalized.toLowerCase();
+    });
 
     // Step 2: Processing and Filtering
     const processedPaths: string[] = [];
 
     for (const currentPath of normalizedInputPaths) {
-        // a. Create a version of currentPath without a trailing backslash
-        const comparableCurrentPath = currentPath.replace(/\\$/, '');
+        const isUnix = currentPath.startsWith('/');
+        const trailingSep = isUnix ? /\/$/ : /\\$/;
+        const sep = isUnix ? '/' : '\\';
+
+        // a. Create a version of currentPath without a trailing separator
+        const comparableCurrentPath = currentPath.replace(trailingSep, '');
 
         // b. Check for Duplicates
-        if (processedPaths.some(existingPath => existingPath.replace(/\\$/, '') === comparableCurrentPath)) {
+        if (processedPaths.some(existingPath => existingPath.replace(trailingSep, '') === comparableCurrentPath)) {
             continue;
         }
 
         // c. Check for Nesting (currentPath is child of an existing path)
         if (processedPaths.some(existingPath => {
-            const comparableExistingPath = existingPath.replace(/\\$/, '');
-            return comparableCurrentPath.startsWith(comparableExistingPath + '\\');
+            const comparableExistingPath = existingPath.replace(trailingSep, '');
+            return comparableCurrentPath.startsWith(comparableExistingPath + sep);
         })) {
             continue;
         }
 
         // d. Remove Existing Nested Children (existing path is child of currentPath)
         for (let i = processedPaths.length - 1; i >= 0; i--) {
-            const comparableExistingPath = processedPaths[i].replace(/\\$/, '');
-            if (comparableExistingPath.startsWith(comparableCurrentPath + '\\')) {
+            const comparableExistingPath = processedPaths[i].replace(trailingSep, '');
+            if (comparableExistingPath.startsWith(comparableCurrentPath + sep)) {
                 processedPaths.splice(i, 1);
             }
         }
-        
-        // e. Add comparableCurrentPath (the version without the trailing slash)
+
+        // e. Add comparableCurrentPath (the version without the trailing separator)
         processedPaths.push(comparableCurrentPath);
     }
 

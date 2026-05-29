@@ -27,7 +27,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
             type: 'wsl',
             enabled: true,
             executable: {
-              command: 'node',
+              command: process.execPath,
               args: ['scripts/wsl-emulator.js', '-e']
             },
             wslConfig: {
@@ -81,7 +81,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
             type: 'wsl',
             enabled: true,
             executable: {
-              command: 'node',
+              command: process.execPath,
               args: ['scripts/wsl-emulator.js', '-e']
             },
             wslConfig: {
@@ -129,7 +129,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
             type: 'wsl',
             enabled: true,
             executable: {
-              command: 'node',
+              command: process.execPath,
               args: ['scripts/wsl-emulator.js', '-e']
             },
             wslConfig: {
@@ -193,7 +193,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
             type: 'wsl',
             enabled: true,
             executable: {
-              command: 'node',
+              command: process.execPath,
               args: ['scripts/wsl-emulator.js', '-e']
             },
             wslConfig: {
@@ -240,7 +240,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
             type: 'wsl',
             enabled: true,
             executable: {
-              command: 'node',
+              command: process.execPath,
               args: ['scripts/wsl-emulator.js', '-e']
             },
             wslConfig: {
@@ -298,7 +298,7 @@ describe('Integration: Folder Propagation in get_config Tool', () => {
             type: 'wsl',
             enabled: true,
             executable: {
-              command: 'node',
+              command: process.execPath,
               args: ['scripts/wsl-emulator.js', '-e']
             },
             wslConfig: {

@@ -397,18 +397,21 @@ class CLIServer {
         let spawnCwd = workingDir;
         let envVars = { ...process.env };
         if (shellConfig.type === 'wsl') {
-          if (workingDir.startsWith('/mnt/')) {
-            // Convert /mnt/c/path to C:\path
-            const match = workingDir.match(/^\/mnt\/([a-z])\/(.*)$/i);
-            if (match) {
-              const drive = match[1].toUpperCase();
-              const pathPart = match[2].replace(/\//g, '\\');
-              spawnCwd = `${drive}:\\${pathPart}`;
+          // Only convert paths when the executable is a Windows binary (.exe).
+          // When running inside WSL2 with the emulator (spawned via Linux node),
+          // Linux spawn needs Linux paths — conversion would cause ENOENT.
+          const isWindowsExe = shellConfig.executable.command.toLowerCase().endsWith('.exe');
+          if (isWindowsExe) {
+            if (workingDir.startsWith('/mnt/')) {
+              const match = workingDir.match(/^\/mnt\/([a-z])\/(.*)$/i);
+              if (match) {
+                const drive = match[1].toUpperCase();
+                const pathPart = match[2].replace(/\//g, '\\');
+                spawnCwd = `${drive}:\\${pathPart}`;
+              }
+            } else if (workingDir.startsWith('/')) {
+              spawnCwd = process.cwd();
             }
-          } else if (workingDir.startsWith('/')) {
-            // Pure Linux paths like /tmp - use current directory for spawn
-            // and let emulator handle the path emulation
-            spawnCwd = process.cwd();
           }
           // Pass original WSL path to emulator via environment variable
           envVars.WSL_ORIGINAL_PATH = workingDir;

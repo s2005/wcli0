@@ -8,7 +8,7 @@ describe('Config Type Guards', () => {
     test('identifies WSL shell config', () => {
       const wslShell: WslShellConfig = {
         enabled: true,
-        executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
+        executable: { command: process.execPath, args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
         wslConfig: {
           mountPoint: '/mnt/',
           inheritGlobalPaths: true

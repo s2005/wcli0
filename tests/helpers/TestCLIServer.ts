@@ -31,7 +31,7 @@ export class TestCLIServer {
       type: 'wsl',
       enabled: true,
       executable: {
-        command: 'node',
+        command: process.execPath,
         args: [wslEmulatorPath, '-e']
       },
       overrides: {
