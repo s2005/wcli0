@@ -67,10 +67,19 @@
 
 ## Phase 3: CLI Arguments
 
-- [ ] Add `'http'` to `--transport` choices in `parseArgs()`
-- [ ] Add `--http-host`, `--http-port`, `--http-allowed-origins` flags
-- [ ] Pass new args into `applyCliTransport()` in `main()`
-- [ ] Unit tests for CLI parsing of new flags
+- [x] Add `'http'` to `--transport` choices in `parseArgs()`
+- [x] Add `--http-host`, `--http-port`, `--http-allowed-origins` flags
+- [x] Pass new args into `applyCliTransport()` in `main()`
+- [x] Unit tests for CLI parsing of new flags
+
+### Phase 3 Notes
+
+- `parseArgs()` is a private const (not exported); CLI parse tests mirror its
+  transport-related yargs option declarations in a `parseTransportArgs` helper
+  in `tests/unit/streamableHttp.test.ts`, matching the existing `transport.test.ts`
+  pattern. Kept in sync with the real option list in `src/index.ts`.
+- `--transport` choices are now `['stdio', 'sse', 'http']`; an invalid value is
+  rejected by yargs (asserted via the throw path with `exitProcess(false)`).
 
 ## Phase 4: Shared HTTP Module and Streamable HTTP Transport
 

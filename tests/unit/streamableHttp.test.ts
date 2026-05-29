@@ -244,3 +244,90 @@ describe('Streamable HTTP transport configuration', () => {
     });
   });
 });
+
+// Mirror the transport-related options declared by parseArgs() in src/index.ts
+// so the CLI flag wiring (choices + new http flags) is exercised without
+// exporting the private parseArgs. The option declarations here must stay in
+// sync with src/index.ts.
+async function parseTransportArgs(args: string[]): Promise<any> {
+  const yargs = (await import('yargs/yargs')).default;
+  const { hideBin } = await import('yargs/helpers');
+
+  const originalArgv = process.argv;
+  process.argv = ['node', 'test.js', ...args];
+  try {
+    return await yargs(hideBin(process.argv))
+      .exitProcess(false)
+      .option('transport', {
+        type: 'string',
+        choices: ['stdio', 'sse', 'http'],
+        description: 'Transport protocol (default: stdio)'
+      })
+      .option('sse-host', { type: 'string' })
+      .option('sse-port', { type: 'number' })
+      .option('sse-allowed-origins', { type: 'string' })
+      .option('http-host', { type: 'string' })
+      .option('http-port', { type: 'number' })
+      .option('http-allowed-origins', { type: 'string' })
+      .help()
+      .parse();
+  } finally {
+    process.argv = originalArgv;
+  }
+}
+
+describe('Streamable HTTP CLI arguments', () => {
+  it('parses --transport http', async () => {
+    const args = await parseTransportArgs(['--transport', 'http']);
+    expect(args.transport).toBe('http');
+  });
+
+  it('parses --http-host', async () => {
+    const args = await parseTransportArgs(['--http-host', '0.0.0.0']);
+    expect(args['http-host']).toBe('0.0.0.0');
+  });
+
+  it('parses --http-port as a number', async () => {
+    const args = await parseTransportArgs(['--http-port', '3000']);
+    expect(args['http-port']).toBe(3000);
+  });
+
+  it('parses --http-allowed-origins', async () => {
+    const args = await parseTransportArgs([
+      '--http-allowed-origins',
+      'https://app.example.com,192.168.1.10'
+    ]);
+    expect(args['http-allowed-origins']).toBe('https://app.example.com,192.168.1.10');
+  });
+
+  it('parses all http transport flags together', async () => {
+    const args = await parseTransportArgs([
+      '--transport', 'http',
+      '--http-host', '0.0.0.0',
+      '--http-port', '3000',
+      '--http-allowed-origins', 'https://app.example.com'
+    ]);
+    expect(args.transport).toBe('http');
+    expect(args['http-host']).toBe('0.0.0.0');
+    expect(args['http-port']).toBe(3000);
+    expect(args['http-allowed-origins']).toBe('https://app.example.com');
+  });
+
+  it('leaves http flags undefined when not provided', async () => {
+    const args = await parseTransportArgs(['--transport', 'http']);
+    expect(args['http-host']).toBeUndefined();
+    expect(args['http-port']).toBeUndefined();
+    expect(args['http-allowed-origins']).toBeUndefined();
+  });
+
+  it('rejects an invalid --transport value', async () => {
+    let threw = false;
+    try {
+      await parseTransportArgs(['--transport', 'invalid']);
+    } catch (e: any) {
+      threw = true;
+      expect(e.message).toMatch(/Invalid values|choices/i);
+    }
+    expect(threw).toBe(true);
+  });
+});

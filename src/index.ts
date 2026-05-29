@@ -162,8 +162,8 @@ const parseArgs = async () => {
     })
     .option('transport', {
       type: 'string',
-      choices: ['stdio', 'sse'],
-      description: 'Transport protocol (default: stdio)'
+      choices: ['stdio', 'sse', 'http'],
+      description: 'Transport protocol (default: stdio). "http" = Streamable HTTP (2025-03-26, single /mcp endpoint); "sse" = legacy HTTP+SSE (2024-11-05).'
     })
     .option('sse-host', {
       type: 'string',
@@ -176,6 +176,18 @@ const parseArgs = async () => {
     .option('sse-allowed-origins', {
       type: 'string',
       description: 'Comma-separated browser origins allowed to use the SSE transport, in addition to loopback hosts and the bind host (e.g. "https://app.example.com,192.168.1.10"). Required for browser clients when binding to 0.0.0.0.'
+    })
+    .option('http-host', {
+      type: 'string',
+      description: 'Host address for the Streamable HTTP transport (default: 127.0.0.1). Only used with --transport http.'
+    })
+    .option('http-port', {
+      type: 'number',
+      description: 'Port for the Streamable HTTP transport (default: 9444). Only used with --transport http.'
+    })
+    .option('http-allowed-origins', {
+      type: 'string',
+      description: 'Comma-separated browser origins allowed to use the Streamable HTTP transport, in addition to loopback hosts and the bind host (e.g. "https://app.example.com,192.168.1.10"). Required for browser clients when binding to 0.0.0.0.'
     })
     .help()
     .parse();
@@ -1582,7 +1594,10 @@ const main = async () => {
       args.transport as string | undefined,
       args['sse-host'] as string | undefined,
       args['sse-port'] as number | undefined,
-      args['sse-allowed-origins'] as string | undefined
+      args['sse-allowed-origins'] as string | undefined,
+      args['http-host'] as string | undefined,
+      args['http-port'] as number | undefined,
+      args['http-allowed-origins'] as string | undefined
     );
 
     const server = new CLIServer(config);
