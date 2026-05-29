@@ -126,3 +126,20 @@ closed here so both transports are fully exercised.
 - [x] P4: Validate transport config before use (fixed -- `validateConfig()` now
       calls `validateTransportConfig()` checking `mode`, `sseHost`, and the
       `1..65535` port range)
+
+### Second review round
+
+- [x] P5: Handle malformed Host headers (fixed -- the request URL is now parsed
+      in a `try/catch` that returns 400, so a bad `Host` like `%%%%` no longer
+      crashes the server via an unhandled rejection)
+- [x] P6: Track sockets instead of relying on closeAllConnections (fixed --
+      `createSseServer()` tracks accepted sockets in a per-server `WeakMap` set;
+      `closeSseServer()` destroys them when `closeAllConnections` is missing on
+      Node 18.0/18.1)
+- [x] P7: Isolate active directories per SSE session (fixed -- introduced a
+      per-session `SessionState`; `_executeTool(params, session)` reads/writes
+      `session.activeCwd`, and each SSE connection gets its own state seeded from
+      the primary session)
+- [x] P8: Return CORS headers for allowed browser origins (fixed -- allowed
+      origins are echoed via `Access-Control-Allow-Origin`/`Vary`, and `OPTIONS`
+      preflight requests are answered with 204)

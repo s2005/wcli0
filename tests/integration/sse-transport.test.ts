@@ -123,6 +123,43 @@ describe('SSE Transport Module', () => {
       r1.destroy();
       r2.destroy();
     });
+
+    // P5: a malformed Host header makes `new URL()` throw. Since the request
+    // callback is async that would become an unhandled rejection and crash the
+    // process; the server must return 400 and keep serving instead.
+    it('returns 400 for a malformed Host header and stays alive (P5)', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+
+      const badStatus = await new Promise<number | undefined>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: '127.0.0.1',
+            port: addr.port,
+            path: '/sse',
+            method: 'GET',
+            headers: { Host: '%%%%' },
+          },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode);
+          }
+        );
+        req.on('error', reject);
+        req.end();
+      });
+      expect(badStatus).toBe(400);
+
+      // The server survived the malformed request: a normal request still works.
+      const okStatus = await new Promise<number | undefined>((resolve, reject) => {
+        const r = http.get(`http://127.0.0.1:${addr.port}/unknown`, (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        });
+        r.on('error', reject);
+      });
+      expect(okStatus).toBe(404);
+    });
   });
 
   // P2: reject untrusted Origin headers (DNS-rebinding defense).
@@ -187,6 +224,70 @@ describe('SSE Transport Module', () => {
     });
   });
 
+  // P8: browser clients on an allowed origin but a different port need the
+  // server to echo Access-Control-Allow-Origin and to answer OPTIONS preflight.
+  describe('CORS for allowed origins (P8)', () => {
+    function rawRequest(
+      port: number,
+      pathName: string,
+      method: string,
+      origin?: string
+    ): Promise<http.IncomingMessage> {
+      return new Promise((resolve, reject) => {
+        const req = http.request(
+          `http://127.0.0.1:${port}${pathName}`,
+          { method, headers: origin ? { Origin: origin } : {} },
+          resolve
+        );
+        req.on('error', reject);
+        req.end();
+      });
+    }
+
+    it('answers an OPTIONS preflight from an allowed origin with 204 and CORS headers', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const origin = `http://localhost:${addr.port}`;
+      const res = await rawRequest(addr.port, '/messages?sessionId=x', 'OPTIONS', origin);
+      expect(res.statusCode).toBe(204);
+      expect(res.headers['access-control-allow-origin']).toBe(origin);
+      expect(res.headers['access-control-allow-methods']).toMatch(/POST/);
+      res.destroy();
+    });
+
+    it('echoes Access-Control-Allow-Origin on GET /sse for an allowed origin', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const origin = `http://127.0.0.1:${addr.port}`;
+      const res = await rawRequest(addr.port, '/sse', 'GET', origin);
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['access-control-allow-origin']).toBe(origin);
+      res.destroy();
+    });
+
+    it('rejects a preflight from a disallowed origin with 403 and no CORS header', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const res = await rawRequest(
+        addr.port,
+        '/messages?sessionId=x',
+        'OPTIONS',
+        'https://evil.example'
+      );
+      expect(res.statusCode).toBe(403);
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      res.destroy();
+    });
+
+    it('omits CORS headers when no Origin is present (non-browser client)', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+      const res = await rawRequest(addr.port, '/unknown', 'GET', undefined);
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+      res.destroy();
+    });
+  });
+
   describe('closeSseServer', () => {
     it('should close a listening server', async () => {
       server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
@@ -200,6 +301,30 @@ describe('SSE Transport Module', () => {
       const closedServer = http.createServer();
       await expect(closeSseServer(closedServer)).resolves.toBeUndefined();
     });
+
+    // P6: closeAllConnections() only exists on Node >=18.2, but engines.node
+    // allows 18.0/18.1 where it is undefined. With an active SSE stream,
+    // close() would then hang forever; the tracked-socket fallback must still
+    // tear the server down.
+    it('closes with an active stream when closeAllConnections is unavailable (P6)', async () => {
+      server = await createSseServer(() => createTestMcpServer(), '127.0.0.1', 0);
+      const addr = server.address() as http.AddressInfo;
+
+      // Open a long-lived SSE stream so the server has an active socket.
+      const stream = await new Promise<http.IncomingMessage>((resolve, reject) => {
+        const r = http.get(`http://127.0.0.1:${addr.port}/sse`, resolve);
+        r.on('error', reject);
+      });
+
+      // Simulate a Node 18.0/18.1 runtime where the API is missing.
+      (server as unknown as { closeAllConnections?: () => void }).closeAllConnections = undefined;
+
+      await closeSseServer(server);
+      expect(server.listening).toBe(false);
+
+      stream.destroy();
+      server = null;
+    }, 10000);
   });
 });
 
