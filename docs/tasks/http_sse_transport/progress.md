@@ -104,6 +104,7 @@ closed here so both transports are fully exercised.
       `transport.onclose`, so disconnected sessions were never removed from the
       session map (leak; POST to a dead session returned 500 instead of 404).
       Fixed in `src/utils/transport.ts` by registering cleanup after connect().
+      See [session-leak-on-disconnect.md](session-leak-on-disconnect.md).
 
 ### Phase 8c: Documentation sync
 
