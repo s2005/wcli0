@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-05-30
+
+### Changed
+
+- Bumped GitHub Actions `actions/checkout` and `actions/setup-node` to `@v6` (Node 24 runtime) across the build/test and publish workflows, clearing the Node 16/20 runtime-deprecation warnings (#85)
+
 ## [1.3.0] - 2026-05-30
 
 ### Added
