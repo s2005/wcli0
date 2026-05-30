@@ -1,0 +1,3 @@
+# P2 - Accept single-message batched initialize requests
+
+Codex priority P3. On `src/utils/streamableHttp.ts:182`, the new-session branch guards on `isInitializeRequest(body)`, which returns `false` when `body` is a JSON-RPC batch array. A client that sends its initialize request as a single-message batch (`[{...initialize...}]`) therefore skips session creation and falls through to the manual 400 response, even though the underlying `StreamableHTTPServerTransport` parses array bodies and detects the initialize via `messages.some(isInitializeRequest)`. This makes the wrapper less compatible than the transport it wraps.

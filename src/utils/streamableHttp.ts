@@ -24,6 +24,22 @@ interface StreamableSession {
 }
 
 /**
+ * True when the parsed POST body should open a new session, i.e. it is an
+ * `initialize` request. A client may send `initialize` either as a bare object
+ * or as a single-message JSON-RPC batch (`[{...}]`); the SDK transport accepts
+ * both, so the wrapper must recognize both before routing to session creation.
+ * Multi-message batches are intentionally excluded: the SDK rejects a batch
+ * that also carries an `initialize`, so leaving them on the non-initialize path
+ * avoids building a per-session server the transport would immediately reject.
+ */
+function isInitializeRequestBody(body: unknown): boolean {
+  if (isInitializeRequest(body)) {
+    return true;
+  }
+  return Array.isArray(body) && body.length === 1 && isInitializeRequest(body[0]);
+}
+
+/**
  * Read and JSON-parse a request body once, so it can be passed to the SDK
  * transport's handleRequest() as a pre-parsed body (the SDK then does not read
  * the stream again). Resolves `undefined` for an empty body and rejects on
@@ -132,7 +148,9 @@ export function createStreamableHttpServer(
     if (req.method === 'OPTIONS') {
       res.writeHead(204, corsHeaders({
         'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Mcp-Session-Id, Last-Event-ID',
+        // Mcp-Protocol-Version is sent by clients on every post-initialize
+        // request; it must be allow-listed or browsers block those requests.
+        'Access-Control-Allow-Headers': 'Content-Type, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID',
         'Access-Control-Max-Age': '86400'
       }));
       res.end();
@@ -178,8 +196,9 @@ export function createStreamableHttpServer(
         return;
       }
 
-      // A new session is created only by an `initialize` POST with no session id.
-      if (!sessionId && isInitializeRequest(body)) {
+      // A new session is created only by an `initialize` POST with no session id
+      // (sent either as a bare object or a single-message batch).
+      if (!sessionId && isInitializeRequestBody(body)) {
         // Build the per-session server first so it is captured by the
         // onsessioninitialized / onclose callbacks below.
         const sessionServer = createServer();

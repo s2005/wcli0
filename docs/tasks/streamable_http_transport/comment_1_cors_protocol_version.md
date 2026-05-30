@@ -1,0 +1,3 @@
+# P1 - Allow Mcp-Protocol-Version in CORS preflight
+
+Codex priority P2. On `src/utils/streamableHttp.ts:135`, the OPTIONS preflight response sets `Access-Control-Allow-Headers` to `Content-Type, Mcp-Session-Id, Last-Event-ID` only. The MCP Streamable HTTP spec requires clients to send the `Mcp-Protocol-Version` header on every request after initialize, and the SDK transport validates it. A browser client on an allowed origin lists that header in its preflight `Access-Control-Request-Headers`, so when it is absent from `Access-Control-Allow-Headers` the browser blocks the subsequent POST/GET/DELETE: such clients can initialize but then fail on all later session requests.

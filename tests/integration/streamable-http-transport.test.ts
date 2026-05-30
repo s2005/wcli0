@@ -42,6 +42,32 @@ describe('Streamable HTTP Transport: handshake and lifecycle', () => {
     expect(initMsg.result.protocolVersion).toBeTruthy();
   });
 
+  // P2: a client may send the initialize request as a single-message JSON-RPC
+  // batch ([{...}]); the SDK transport accepts that, so the wrapper must too.
+  test('accepts a single-message batched initialize request (P2)', async () => {
+    const probe = await StreamableHttpTestClient.create();
+    client = probe;
+    const res = await mcpHttpRequest(probe.port, {
+      body: JSON.stringify([
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-03-26',
+            capabilities: {},
+            clientInfo: { name: 'batch-probe', version: '1.0.0' },
+          },
+        },
+      ]),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.sessionId).toBeTruthy();
+    const initMsg = res.messages.find((m) => m.id === 1);
+    expect(initMsg).toBeDefined();
+    expect(initMsg.result.serverInfo.name).toBe('wcli0');
+  });
+
   test('tools/list returns the expected tools', async () => {
     // validate_directories is only registered when restrictWorkingDirectory is
     // on, so enable it here (mirrors the SSE tools/list coverage).

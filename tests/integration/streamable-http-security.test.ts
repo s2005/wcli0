@@ -103,6 +103,22 @@ describe('Streamable HTTP Security', () => {
     expect(res.headers['access-control-allow-methods']).toMatch(/DELETE/);
   });
 
+  // P1: browser clients send Mcp-Protocol-Version on every post-initialize
+  // request, so the preflight must advertise it or the browser blocks them.
+  test('preflight allows the Mcp-Protocol-Version header (P1)', async () => {
+    client = await StreamableHttpTestClient.create();
+    const res = await mcpHttpRequest(client.port, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type, mcp-session-id, mcp-protocol-version',
+      },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers['access-control-allow-headers']).toMatch(/Mcp-Protocol-Version/i);
+  });
+
   test('rejects an OPTIONS preflight from an untrusted origin with 403', async () => {
     client = await StreamableHttpTestClient.create();
     const res = await mcpHttpRequest(client.port, {

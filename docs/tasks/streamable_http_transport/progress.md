@@ -191,6 +191,22 @@
   -> 204 with CORS.
 - SDK confirmed exporting `StreamableHTTPServerTransport` (`1.29.0`).
 
-## Review Feedback
+## Review Feedback (PR #84)
 
-(Section to be populated when PR review feedback arrives.)
+- [x] P1: CORS preflight omitted `Mcp-Protocol-Version` (fixed — added it to the
+  OPTIONS `Access-Control-Allow-Headers` so allowed cross-origin browser clients
+  can send the spec-required header on post-initialize requests). Codex P2.
+- [x] P2: single-message batched `initialize` rejected with 400 (fixed — new
+  `isInitializeRequestBody` helper also recognizes a single-element JSON-RPC
+  batch `[{...initialize...}]` before routing to session creation, matching the
+  SDK transport's array handling). Codex P3.
+
+Both concerns were validated by integration tests that failed against the
+pre-fix code and pass after the fix:
+
+- `tests/integration/streamable-http-security.test.ts` — "preflight allows the
+  Mcp-Protocol-Version header (P1)".
+- `tests/integration/streamable-http-transport.test.ts` — "accepts a
+  single-message batched initialize request (P2)".
+
+Full suite after fixes: 1049 passed, 24 skipped, 0 failed; `tsc --noEmit` clean.
