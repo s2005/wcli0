@@ -125,7 +125,10 @@ export const DEFAULT_CONFIG: ServerConfig = {
     mode: 'stdio',
     sseHost: '127.0.0.1',
     ssePort: 9444,
-    sseAllowedOrigins: []
+    sseAllowedOrigins: [],
+    httpHost: '127.0.0.1',
+    httpPort: 9444,
+    httpAllowedOrigins: []
   }
 };
 
@@ -600,8 +603,8 @@ function validateLoggingConfig(config?: LoggingConfig): void {
 function validateTransportConfig(transport?: TransportConfig): void {
   if (!transport) return;
 
-  if (transport.mode !== 'stdio' && transport.mode !== 'sse') {
-    throw new Error("transport.mode must be 'stdio' or 'sse'");
+  if (transport.mode !== 'stdio' && transport.mode !== 'sse' && transport.mode !== 'http') {
+    throw new Error("transport.mode must be 'stdio', 'sse', or 'http'");
   }
 
   if (transport.sseHost !== undefined) {
@@ -629,6 +632,34 @@ function validateTransportConfig(transport?: TransportConfig): void {
       )
     ) {
       throw new Error('transport.sseAllowedOrigins must be an array of non-empty strings');
+    }
+  }
+
+  if (transport.httpHost !== undefined) {
+    if (typeof transport.httpHost !== 'string' || transport.httpHost.trim() === '') {
+      throw new Error('transport.httpHost must be a non-empty string');
+    }
+  }
+
+  if (transport.httpPort !== undefined) {
+    if (
+      typeof transport.httpPort !== 'number' ||
+      !Number.isInteger(transport.httpPort) ||
+      transport.httpPort < 1 ||
+      transport.httpPort > 65535
+    ) {
+      throw new Error('transport.httpPort must be an integer between 1 and 65535');
+    }
+  }
+
+  if (transport.httpAllowedOrigins !== undefined) {
+    if (
+      !Array.isArray(transport.httpAllowedOrigins) ||
+      transport.httpAllowedOrigins.some(
+        origin => typeof origin !== 'string' || origin.trim() === ''
+      )
+    ) {
+      throw new Error('transport.httpAllowedOrigins must be an array of non-empty strings');
     }
   }
 }
@@ -911,19 +942,27 @@ export function applyCliTransport(
   transport?: string,
   sseHost?: string,
   ssePort?: number,
-  sseAllowedOrigins?: string
+  sseAllowedOrigins?: string,
+  httpHost?: string,
+  httpPort?: number,
+  httpAllowedOrigins?: string
 ): void {
   if (!config.transport) {
     config.transport = {
       mode: 'stdio',
       sseHost: '127.0.0.1',
       ssePort: 9444,
-      sseAllowedOrigins: []
+      sseAllowedOrigins: [],
+      httpHost: '127.0.0.1',
+      httpPort: 9444,
+      httpAllowedOrigins: []
     };
   }
 
   if (transport === 'sse') {
     config.transport.mode = 'sse';
+  } else if (transport === 'http') {
+    config.transport.mode = 'http';
   } else if (transport === 'stdio') {
     config.transport.mode = 'stdio';
   }
@@ -950,6 +989,31 @@ export function applyCliTransport(
       .filter(origin => origin !== '');
     if (origins.length > 0) {
       config.transport.sseAllowedOrigins = origins;
+    }
+  }
+
+  if (httpHost !== undefined && httpHost.trim() !== '') {
+    config.transport.httpHost = httpHost.trim();
+  }
+
+  if (
+    httpPort !== undefined &&
+    Number.isInteger(httpPort) &&
+    httpPort > 0 &&
+    httpPort <= 65535
+  ) {
+    config.transport.httpPort = httpPort;
+  } else if (httpPort !== undefined) {
+    debugWarn(`WARN: Invalid httpPort '${httpPort}', ignoring.`);
+  }
+
+  if (httpAllowedOrigins !== undefined) {
+    const origins = httpAllowedOrigins
+      .split(',')
+      .map(origin => origin.trim())
+      .filter(origin => origin !== '');
+    if (origins.length > 0) {
+      config.transport.httpAllowedOrigins = origins;
     }
   }
 }

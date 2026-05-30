@@ -1,5 +1,5 @@
-import type { Transport } from '@modelcontextprotocol/sdk/dist/shared/transport.js';
-import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/dist/types.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 
 export class InMemoryTransport implements Transport {
   onclose?: () => void;

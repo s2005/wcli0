@@ -8,6 +8,7 @@ import {
   ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   CallToolResult, // Changed from CallToolResultPayload
+  CallToolRequest,
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -161,8 +162,8 @@ const parseArgs = async () => {
     })
     .option('transport', {
       type: 'string',
-      choices: ['stdio', 'sse'],
-      description: 'Transport protocol (default: stdio)'
+      choices: ['stdio', 'sse', 'http'],
+      description: 'Transport protocol (default: stdio). "http" = Streamable HTTP (2025-03-26, single /mcp endpoint); "sse" = legacy HTTP+SSE (2024-11-05).'
     })
     .option('sse-host', {
       type: 'string',
@@ -175,6 +176,18 @@ const parseArgs = async () => {
     .option('sse-allowed-origins', {
       type: 'string',
       description: 'Comma-separated browser origins allowed to use the SSE transport, in addition to loopback hosts and the bind host (e.g. "https://app.example.com,192.168.1.10"). Required for browser clients when binding to 0.0.0.0.'
+    })
+    .option('http-host', {
+      type: 'string',
+      description: 'Host address for the Streamable HTTP transport (default: 127.0.0.1). Only used with --transport http.'
+    })
+    .option('http-port', {
+      type: 'number',
+      description: 'Port for the Streamable HTTP transport (default: 9444). Only used with --transport http.'
+    })
+    .option('http-allowed-origins', {
+      type: 'string',
+      description: 'Comma-separated browser origins allowed to use the Streamable HTTP transport, in addition to loopback hosts and the bind host (e.g. "https://app.example.com,192.168.1.10"). Required for browser clients when binding to 0.0.0.0.'
     })
     .help()
     .parse();
@@ -958,7 +971,7 @@ class CLIServer {
   // defaults to the primary session so existing callers (stdio, tests) are
   // unaffected; SSE handlers pass their own per-connection SessionState.
   public async _executeTool(
-    toolParams: z.infer<typeof CallToolRequestSchema>['params'],
+    toolParams: CallToolRequest['params'],
     session: SessionState = this.primarySession
   ): Promise<CallToolResult> { // Changed return type
     try {
@@ -1460,14 +1473,18 @@ class CLIServer {
     // StdioServerTransport.close() only removes its stdin 'data' listener; it
     // does not take stdin out of flowing mode, so the stdin handle stays
     // referenced and keeps the process alive. Pause it explicitly so the event
-    // loop can drain (harmless when stdin was never used, e.g. SSE mode).
-    if (this.config.transport?.mode !== 'sse') {
+    // loop can drain. Only stdio mode ever touches stdin, so the HTTP-based
+    // transports (sse, http) are left alone.
+    const transportMode = this.config.transport?.mode;
+    if (transportMode !== 'sse' && transportMode !== 'http') {
       process.stdin.pause();
     }
-    // Close HTTP server if in SSE mode
+    // Close the HTTP server (used by both the sse and http transports). The
+    // shared closeHttpServer() force-destroys lingering sockets so long-lived
+    // /sse or /mcp streams cannot hang shutdown or keep the port bound.
     if (this.httpServer) {
-      const { closeSseServer } = await import('./utils/transport.js');
-      await closeSseServer(this.httpServer);
+      const { closeHttpServer } = await import('./utils/httpShared.js');
+      await closeHttpServer(this.httpServer);
       this.httpServer = undefined;
     }
     // Stop and clear log storage
@@ -1493,6 +1510,21 @@ class CLIServer {
         allowedOrigins
       );
       debugLog(`Windows CLI MCP Server running on SSE at http://${host}:${port}`);
+    } else if (this.config.transport?.mode === 'http') {
+      const { createStreamableHttpServer } = await import('./utils/streamableHttp.js');
+      const host = this.config.transport.httpHost ?? '127.0.0.1';
+      const port = this.config.transport.httpPort ?? 9444;
+      const allowedOrigins = this.config.transport.httpAllowedOrigins ?? [];
+      this.httpServer = await createStreamableHttpServer(
+        // Each Streamable HTTP session gets a fresh SessionState seeded from the
+        // primary session's initial cwd, so one client's set_current_directory
+        // cannot change another client's active working directory.
+        () => this.createServerInstance({ activeCwd: this.primarySession.activeCwd }),
+        host,
+        port,
+        allowedOrigins
+      );
+      debugLog(`Windows CLI MCP Server running on Streamable HTTP at http://${host}:${port}/mcp`);
     } else {
       const transport = new StdioServerTransport();
       await this.server.connect(transport);
@@ -1581,7 +1613,10 @@ const main = async () => {
       args.transport as string | undefined,
       args['sse-host'] as string | undefined,
       args['sse-port'] as number | undefined,
-      args['sse-allowed-origins'] as string | undefined
+      args['sse-allowed-origins'] as string | undefined,
+      args['http-host'] as string | undefined,
+      args['http-port'] as number | undefined,
+      args['http-allowed-origins'] as string | undefined
     );
 
     const server = new CLIServer(config);

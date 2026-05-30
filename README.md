@@ -483,46 +483,103 @@ To get started with configuration:
   fully unsafe mode disables those restrictions as well. These two flags are
   mutually exclusive; using both at once will fail.
 
-  You can start the server with HTTP/SSE transport instead of the default
-  stdio transport. This allows remote and web-based MCP clients to connect
-  over HTTP:
+  You can start the server with an HTTP-based transport instead of the default
+  stdio transport, so remote and web-based MCP clients can connect over HTTP.
+  Two HTTP transports are available:
+
+- `http` -- the modern **Streamable HTTP** transport (MCP protocol revision
+  2025-03-26), serving a single `/mcp` endpoint. This is what current MCP
+  clients default to and is the recommended HTTP transport.
+- `sse` -- the legacy **HTTP+SSE** transport (MCP protocol revision
+  2024-11-05), using two endpoints (`GET /sse`, `POST /messages`). It is
+  deprecated by the MCP spec in favor of Streamable HTTP and is kept only for
+  compatibility with older clients.
+
+  The modes are mutually exclusive (selected by `--transport`) and use separate
+  bind settings (`--http-*` for `http`, `--sse-*` for `sse`).
 
   ```bash
-  # Start with SSE transport on default host/port (127.0.0.1:9444)
-  npx wcli0 --transport sse
+  # Streamable HTTP on the default host/port (127.0.0.1:9444), serving /mcp
+  npx wcli0 --transport http
 
   # Custom port, still bound to localhost
+  npx wcli0 --transport http --http-host 127.0.0.1 --http-port 3000
+
+  # Legacy HTTP+SSE transport
   npx wcli0 --transport sse --sse-host 127.0.0.1 --sse-port 3000
   ```
 
   | Option | Type | Default | Description |
   | ------ | ---- | ------- | ----------- |
-  | `--transport` | string | stdio | Transport protocol: `stdio` or `sse` |
-  | `--sse-host` | string | 127.0.0.1 | Host address for SSE transport |
-  | `--sse-port` | number | 9444 | Port for SSE transport |
-  | `--sse-allowed-origins` | string | (none) | Comma-separated browser origins allowed in addition to loopback hosts and the bind host (e.g. `https://app.example.com,192.168.1.10`). Only the host component is compared. Required for browser clients on a wildcard (`0.0.0.0`) bind. |
+  | `--transport` | string | stdio | Transport protocol: `stdio`, `http` (Streamable HTTP), or `sse` (legacy HTTP+SSE) |
+  | `--http-host` | string | 127.0.0.1 | Host address for the Streamable HTTP transport (`http` mode) |
+  | `--http-port` | number | 9444 | Port for the Streamable HTTP transport (`http` mode) |
+  | `--http-allowed-origins` | string | (none) | Comma-separated browser origins allowed for `http` mode, in addition to loopback hosts and the bind host (e.g. `https://app.example.com,192.168.1.10`). Only the host component is compared. Required for browser clients on a wildcard (`0.0.0.0`) bind. |
+  | `--sse-host` | string | 127.0.0.1 | Host address for the legacy SSE transport (`sse` mode) |
+  | `--sse-port` | number | 9444 | Port for the legacy SSE transport (`sse` mode) |
+  | `--sse-allowed-origins` | string | (none) | Comma-separated browser origins allowed for `sse` mode, in addition to loopback hosts and the bind host. Only the host component is compared. Required for browser clients on a wildcard (`0.0.0.0`) bind. |
 
-  When SSE mode is active, clients connect via `GET /sse` to open an SSE
-  stream and send messages via `POST /messages?sessionId=<id>`. The server
-  logs the bind address and port on startup. To mitigate DNS-rebinding
-  attacks, the server validates the request `Origin` header: requests whose
-  `Origin` is not a loopback host, the configured bind host, or one of the
-  configured `--sse-allowed-origins` are rejected with `403 Forbidden`, while
-  non-browser clients that send no `Origin` are allowed.
+  When `http` mode is active, clients use a single `/mcp` endpoint:
 
-  > **Security:** This transport has no built-in authentication and exposes
-  > command-execution tools. Keep it bound to `127.0.0.1` (the default) for
-  > local use. Binding to `0.0.0.0` or any non-loopback address exposes those
-  > tools to every host that can reach the port; only do so behind an
-  > authenticated reverse proxy or equivalent access control. Origin validation
-  > alone does not authenticate non-browser clients.
+- `POST /mcp` carries client-to-server JSON-RPC messages. An `initialize`
+  request with no session id starts a new session; the server returns the
+  assigned id in the `Mcp-Session-Id` response header, and the client must
+  send that header on every subsequent request.
+- `GET /mcp` opens the optional server-to-client SSE stream for an existing
+  session.
+- `DELETE /mcp` terminates an existing session.
+
+  Sessions are stateful and isolated: each session has its own active working
+  directory, so one client's `set_current_directory` cannot affect another.
+  Requests carrying an unknown or terminated `Mcp-Session-Id` are rejected with
+  `404 Not Found`. The server logs the bind address and port on startup (with
+  `--debug`).
+
+  When `sse` mode is active, clients instead connect via `GET /sse` to open an
+  SSE stream and send messages via `POST /messages?sessionId=<id>`.
+
+  **Configuring Streamable HTTP entirely with CLI parameters (no config file).**
+  Every transport and operational setting can be supplied as an input parameter,
+  so the server can run as a Streamable HTTP server without any config file:
+
+  ```bash
+  npx wcli0 \
+    --transport http \
+    --http-host 127.0.0.1 \
+    --http-port 9444 \
+    --http-allowed-origins "https://app.example.com,192.168.1.10" \
+    --shell gitbash \
+    --allowedDir "D:/work/project" \
+    --commandTimeout 60 \
+    --debug
+  ```
+
+  CLI parameters also take precedence over a config file, so the same `--http-*`
+  flags override the corresponding `transport` fields when a `--config` file is
+  also passed (see the [transport config section](#configuration-inheritance)).
+
+  Both HTTP transports validate the request `Origin` header to mitigate
+  DNS-rebinding attacks: requests whose `Origin` is not a loopback host, the
+  configured bind host, or one of the configured allowed origins
+  (`--http-allowed-origins` / `--sse-allowed-origins`) are rejected with
+  `403 Forbidden`, while non-browser clients that send no `Origin` are allowed.
+  Allowed browser origins receive CORS headers, and `OPTIONS` preflight requests
+  are answered with `204`.
+
+  > **Security:** Neither HTTP transport has built-in authentication, and both
+  > expose command-execution tools. Keep the server bound to `127.0.0.1` (the
+  > default) for local use. Binding to `0.0.0.0` or any non-loopback address
+  > exposes those tools to every host that can reach the port; only do so behind
+  > an authenticated reverse proxy or equivalent access control. Origin
+  > validation alone does not authenticate non-browser clients.
   >
   > **Wildcard binds and browser origins:** When binding to a wildcard address
   > (`0.0.0.0` / `::`), the bind host is not a usable origin to compare against,
   > so browser clients reaching the server through its real LAN address (or a
   > reverse proxy whose public hostname differs from the bind host) are rejected
-  > unless their origin is listed in `--sse-allowed-origins` (or the
-  > `transport.sseAllowedOrigins` config array). Non-browser clients are
+  > unless their origin is listed in `--http-allowed-origins` /
+  > `--sse-allowed-origins` (or the `transport.httpAllowedOrigins` /
+  > `transport.sseAllowedOrigins` config arrays). Non-browser clients are
   > unaffected, since they send no `Origin`.
 
 1. **Update your Claude Desktop configuration** to use your config file:
@@ -827,7 +884,21 @@ You can override the mount point at startup using the `--wslMountPoint` CLI flag
 
 ### Configuration Inheritance
 
-The transport section can also be set in the config file:
+The transport section can also be set in the config file. For the Streamable
+HTTP transport (`http` mode):
+
+```json
+{
+  "transport": {
+    "mode": "http",
+    "httpHost": "127.0.0.1",
+    "httpPort": 9444,
+    "httpAllowedOrigins": ["https://app.example.com", "192.168.1.10"]
+  }
+}
+```
+
+For the legacy HTTP+SSE transport (`sse` mode):
 
 ```json
 {
@@ -840,11 +911,23 @@ The transport section can also be set in the config file:
 }
 ```
 
-`sseAllowedOrigins` is optional and defaults to an empty list. Each entry is an
-origin URL or a bare host; only the host component is compared (case-insensitively).
+| Field | Type | Default | Applies to | Description |
+| ----- | ---- | ------- | ---------- | ----------- |
+| `mode` | string | `stdio` | all | `stdio`, `http`, or `sse` |
+| `httpHost` | string | `127.0.0.1` | `http` | Bind host for the Streamable HTTP transport |
+| `httpPort` | number | `9444` | `http` | Bind port for the Streamable HTTP transport (integer `1..65535`) |
+| `httpAllowedOrigins` | string[] | `[]` | `http` | Browser origins allowed in addition to loopback hosts and `httpHost` |
+| `sseHost` | string | `127.0.0.1` | `sse` | Bind host for the legacy SSE transport |
+| `ssePort` | number | `9444` | `sse` | Bind port for the legacy SSE transport (integer `1..65535`) |
+| `sseAllowedOrigins` | string[] | `[]` | `sse` | Browser origins allowed in addition to loopback hosts and `sseHost` |
 
-CLI flags (`--transport`, `--sse-host`, `--sse-port`, `--sse-allowed-origins`)
-override config file values.
+The `*AllowedOrigins` lists are optional and default to an empty list. Each
+entry is an origin URL or a bare host; only the host component is compared
+(case-insensitively).
+
+CLI flags override config-file values: `--transport`, `--http-host`,
+`--http-port`, `--http-allowed-origins`, `--sse-host`, `--sse-port`, and
+`--sse-allowed-origins`.
 
 The inheritance system works as follows:
 
