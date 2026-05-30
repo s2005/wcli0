@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.3.0] - 2026-05-30
+
+### Added
+
+- **`http` (Streamable HTTP) transport mode** (MCP protocol revision 2025-03-26, single `/mcp` endpoint) alongside `stdio` and legacy `sse` transports (#84)
+  - New CLI flags: `--transport http`, `--http-host` (default `127.0.0.1`), `--http-port` (default `9444`), `--http-allowed-origins`
+  - Config support: `transport.httpHost`, `transport.httpPort`, `transport.httpAllowedOrigins` with validation and serialization
+  - Stateful, isolated sessions: each session gets its own server instance seeded from the primary session's working directory
+- **`sse` (HTTP/SSE) transport mode** for the MCP server (#83)
+  - New CLI flags: `--transport sse`, `--sse-host`, `--sse-port` (default `127.0.0.1:9444`)
+  - Config file support via the `transport` section
+- New integration and unit test suites for the Streamable HTTP transport: handshake/lifecycle, sessions, resources, security, and tool execution
+- README documentation for the `http` transport mode, a no-config-file CLI recipe, and a UAT plan
+
+### Changed
+
+- Upgraded MCP SDK to 1.29.0 for `StreamableHTTPServerTransport`
+- Refactored shared HTTP logic (origin validation, CORS echo, socket tracking, graceful close) from `transport.ts` into `httpShared.ts`; `closeSseServer` is now a thin wrapper over `closeHttpServer`, so existing SSE callers are unaffected
+
+### Security
+
+- DNS-rebinding defense via Origin allowlisting (loopback + bind host + explicit `httpAllowedOrigins`)
+- Request body size cap (4 MB); malformed `Host` header returns 400 instead of crashing
+- Per-session isolation prevents one client's `set_current_directory` from affecting another's
+
 ## [1.2.4] - 2026-05-29
 
 ### Fixed
