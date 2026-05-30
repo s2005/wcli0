@@ -538,6 +538,26 @@ To get started with configuration:
   When `sse` mode is active, clients instead connect via `GET /sse` to open an
   SSE stream and send messages via `POST /messages?sessionId=<id>`.
 
+  **Configuring Streamable HTTP entirely with CLI parameters (no config file).**
+  Every transport and operational setting can be supplied as an input parameter,
+  so the server can run as a Streamable HTTP server without any config file:
+
+  ```bash
+  npx wcli0 \
+    --transport http \
+    --http-host 127.0.0.1 \
+    --http-port 9444 \
+    --http-allowed-origins "https://app.example.com,192.168.1.10" \
+    --shell gitbash \
+    --allowedDir "D:/work/project" \
+    --commandTimeout 60 \
+    --debug
+  ```
+
+  CLI parameters also take precedence over a config file, so the same `--http-*`
+  flags override the corresponding `transport` fields when a `--config` file is
+  also passed (see the [transport config section](#configuration-inheritance)).
+
   Both HTTP transports validate the request `Origin` header to mitigate
   DNS-rebinding attacks: requests whose `Origin` is not a loopback host, the
   configured bind host, or one of the configured allowed origins
