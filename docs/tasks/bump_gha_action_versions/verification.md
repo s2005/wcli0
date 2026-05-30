@@ -97,10 +97,11 @@ Expected: all pass, unchanged from baseline.
 
 The feature can be accepted when all items are true:
 
-- [ ] No `actions/checkout@v3` or `actions/checkout@v4` in `.github/workflows/`.
-- [ ] No `actions/setup-node@v3` in `.github/workflows/`.
-- [ ] All 4 `checkout` and 4 `setup-node` refs pinned to the Node 24 major.
-- [ ] `node-version` and all other workflow content unchanged.
-- [ ] `Build and Test` passes for all three jobs on the PR.
-- [ ] No action-runtime deprecation warnings in the run logs.
-- [ ] Planning docs pass `markdownlint-cli2`.
+- [x] No `actions/checkout@v3` or `actions/checkout@v4` in `.github/workflows/`.
+- [x] No `actions/setup-node@v3` in `.github/workflows/`.
+- [x] All 4 `checkout` and 4 `setup-node` refs pinned to the Node 24 major
+      (`@v6`).
+- [x] `node-version` and all other workflow content unchanged.
+- [x] `Build and Test` passes for all three jobs on the PR (run 26680802088).
+- [x] No action-runtime deprecation warnings in the run logs.
+- [x] Planning docs pass `markdownlint-cli2`.

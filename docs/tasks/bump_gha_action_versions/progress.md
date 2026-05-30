@@ -34,12 +34,16 @@
 
 ## Phase 2: Validate on CI
 
-- [ ] Open PR with the workflow edits.
-- [ ] `test-linux` passes.
-- [ ] `test-windows` passes.
-- [ ] `test-windows-no-bash` passes.
-- [ ] No action-runtime deprecation warnings in the run logs.
-- [ ] `publish.yml` change confirmed by diff + YAML parse.
+- [x] Open PR with the workflow edits. (PR #85, branch
+      `ci/bump-gha-actions-node24`.)
+- [x] `test-linux` passes. (Run 26680802088 - success.)
+- [x] `test-windows` passes. (Run 26680802088 - success.)
+- [x] `test-windows-no-bash` passes. (Run 26680802088 - success.)
+- [x] No action-runtime deprecation warnings in the run logs. Only annotation
+      is an unrelated `notice`: `windows-latest` runner redirect to
+      `windows-2025` (runner-image migration, not action Node runtime).
+- [x] `publish.yml` change confirmed by diff + YAML parse. (Identical runtime
+      bump to the build workflow; release-triggered, not exercised by PR.)
 
 ## Review Feedback
 
