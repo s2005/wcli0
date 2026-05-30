@@ -146,6 +146,64 @@ curl -s -D - -o /dev/null -X POST http://127.0.0.1:9444/mcp \
 
 Copy that `<uuid>` and use it as `<SID>` in the following cases.
 
+### Parsing responses with jq (optional)
+
+A `POST /mcp` response is a one-shot SSE frame, not raw JSON:
+
+```text
+event: message
+data: {"result":...,"jsonrpc":"2.0","id":5}
+```
+
+Piping that straight into `jq` fails, because the `event:` line and the
+`data:` prefix are not valid JSON. Strip the prefix first:
+
+```bash
+... | sed -n 's/^data: //p' | tr -d '\r' | jq .
+```
+
+- `sed -n 's/^data: //p'` keeps only the `data:` line and removes the `data:`
+  prefix.
+- `tr -d '\r'` removes the trailing carriage return (SSE lines end in CRLF;
+  without this `jq` may report `Unfinished string at EOF`).
+- `jq .` pretty-prints; narrow with a filter such as `jq '.result'`.
+
+For repeated calls, define a helper once per shell. Set `SID` from the
+`Mcp-Session-Id` returned by the initialize handshake, then reuse it:
+
+```bash
+SID="<paste-your-session-id-here>"
+
+mcp() {
+  curl -s -X POST http://127.0.0.1:9444/mcp \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "Mcp-Session-Id: $SID" \
+    -d "$1" | sed -n 's/^data: //p' | tr -d '\r' | jq "${2:-.}"
+}
+```
+
+The first argument is the JSON-RPC request body; the optional second argument
+is a `jq` filter (defaults to `.`). Examples:
+
+```bash
+mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' '.result.tools[].name'
+mcp '{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"cli://config"}}' \
+  '.result.contents[0].text | fromjson | .transport'
+```
+
+Notes:
+
+- `jq` must be installed; it does not ship with Git Bash (for example
+  `choco install jq`). `sed` and `tr` are already on the Git Bash `PATH`.
+- Do not pipe the header-dump commands (`curl -D -`, used to read the
+  `Mcp-Session-Id`) into `jq`; HTTP headers are not JSON.
+- Notification requests (such as `notifications/initialized`) return `202` with
+  an empty body, so there is nothing for `jq` to parse; check the status code
+  instead.
+- The helper targets the default `http://127.0.0.1:9444/mcp`. If you started the
+  server on another port (UAT-03, UAT-05), update the URL accordingly.
+
 ### Liveness check helper
 
 A `GET /mcp` without a session opens nothing useful, so to confirm a server is up
