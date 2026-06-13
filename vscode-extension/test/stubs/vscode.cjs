@@ -143,6 +143,16 @@ const workspace = {
       async update(key, value, target) {
         __setConfig(target ?? ConfigurationTarget.Workspace, full(key), value);
       },
+      inspect(key) {
+        const k = full(key);
+        return {
+          key: k,
+          defaultValue: undefined,
+          globalValue: state.configGlobal.has(k) ? state.configGlobal.get(k) : undefined,
+          workspaceValue: state.configWorkspace.has(k) ? state.configWorkspace.get(k) : undefined,
+          workspaceFolderValue: undefined,
+        };
+      },
     };
   },
   onDidChangeConfiguration(cb) {

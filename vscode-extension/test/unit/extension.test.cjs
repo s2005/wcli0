@@ -62,15 +62,6 @@ test('the restartServer command refreshes the provider', async () => {
   assert.equal(fired, 1);
 });
 
-test('activate falls back gracefully when the MCP API is unavailable', () => {
-  vscode.__state.lmHasProvider = false;
-  const ctx = makeContext();
-  activate(ctx);
-  // Commands still register even without the provider API.
-  assert.ok(vscode.__state.calls.registeredCommands.has('wcli0.configure'));
-  assert.equal(vscode.__state.registeredMcpProviders.length, 0);
-});
-
 test('each registered command callback runs without throwing', async () => {
   activate(makeContext());
   const cmds = vscode.__state.calls.registeredCommands;

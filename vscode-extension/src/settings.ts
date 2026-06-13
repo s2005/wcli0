@@ -85,46 +85,78 @@ function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+/** Configuration scope the form can target / be read from. */
+export type ConfigScope = 'Global' | 'Workspace';
+
+/** A keyed value getter — the only thing that differs between read modes. */
+type Getter = <T>(key: string, def: T) => T;
+
+/** Build a normalized settings object from an arbitrary keyed value getter. */
+function buildSettings(g: Getter): Wcli0Settings {
+  return {
+    launchMethod: g<LaunchMethod>('launch.method', 'npx'),
+    packageSpec: g<string>('launch.packageSpec', 'wcli0@latest'),
+    nodeScriptPath: g<string>('launch.nodeScriptPath', ''),
+    customCommand: g<string>('launch.customCommand', ''),
+    customArgs: g<string[]>('launch.customArgs', []),
+    cwd: g<string>('launch.cwd', ''),
+    env: g<Record<string, string>>('launch.env', {}),
+
+    configFile: g<string>('configFile', ''),
+    shell: g<string>('shell', 'all'),
+    allowedDirectories: g<string[]>('allowedDirectories', []),
+    initialDir: g<string>('initialDir', ''),
+    commandTimeout: num(g<number | null>('commandTimeout', null)),
+    maxCommandLength: num(g<number | null>('maxCommandLength', null)),
+    wslMountPoint: g<string>('wslMountPoint', ''),
+    blockedCommands: g<string[]>('blockedCommands', []),
+    blockedArguments: g<string[]>('blockedArguments', []),
+    blockedOperators: g<string[]>('blockedOperators', []),
+    maxOutputLines: num(g<number | null>('maxOutputLines', null)),
+    enableTruncation: g<TriState>('enableTruncation', 'default'),
+    enableLogResources: g<TriState>('enableLogResources', 'default'),
+    maxReturnLines: num(g<number | null>('maxReturnLines', null)),
+    logDirectory: g<string>('logDirectory', ''),
+    allowAllDirs: g<boolean>('allowAllDirs', false),
+    safetyMode: g<SafetyMode>('safetyMode', 'safe'),
+    debug: g<boolean>('debug', false),
+
+    transportMode: g<TransportMode>('transport.mode', 'stdio'),
+    transportHost: g<string>('transport.host', '127.0.0.1'),
+    transportPort: g<number>('transport.port', 9444),
+    transportAllowedOrigins: g<string[]>('transport.allowedOrigins', []),
+
+    extraArgs: g<string[]>('extraArgs', []),
+  };
+}
+
 /**
- * Read and normalize the wcli0 settings for the given scope resource.
+ * Read and normalize the effective wcli0 settings for the given scope resource.
  * Pass a workspace-folder Uri to read folder-scoped values, or undefined for
  * the merged user/workspace view.
  */
 export function readSettings(scope?: vscode.Uri): Wcli0Settings {
   const c = vscode.workspace.getConfiguration(CONFIG_SECTION, scope ?? null);
-  return {
-    launchMethod: c.get<LaunchMethod>('launch.method', 'npx'),
-    packageSpec: c.get<string>('launch.packageSpec', 'wcli0@latest'),
-    nodeScriptPath: c.get<string>('launch.nodeScriptPath', ''),
-    customCommand: c.get<string>('launch.customCommand', ''),
-    customArgs: c.get<string[]>('launch.customArgs', []),
-    cwd: c.get<string>('launch.cwd', ''),
-    env: c.get<Record<string, string>>('launch.env', {}),
+  return buildSettings((key, def) => c.get(key, def));
+}
 
-    configFile: c.get<string>('configFile', ''),
-    shell: c.get<string>('shell', 'all'),
-    allowedDirectories: c.get<string[]>('allowedDirectories', []),
-    initialDir: c.get<string>('initialDir', ''),
-    commandTimeout: num(c.get('commandTimeout', null)),
-    maxCommandLength: num(c.get('maxCommandLength', null)),
-    wslMountPoint: c.get<string>('wslMountPoint', ''),
-    blockedCommands: c.get<string[]>('blockedCommands', []),
-    blockedArguments: c.get<string[]>('blockedArguments', []),
-    blockedOperators: c.get<string[]>('blockedOperators', []),
-    maxOutputLines: num(c.get('maxOutputLines', null)),
-    enableTruncation: c.get<TriState>('enableTruncation', 'default'),
-    enableLogResources: c.get<TriState>('enableLogResources', 'default'),
-    maxReturnLines: num(c.get('maxReturnLines', null)),
-    logDirectory: c.get<string>('logDirectory', ''),
-    allowAllDirs: c.get<boolean>('allowAllDirs', false),
-    safetyMode: c.get<SafetyMode>('safetyMode', 'safe'),
-    debug: c.get<boolean>('debug', false),
-
-    transportMode: c.get<TransportMode>('transport.mode', 'stdio'),
-    transportHost: c.get<string>('transport.host', '127.0.0.1'),
-    transportPort: c.get<number>('transport.port', 9444),
-    transportAllowedOrigins: c.get<string[]>('transport.allowedOrigins', []),
-
-    extraArgs: c.get<string[]>('extraArgs', []),
-  };
+/**
+ * Read settings as stored at a specific scope (User or Workspace), falling back
+ * to the default when a key is not set at that scope. Unlike `readSettings`,
+ * this does NOT include values inherited from another scope — so the config form
+ * can edit one scope without surfacing (and then re-writing) the other's values.
+ */
+export function readSettingsForScope(target: ConfigScope, scope?: vscode.Uri): Wcli0Settings {
+  const c = vscode.workspace.getConfiguration(CONFIG_SECTION, scope ?? null);
+  return buildSettings(<T>(key: string, def: T): T => {
+    const info = c.inspect<T>(key);
+    if (!info) {
+      return def;
+    }
+    const value =
+      target === 'Global'
+        ? info.globalValue
+        : info.workspaceValue ?? info.workspaceFolderValue;
+    return value === undefined ? def : value;
+  });
 }

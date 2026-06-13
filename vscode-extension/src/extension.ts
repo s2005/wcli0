@@ -17,23 +17,11 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(provider);
 
   // Register the MCP server definition so VS Code/Copilot can launch wcli0
-  // directly from the user's settings — no hand-written mcp.json required.
-  const lm = vscode.lm as typeof vscode.lm & {
-    registerMcpServerDefinitionProvider?: (
-      id: string,
-      provider: vscode.McpServerDefinitionProvider,
-    ) => vscode.Disposable;
-  };
-  if (typeof lm.registerMcpServerDefinitionProvider === 'function') {
-    context.subscriptions.push(
-      lm.registerMcpServerDefinitionProvider('wcli0.serverProvider', provider),
-    );
-  } else {
-    output.appendLine(
-      'This VS Code version lacks the MCP server definition provider API (needs 1.101+). ' +
-        'Use "wcli0: Write .vscode/mcp.json" instead.',
-    );
-  }
+  // directly from the user's settings — no hand-written mcp.json required. The
+  // API is available on the declared engine (VS Code >= 1.101).
+  context.subscriptions.push(
+    vscode.lm.registerMcpServerDefinitionProvider('wcli0.serverProvider', provider),
+  );
 
   // Re-publish the server definition whenever relevant settings change.
   context.subscriptions.push(

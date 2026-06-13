@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The configuration form now loads and compares values per selected scope (User
+  vs Workspace) via `inspect`, so editing one scope never surfaces or re-writes
+  the other scope's values.
+- Removed the unreachable pre-1.101 fallback path and older-version support
+  claim; the MCP provider API is required (engine stays `^1.101.0`).
+
 Addressed automated review findings so generated artifacts and the registered
 server match how the wcli0 server actually interprets them:
 

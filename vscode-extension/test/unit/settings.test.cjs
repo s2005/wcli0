@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const vscode = require('../stubs/vscode.cjs');
 const {
   readSettings,
+  readSettingsForScope,
   resolveVariables,
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
@@ -57,6 +58,23 @@ test('resolveVariables expands workspaceFolder, named folder and userHome', () =
 test('resolveVariables passes through empty and plain strings', () => {
   assert.equal(resolveVariables(''), '');
   assert.equal(resolveVariables('/plain/path'), '/plain/path');
+});
+
+test('readSettingsForScope reads only the targeted scope (no inheritance)', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.shell', 'powershell');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+
+  // Merged view: workspace wins.
+  assert.equal(readSettings().shell, 'cmd');
+  // Scoped views show each scope's own stored value, not the inherited one.
+  assert.equal(readSettingsForScope('Global').shell, 'powershell');
+  assert.equal(readSettingsForScope('Workspace').shell, 'cmd');
+});
+
+test('readSettingsForScope falls back to defaults when unset at that scope', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  // Global has no value -> default, not the workspace value.
+  assert.equal(readSettingsForScope('Global').shell, 'all');
 });
 
 test('resolveVariables leaves the token intact when no workspace is open', () => {

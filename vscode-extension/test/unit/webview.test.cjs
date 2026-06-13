@@ -56,6 +56,19 @@ test('save message persists values to the chosen scope', async () => {
   assert.equal(vscode.__state.calls.info.length, 1);
 });
 
+test('scope change reloads values stored at the selected scope', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.shell', 'powershell');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'scopeChange', target: 'Global' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.equal(init.scope, 'Global');
+  // Global scope shows its own value, not the workspace override.
+  assert.equal(init.settings.shell, 'powershell');
+});
+
 test('save to User scope targets global configuration', async () => {
   openConfigPanel(makeContext());
   const panel = vscode.__state.lastWebviewPanel;

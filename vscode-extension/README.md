@@ -73,8 +73,7 @@ yourself.
 
 ## Requirements
 
-- VS Code 1.101 or later for automatic MCP registration. On older versions the
-  commands (including `Write .vscode/mcp.json`) still work.
+- VS Code 1.101 or later (required for the MCP server definition provider API).
 - Node.js available on `PATH` (for the default `npx` launch method).
 
 ## Development

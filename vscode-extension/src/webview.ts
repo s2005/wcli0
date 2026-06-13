@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
-import { CONFIG_SECTION, primaryWorkspaceFolder, readSettings } from './settings';
+import {
+  CONFIG_SECTION,
+  ConfigScope,
+  primaryWorkspaceFolder,
+  readSettingsForScope,
+} from './settings';
 
 /** Settings keys editable from the form, with their value types. */
 const FIELD_KEYS = [
@@ -50,18 +55,26 @@ export function openConfigPanel(context: vscode.ExtensionContext): void {
     panel = undefined;
   });
 
+  // The form edits one scope at a time; values shown are those stored at that
+  // scope (not inherited), so saving never re-writes the other scope's values.
+  let currentScope: ConfigScope = primaryWorkspaceFolder() ? 'Workspace' : 'Global';
+
   const post = () => {
     const scope = primaryWorkspaceFolder()?.uri;
     current.webview.postMessage({
       type: 'init',
       hasWorkspace: !!primaryWorkspaceFolder(),
-      settings: readSettings(scope),
+      scope: currentScope,
+      settings: readSettingsForScope(currentScope, scope),
     });
   };
 
   current.webview.html = renderHtml(current.webview);
   current.webview.onDidReceiveMessage(async (msg: { type: string } & Partial<SavePayload>) => {
     if (msg.type === 'ready') {
+      post();
+    } else if (msg.type === 'scopeChange' && msg.target) {
+      currentScope = msg.target;
       post();
     } else if (msg.type === 'save' && msg.values && msg.target) {
       await applySettings(msg as SavePayload);
@@ -304,15 +317,26 @@ function renderHtml(webview: vscode.Webview): string {
   $('writeMcp').addEventListener('click', () => vscode.postMessage({ type: 'writeMcpJson' }));
   $('showCommand').addEventListener('click', () => vscode.postMessage({ type: 'showCommand' }));
 
+  // Switching scope reloads the values stored at that scope so edits compare
+  // against (and save to) the selected scope only.
+  for (const radio of document.querySelectorAll('input[name=scope]')) {
+    radio.addEventListener('change', () => {
+      vscode.postMessage({ type: 'scopeChange', target: radio.value });
+    });
+  }
+
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'init') {
+      if (msg.scope) {
+        const r = document.querySelector('input[name=scope][value=' + msg.scope + ']');
+        if (r) r.checked = true;
+      }
       setVal(msg.settings);
       initial = collect();
       if (!msg.hasWorkspace) {
         $('noWorkspace').style.display = 'block';
-        const wsRadio = document.querySelector('input[name=scope][value=Workspace]');
-        wsRadio.disabled = true;
+        document.querySelector('input[name=scope][value=Workspace]').disabled = true;
         document.querySelector('input[name=scope][value=Global]').checked = true;
       }
     }
