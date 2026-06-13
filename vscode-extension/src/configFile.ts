@@ -1,10 +1,19 @@
 import { resolveVariables, Wcli0Settings } from './settings';
 
+/** Return the value only when it is a positive integer; otherwise undefined. */
+function posInt(n: number | null): number | undefined {
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
 /**
- * Default executable definitions for each shell, matching config.examples in
- * the wcli0 repository. Used to populate a generated config.json.
+ * Default shell definitions mirroring the server's DEFAULT_CONFIG (see
+ * src/utils/config.ts). The per-shell `overrides.restrictions` are reproduced
+ * here on purpose: when a generated config names a shell, the server's
+ * mergeConfigs treats it as a user override and drops that shell's default
+ * restrictions unless they are restated, so omitting them would silently stop
+ * blocking `del`/`rd`/`rmdir` (cmd) and `rm` (gitbash).
  */
-const SHELL_DEFAULTS: Record<string, unknown> = {
+const SHELL_DEFAULTS: Record<string, Record<string, unknown>> = {
   powershell: {
     type: 'powershell',
     enabled: true,
@@ -14,11 +23,13 @@ const SHELL_DEFAULTS: Record<string, unknown> = {
     type: 'cmd',
     enabled: true,
     executable: { command: 'cmd.exe', args: ['/c'] },
+    overrides: { restrictions: { blockedCommands: ['del', 'rd', 'rmdir'] } },
   },
   gitbash: {
     type: 'gitbash',
     enabled: true,
     executable: { command: 'C:\\Program Files\\Git\\bin\\bash.exe', args: ['-c'] },
+    overrides: { restrictions: { blockedCommands: ['rm'] } },
   },
   wsl: {
     type: 'wsl',
@@ -40,26 +51,41 @@ const SHELL_DEFAULTS: Record<string, unknown> = {
  * can be referenced via `wcli0.configFile` / `--config`.
  */
 export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
+  // allowAllDirs only lifts the restriction when nothing else is configured,
+  // matching the server's "when no allowed paths are configured" behavior.
+  const hasConfiguredPaths =
+    s.allowedDirectories.some((d) => d.trim()) || s.initialDir.trim().length > 0;
   const security: Record<string, unknown> = {
     enableInjectionProtection: s.safetyMode === 'safe',
-    restrictWorkingDirectory: s.safetyMode !== 'unsafe' && !s.allowAllDirs,
+    restrictWorkingDirectory:
+      s.safetyMode !== 'unsafe' && !(s.allowAllDirs && !hasConfiguredPaths),
   };
-  if (s.commandTimeout != null) {
+  // Only emit positive-integer limits; the server's validateConfig rejects
+  // zero/negative/fractional values that the settings schema would otherwise allow.
+  if (posInt(s.commandTimeout) != null) {
     security.commandTimeout = s.commandTimeout;
   }
-  if (s.maxCommandLength != null) {
+  if (posInt(s.maxCommandLength) != null) {
     security.maxCommandLength = s.maxCommandLength;
   }
 
   const restrictions: Record<string, unknown> = {};
-  if (s.blockedCommands.length > 0) {
-    restrictions.blockedCommands = s.blockedCommands.filter((v) => v !== '');
-  }
-  if (s.blockedArguments.length > 0) {
-    restrictions.blockedArguments = s.blockedArguments.filter((v) => v !== '');
-  }
-  if (s.blockedOperators.length > 0) {
-    restrictions.blockedOperators = s.blockedOperators.filter((v) => v !== '');
+  if (s.safetyMode === 'unsafe' || s.safetyMode === 'yolo') {
+    // The server's --yolo/--unsafe clear all blocked lists; emit empty arrays so
+    // the generated config matches (otherwise mergeConfigs restores the defaults).
+    restrictions.blockedCommands = [];
+    restrictions.blockedArguments = [];
+    restrictions.blockedOperators = [];
+  } else {
+    if (s.blockedCommands.length > 0) {
+      restrictions.blockedCommands = s.blockedCommands.filter((v) => v !== '');
+    }
+    if (s.blockedArguments.length > 0) {
+      restrictions.blockedArguments = s.blockedArguments.filter((v) => v !== '');
+    }
+    if (s.blockedOperators.length > 0) {
+      restrictions.blockedOperators = s.blockedOperators.filter((v) => v !== '');
+    }
   }
 
   const paths: Record<string, unknown> = {
@@ -70,7 +96,7 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   }
 
   const logging: Record<string, unknown> = {};
-  if (s.maxOutputLines != null) {
+  if (posInt(s.maxOutputLines) != null) {
     logging.maxOutputLines = s.maxOutputLines;
   }
   if (s.enableTruncation !== 'default') {
@@ -79,7 +105,7 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   if (s.enableLogResources !== 'default') {
     logging.enableLogResources = s.enableLogResources === 'enabled';
   }
-  if (s.maxReturnLines != null) {
+  if (posInt(s.maxReturnLines) != null) {
     logging.maxReturnLines = s.maxReturnLines;
   }
   if (s.logDirectory.trim()) {
@@ -94,12 +120,30 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     global.logging = logging;
   }
 
-  const shellNames = s.shell === 'all' ? ['powershell', 'cmd', 'gitbash', 'wsl'] : [s.shell];
+  // Emit every known shell with an explicit `enabled` flag. Omitting a shell is
+  // not enough to disable it: the server's mergeConfigs restores any shell that
+  // is absent from the file (with enabled: true) from its defaults.
+  const knownShells = ['powershell', 'cmd', 'gitbash', 'wsl', 'bash'];
+  const clearShellRestrictions = s.safetyMode === 'unsafe' || s.safetyMode === 'yolo';
   const shells: Record<string, unknown> = {};
-  for (const name of shellNames) {
-    if (SHELL_DEFAULTS[name]) {
-      shells[name] = structuredClone(SHELL_DEFAULTS[name]);
+  for (const name of knownShells) {
+    if (!SHELL_DEFAULTS[name]) {
+      continue;
     }
+    const entry = structuredClone(SHELL_DEFAULTS[name]) as {
+      enabled: boolean;
+      overrides?: { restrictions?: Record<string, unknown> };
+    };
+    entry.enabled = s.shell === 'all' ? true : name === s.shell;
+    if (clearShellRestrictions && entry.overrides?.restrictions) {
+      // --yolo/--unsafe also clear shell-specific blocked lists.
+      entry.overrides.restrictions = {
+        blockedCommands: [],
+        blockedArguments: [],
+        blockedOperators: [],
+      };
+    }
+    shells[name] = entry;
   }
   if (s.wslMountPoint.trim()) {
     for (const name of ['wsl', 'bash']) {

@@ -7,6 +7,7 @@ const {
   buildLaunchSpec,
   validateLaunchSpec,
   renderCommandLine,
+  isValidPort,
 } = require('../../dist/argsBuilder.js');
 
 function defaults(overrides = {}) {
@@ -160,11 +161,14 @@ test('extraArgs are appended verbatim', () => {
 
 test('validateLaunchSpec flags missing node path and unsafe mode', () => {
   assert.equal(validateLaunchSpec(defaults()).length, 0);
-  assert.match(
-    validateLaunchSpec(defaults({ launchMethod: 'node' }))[0],
-    /nodeScriptPath is empty/,
+  const nodeProblems = validateLaunchSpec(defaults({ launchMethod: 'node' }));
+  assert.match(nodeProblems[0].message, /nodeScriptPath is empty/);
+  assert.equal(nodeProblems[0].blocking, true);
+  assert.ok(
+    validateLaunchSpec(defaults({ safetyMode: 'unsafe' })).some(
+      (p) => /unsafe/.test(p.message) && !p.blocking,
+    ),
   );
-  assert.ok(validateLaunchSpec(defaults({ safetyMode: 'unsafe' })).some((p) => /unsafe/.test(p)));
 });
 
 test('renderCommandLine quotes args with spaces', () => {
@@ -203,6 +207,8 @@ test('every remaining flag is emitted when set', () => {
     '--logDirectory', '/ws/logs',
     '--allowAllDirs',
     '--debug',
+    // configFile present + stdio -> force stdio so the file can't select http/sse.
+    '--transport', 'stdio',
   ]);
 });
 
@@ -224,7 +230,50 @@ test('empty package spec falls back to wcli0@latest', () => {
 
 test('validateLaunchSpec flags missing custom command', () => {
   assert.match(
-    validateLaunchSpec(defaults({ launchMethod: 'custom' }))[0],
+    validateLaunchSpec(defaults({ launchMethod: 'custom' }))[0].message,
     /customCommand is empty/,
   );
+});
+
+test('allowed dirs that do not resolve are dropped and blocked', () => {
+  // No workspace open: ${workspaceFolder} stays unresolved.
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ allowedDirectories: ['${workspaceFolder}', '${workspaceFolder}/sub'] });
+  assert.deepEqual(buildServerArgs(s), []); // nothing emitted
+  const problems = validateLaunchSpec(s);
+  assert.equal(problems.filter((p) => p.blocking).length, 2);
+});
+
+test('configFile + safe mode emits a non-blocking warning', () => {
+  const problems = validateLaunchSpec(defaults({ configFile: '/c.json' }));
+  assert.ok(problems.some((p) => /config file is referenced/i.test(p.message) && !p.blocking));
+});
+
+test('allowedDir in safe mode warns about injection protection', () => {
+  const problems = validateLaunchSpec(defaults({ allowedDirectories: ['/srv'] }));
+  assert.ok(problems.some((p) => /injection protection/i.test(p.message) && !p.blocking));
+});
+
+test('invalid transport port is blocking and not emitted', () => {
+  const s = defaults({ transportMode: 'http', transportPort: 70000 });
+  assert.equal(buildServerArgs(s).includes('--http-port'), false);
+  assert.ok(validateLaunchSpec(s).some((p) => /transport\.port/.test(p.message) && p.blocking));
+});
+
+test('isValidPort accepts 1..65535 integers only', () => {
+  assert.equal(isValidPort(9444), true);
+  assert.equal(isValidPort(0), false);
+  assert.equal(isValidPort(65536), false);
+  assert.equal(isValidPort(80.5), false);
+});
+
+test('renderCommandLine keeps backslashes and quotes metacharacters', () => {
+  const line = renderCommandLine({
+    command: 'npx',
+    args: ['-y', 'wcli0', '--blockedOperator', '|', '--allowedDir', 'C:\\safe path'],
+    cwd: undefined,
+    env: {},
+  });
+  assert.match(line, /--blockedOperator "\|"/);
+  assert.match(line, /"C:\\safe path"/); // backslash not doubled
 });

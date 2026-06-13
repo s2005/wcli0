@@ -51,6 +51,14 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
     return;
   }
   const settings = readSettings(folder.uri);
+
+  // Don't write a definition that cannot start (e.g. node/custom without a path).
+  const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
+  if (blocking.length > 0) {
+    void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
+    return;
+  }
+
   const spec = buildLaunchSpec(settings);
 
   const entry: Record<string, unknown> =
@@ -59,6 +67,7 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
           type: 'stdio',
           command: spec.command,
           args: spec.args,
+          ...(spec.cwd ? { cwd: spec.cwd } : {}),
           ...(Object.keys(spec.env).length ? { env: spec.env } : {}),
         }
       : {
@@ -70,10 +79,19 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
 
   const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');
   let existing: Record<string, unknown> = {};
+  let fileExists = false;
   try {
     const raw = await vscode.workspace.fs.readFile(mcpUri);
+    fileExists = true;
     existing = JSON.parse(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
-  } catch {
+  } catch (err) {
+    if (fileExists) {
+      // The file exists but is not valid JSON — refuse rather than clobber it.
+      void vscode.window.showErrorMessage(
+        `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
+      );
+      return;
+    }
     // No existing file — start fresh.
   }
   const servers = (existing.servers as Record<string, unknown>) ?? {};
@@ -112,7 +130,7 @@ export async function showLaunchCommand(output: vscode.OutputChannel): Promise<v
     output.appendLine('');
     output.appendLine('Notes:');
     for (const p of problems) {
-      output.appendLine(`  - ${p}`);
+      output.appendLine(`  - ${p.message}`);
     }
   }
   output.show(true);
@@ -130,10 +148,17 @@ export async function showLaunchCommand(output: vscode.OutputChannel): Promise<v
     });
 }
 
-/** Ask the MCP provider to re-read settings and restart the server. */
-export async function restartServer(provider: Wcli0McpProvider): Promise<void> {
+/**
+ * Republish the server definition from current settings. This does not stop an
+ * already-running server process; VS Code restarts it when the definition's
+ * launch arguments change. If only non-launch state changed, restart the server
+ * from the MCP view (Extensions: Show Installed / MCP Servers) to pick it up.
+ */
+export async function refreshServerDefinition(provider: Wcli0McpProvider): Promise<void> {
   provider.refresh();
-  void vscode.window.showInformationMessage('wcli0: MCP server definitions refreshed.');
+  void vscode.window.showInformationMessage(
+    'wcli0: MCP server definition refreshed. If the server was already running with the same launch command, restart it from the MCP view to apply changes.',
+  );
 }
 
 export { resolveVariables };

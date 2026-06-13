@@ -52,20 +52,33 @@ export function primaryWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
   return vscode.workspace.workspaceFolders?.[0];
 }
 
-/** Resolve `${workspaceFolder}` / `${workspaceFolder:name}` tokens in a string. */
+/**
+ * Resolve `${workspaceFolder}` / `${workspaceFolder:name}` / `${userHome}`
+ * tokens in a string. When a token cannot be resolved (e.g. no workspace is
+ * open), it is left intact rather than replaced with an empty string — turning
+ * `${workspaceFolder}/x` into `/x` could silently widen an allowed path to a
+ * root-level directory. Callers detect leftover tokens via
+ * `hasUnresolvedVariables` and refuse to use such values.
+ */
 export function resolveVariables(value: string): string {
   if (!value) {
     return value;
   }
   const folders = vscode.workspace.workspaceFolders ?? [];
   const primary = folders[0];
+  const userHome = process.env.HOME ?? process.env.USERPROFILE;
   return value
     .replace(/\$\{workspaceFolder:([^}]+)\}/g, (_m, name: string) => {
       const match = folders.find((f) => f.name === name);
       return match ? match.uri.fsPath : _m;
     })
-    .replace(/\$\{workspaceFolder\}/g, primary ? primary.uri.fsPath : '')
-    .replace(/\$\{userHome\}/g, process.env.HOME ?? process.env.USERPROFILE ?? '');
+    .replace(/\$\{workspaceFolder\}/g, (m) => (primary ? primary.uri.fsPath : m))
+    .replace(/\$\{userHome\}/g, (m) => (userHome ? userHome : m));
+}
+
+/** Whether a string still contains an unresolved `${...}` variable token. */
+export function hasUnresolvedVariables(value: string): boolean {
+  return /\$\{[^}]+\}/.test(value);
 }
 
 function num(value: unknown): number | null {

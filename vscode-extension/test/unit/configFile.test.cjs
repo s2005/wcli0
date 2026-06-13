@@ -46,17 +46,56 @@ test.beforeEach(() => {
   ];
 });
 
-test('default config enables safety and all four Windows shells', () => {
+test('default config enables safety and all five shells', () => {
   const cfg = buildConfigFile(defaults());
   assert.equal(cfg.global.security.enableInjectionProtection, true);
   assert.equal(cfg.global.security.restrictWorkingDirectory, true);
-  assert.deepEqual(Object.keys(cfg.shells).sort(), ['cmd', 'gitbash', 'powershell', 'wsl']);
+  assert.deepEqual(
+    Object.keys(cfg.shells).sort(),
+    ['bash', 'cmd', 'gitbash', 'powershell', 'wsl'],
+  );
+  assert.ok(Object.values(cfg.shells).every((s) => s.enabled === true));
   assert.deepEqual(cfg.global.paths.allowedPaths, []);
 });
 
-test('single shell selection limits the shells map', () => {
+test('single shell selection disables the others (not omits them)', () => {
   const cfg = buildConfigFile(defaults({ shell: 'powershell' }));
-  assert.deepEqual(Object.keys(cfg.shells), ['powershell']);
+  assert.deepEqual(
+    Object.keys(cfg.shells).sort(),
+    ['bash', 'cmd', 'gitbash', 'powershell', 'wsl'],
+  );
+  assert.equal(cfg.shells.powershell.enabled, true);
+  assert.equal(cfg.shells.cmd.enabled, false);
+  assert.equal(cfg.shells.wsl.enabled, false);
+});
+
+test('safe config preserves per-shell default restrictions', () => {
+  const cfg = buildConfigFile(defaults());
+  assert.deepEqual(cfg.shells.cmd.overrides.restrictions.blockedCommands, ['del', 'rd', 'rmdir']);
+  assert.deepEqual(cfg.shells.gitbash.overrides.restrictions.blockedCommands, ['rm']);
+});
+
+test('yolo/unsafe clear global and per-shell restrictions', () => {
+  for (const mode of ['yolo', 'unsafe']) {
+    const cfg = buildConfigFile(defaults({ safetyMode: mode }));
+    assert.deepEqual(cfg.global.restrictions.blockedCommands, []);
+    assert.deepEqual(cfg.shells.cmd.overrides.restrictions.blockedCommands, []);
+    assert.deepEqual(cfg.shells.gitbash.overrides.restrictions.blockedCommands, []);
+  }
+});
+
+test('allowAllDirs keeps restriction when paths are configured', () => {
+  const withPaths = buildConfigFile(defaults({ allowAllDirs: true, allowedDirectories: ['/srv'] }));
+  assert.equal(withPaths.global.security.restrictWorkingDirectory, true);
+  const noPaths = buildConfigFile(defaults({ allowAllDirs: true }));
+  assert.equal(noPaths.global.security.restrictWorkingDirectory, false);
+});
+
+test('non-positive numeric limits are omitted from the config', () => {
+  const cfg = buildConfigFile(defaults({ commandTimeout: 0, maxCommandLength: -1, maxOutputLines: 0 }));
+  assert.equal('commandTimeout' in cfg.global.security, false);
+  assert.equal('maxCommandLength' in cfg.global.security, false);
+  assert.equal(cfg.global.logging?.maxOutputLines, undefined);
 });
 
 test('allowed directories are resolved into paths.allowedPaths', () => {

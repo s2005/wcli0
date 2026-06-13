@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { Wcli0McpProvider } from './mcpProvider';
 import {
   generateConfigFile,
-  restartServer,
+  refreshServerDefinition,
   showLaunchCommand,
   writeWorkspaceMcpJson,
 } from './commands';
@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('wcli0.configure', () => openConfigPanel(context)),
     vscode.commands.registerCommand('wcli0.generateConfigFile', () => generateConfigFile()),
     vscode.commands.registerCommand('wcli0.writeWorkspaceMcpJson', () => writeWorkspaceMcpJson()),
-    vscode.commands.registerCommand('wcli0.restartServer', () => restartServer(provider)),
+    vscode.commands.registerCommand('wcli0.restartServer', () => refreshServerDefinition(provider)),
     vscode.commands.registerCommand('wcli0.showLaunchCommand', () => showLaunchCommand(output)),
   );
 }

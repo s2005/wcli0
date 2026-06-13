@@ -262,6 +262,8 @@ function renderHtml(webview: vscode.Webview): string {
     return map[k] || k;
   }
 
+  let initial = {};
+
   function collect() {
     const values = {};
     for (const f of stringFields) if ($(f)) values[f] = $(f).value.trim();
@@ -269,6 +271,21 @@ function renderHtml(webview: vscode.Webview): string {
     for (const f of boolFields) if ($(f)) values[f] = $(f).checked;
     for (const f of arrayFields) if ($(f)) values[f] = $(f).value.split('\\n').map(x=>x.trim()).filter(Boolean);
     return values;
+  }
+
+  // Only submit fields the user actually changed. The form is populated from the
+  // merged (effective) configuration; writing every field to a scope would copy
+  // inherited values from the other scope (e.g. saving to User would persist
+  // workspace-specific values globally).
+  function collectChanged() {
+    const all = collect();
+    const changed = {};
+    for (const k of Object.keys(all)) {
+      if (JSON.stringify(all[k]) !== JSON.stringify(initial[k])) {
+        changed[k] = all[k];
+      }
+    }
+    return changed;
   }
 
   function updateLaunchRows() {
@@ -281,7 +298,7 @@ function renderHtml(webview: vscode.Webview): string {
 
   $('save').addEventListener('click', () => {
     const target = document.querySelector('input[name=scope]:checked').value;
-    vscode.postMessage({ type: 'save', target, values: collect() });
+    vscode.postMessage({ type: 'save', target, values: collectChanged() });
   });
   $('genConfig').addEventListener('click', () => vscode.postMessage({ type: 'generateConfig' }));
   $('writeMcp').addEventListener('click', () => vscode.postMessage({ type: 'writeMcpJson' }));
@@ -291,6 +308,7 @@ function renderHtml(webview: vscode.Webview): string {
     const msg = e.data;
     if (msg.type === 'init') {
       setVal(msg.settings);
+      initial = collect();
       if (!msg.hasWorkspace) {
         $('noWorkspace').style.display = 'block';
         const wsRadio = document.querySelector('input[name=scope][value=Workspace]');

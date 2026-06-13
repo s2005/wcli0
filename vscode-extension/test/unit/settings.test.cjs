@@ -5,6 +5,7 @@ const vscode = require('../stubs/vscode.cjs');
 const {
   readSettings,
   resolveVariables,
+  hasUnresolvedVariables,
   primaryWorkspaceFolder,
   CONFIG_SECTION,
 } = require('../../dist/settings.js');
@@ -58,9 +59,15 @@ test('resolveVariables passes through empty and plain strings', () => {
   assert.equal(resolveVariables('/plain/path'), '/plain/path');
 });
 
-test('resolveVariables yields empty when no workspace is open', () => {
+test('resolveVariables leaves the token intact when no workspace is open', () => {
   vscode.__state.workspaceFolders = undefined;
-  assert.equal(resolveVariables('${workspaceFolder}/x'), '/x');
+  // Must NOT collapse to "/x" — that could widen an allowed path to a root dir.
+  assert.equal(resolveVariables('${workspaceFolder}/x'), '${workspaceFolder}/x');
+});
+
+test('hasUnresolvedVariables detects leftover tokens', () => {
+  assert.equal(hasUnresolvedVariables('${workspaceFolder}/x'), true);
+  assert.equal(hasUnresolvedVariables('/plain/path'), false);
 });
 
 test('primaryWorkspaceFolder returns the first folder or undefined', () => {

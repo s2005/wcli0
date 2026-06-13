@@ -6,7 +6,7 @@ const {
   generateConfigFile,
   writeWorkspaceMcpJson,
   showLaunchCommand,
-  restartServer,
+  refreshServerDefinition,
 } = require('../../dist/commands.js');
 
 const WS = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
@@ -105,8 +105,31 @@ test('showLaunchCommand reports cwd and env when configured', async () => {
   assert.match(text, /env: .*FOO/);
 });
 
-test('restartServer refreshes the provider', async () => {
+test('refreshServerDefinition refreshes the provider', async () => {
   let refreshed = 0;
-  await restartServer({ refresh: () => (refreshed += 1) });
+  await refreshServerDefinition({ refresh: () => (refreshed += 1) });
   assert.equal(refreshed, 1);
+});
+
+test('writeWorkspaceMcpJson includes a configured cwd', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}/sub');
+  await writeWorkspaceMcpJson();
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.cwd, '/ws/sub');
+});
+
+test('writeWorkspaceMcpJson refuses a broken launch config', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.method', 'node');
+  // nodeScriptPath empty -> blocking
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 1);
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
+test('writeWorkspaceMcpJson preserves a syntactically broken existing file', async () => {
+  vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from('{ not json'));
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 1);
+  // File left untouched.
+  assert.equal(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'), '{ not json');
 });
