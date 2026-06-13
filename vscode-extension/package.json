@@ -339,6 +339,7 @@
     "pretest": "npm run build",
     "test": "npm run test:unit",
     "test:unit": "node --require ./test/stubs/hook.cjs --test test/unit/argsBuilder.test.cjs test/unit/configFile.test.cjs",
+    "setup:test-editor": "bash scripts/setup-test-editor.sh",
     "test:integration": "vscode-test"
   },
   "devDependencies": {

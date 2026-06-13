@@ -117,13 +117,17 @@ export async function showLaunchCommand(output: vscode.OutputChannel): Promise<v
   }
   output.show(true);
 
-  const pick = await vscode.window.showInformationMessage(
-    'wcli0 launch command written to output.',
-    'Copy command',
-  );
-  if (pick === 'Copy command') {
-    await vscode.env.clipboard.writeText(line);
-  }
+  // Don't await: the command should complete as soon as the output is written.
+  // Awaiting the notification would keep the command invocation pending until
+  // the user dismisses it (and hang headless callers entirely).
+  void vscode.window
+    .showInformationMessage('wcli0 launch command written to output.', 'Copy command')
+    .then((pick) => {
+      if (pick === 'Copy command') {
+        return vscode.env.clipboard.writeText(line);
+      }
+      return undefined;
+    });
 }
 
 /** Ask the MCP provider to re-read settings and restart the server. */
