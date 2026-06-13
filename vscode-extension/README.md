@@ -87,3 +87,19 @@ npm run build      # tsc -> dist/
 
 Press F5 in VS Code (with this folder open) to launch an Extension Development
 Host.
+
+## Testing
+
+Two layers:
+
+- **Unit tests** (`npm run test:unit`) cover the pure logic — CLI-flag building,
+  launch-spec assembly, `config.json` generation, and `${workspaceFolder}`
+  resolution. They run under plain Node via `node:test`, with a small `vscode`
+  stub (`test/stubs/`), so no VS Code download is needed. `npm test` runs these.
+- **Integration tests** (`npm run test:integration`) activate the packaged
+  extension inside a real VS Code Extension Host using `@vscode/test-electron`:
+  they assert the extension activates, contributes its commands and setting
+  defaults, round-trips a setting update, and runs a command. These download a
+  VS Code build and need a display — on headless machines run them under
+  `xvfb-run -a npm run test:integration`. CI runs both layers
+  (`.github/workflows/vscode-extension.yml`).
