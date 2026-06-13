@@ -1,0 +1,345 @@
+{
+  "name": "wcli0-vscode",
+  "displayName": "wcli0 — Windows CLI MCP Server",
+  "description": "Configure and run the wcli0 Windows CLI MCP server with simple user- and workspace-level settings.",
+  "version": "0.1.0",
+  "publisher": "s2005",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "mcp",
+    "model context protocol",
+    "wcli0",
+    "windows cli",
+    "copilot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/s2005/wcli0.git",
+    "directory": "vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/s2005/wcli0/issues"
+  },
+  "homepage": "https://github.com/s2005/wcli0",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "wcli0.serverProvider",
+        "label": "wcli0 Windows CLI"
+      }
+    ],
+    "commands": [
+      {
+        "command": "wcli0.configure",
+        "title": "wcli0: Configure Server…",
+        "category": "wcli0"
+      },
+      {
+        "command": "wcli0.generateConfigFile",
+        "title": "wcli0: Generate config.json From Settings",
+        "category": "wcli0"
+      },
+      {
+        "command": "wcli0.writeWorkspaceMcpJson",
+        "title": "wcli0: Write .vscode/mcp.json",
+        "category": "wcli0"
+      },
+      {
+        "command": "wcli0.restartServer",
+        "title": "wcli0: Restart MCP Server",
+        "category": "wcli0"
+      },
+      {
+        "command": "wcli0.showLaunchCommand",
+        "title": "wcli0: Show Resolved Launch Command",
+        "category": "wcli0"
+      }
+    ],
+    "configuration": {
+      "title": "wcli0",
+      "properties": {
+        "wcli0.launch.method": {
+          "type": "string",
+          "enum": [
+            "npx",
+            "node",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "Run via npx (downloads/uses the published wcli0 package).",
+            "Run a local build with `node <path to dist/index.js>`.",
+            "Run a fully custom command and arguments."
+          ],
+          "default": "npx",
+          "markdownDescription": "How to launch the wcli0 server process.",
+          "scope": "resource"
+        },
+        "wcli0.launch.packageSpec": {
+          "type": "string",
+          "default": "wcli0@latest",
+          "markdownDescription": "npm package spec used when `#wcli0.launch.method#` is `npx` (e.g. `wcli0@latest`, `wcli0@1.3.1`).",
+          "scope": "resource"
+        },
+        "wcli0.launch.nodeScriptPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the built `dist/index.js`, used when `#wcli0.launch.method#` is `node`.",
+          "scope": "resource"
+        },
+        "wcli0.launch.customCommand": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Executable to run when `#wcli0.launch.method#` is `custom`.",
+          "scope": "resource"
+        },
+        "wcli0.launch.customArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Leading arguments inserted before the generated flags when `#wcli0.launch.method#` is `custom`.",
+          "scope": "resource"
+        },
+        "wcli0.launch.cwd": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Working directory for the server process. Defaults to the first workspace folder. Supports `${workspaceFolder}`.",
+          "scope": "resource"
+        },
+        "wcli0.launch.env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "markdownDescription": "Extra environment variables passed to the server process.",
+          "scope": "resource"
+        },
+        "wcli0.configFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to a wcli0 JSON config file passed via `--config`. When set, CLI-flag settings below act as overrides on top of it. Supports `${workspaceFolder}`.",
+          "scope": "resource"
+        },
+        "wcli0.shell": {
+          "type": "string",
+          "enum": [
+            "all",
+            "cmd",
+            "powershell",
+            "gitbash",
+            "wsl",
+            "bash"
+          ],
+          "default": "all",
+          "markdownDescription": "Restrict the server to a single shell (`--shell`). `all` leaves every configured shell enabled.",
+          "scope": "resource"
+        },
+        "wcli0.allowedDirectories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Directories where commands may run (`--allowedDir`, repeated). Supports `${workspaceFolder}`. Leave empty to use the config file / server defaults.",
+          "scope": "resource"
+        },
+        "wcli0.initialDir": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Initial working directory (`--initialDir`). Supports `${workspaceFolder}`.",
+          "scope": "resource"
+        },
+        "wcli0.commandTimeout": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "markdownDescription": "Command timeout in seconds (`--commandTimeout`). Leave unset to use the default.",
+          "scope": "resource"
+        },
+        "wcli0.maxCommandLength": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "markdownDescription": "Maximum command string length (`--maxCommandLength`).",
+          "scope": "resource"
+        },
+        "wcli0.wslMountPoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Mount point for Windows drives in WSL (`--wslMountPoint`, default `/mnt/`).",
+          "scope": "resource"
+        },
+        "wcli0.blockedCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Override blocked commands (`--blockedCommand`). Set a single empty string `[\"\"]` to allow all.",
+          "scope": "resource"
+        },
+        "wcli0.blockedArguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Override blocked arguments (`--blockedArgument`). Set `[\"\"]` to allow all.",
+          "scope": "resource"
+        },
+        "wcli0.blockedOperators": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Override blocked operators (`--blockedOperator`). Set `[\"\"]` to allow all.",
+          "scope": "resource"
+        },
+        "wcli0.maxOutputLines": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "markdownDescription": "Maximum output lines before truncation (`--maxOutputLines`, default 20).",
+          "scope": "resource"
+        },
+        "wcli0.enableTruncation": {
+          "type": "string",
+          "enum": [
+            "default",
+            "enabled",
+            "disabled"
+          ],
+          "default": "default",
+          "markdownDescription": "Output truncation (`--enableTruncation`). `default` lets the server decide (on).",
+          "scope": "resource"
+        },
+        "wcli0.enableLogResources": {
+          "type": "string",
+          "enum": [
+            "default",
+            "enabled",
+            "disabled"
+          ],
+          "default": "default",
+          "markdownDescription": "Log resources for `get_command_output` (`--enableLogResources`). `default` lets the server decide (on).",
+          "scope": "resource"
+        },
+        "wcli0.maxReturnLines": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "markdownDescription": "Maximum lines returned by `get_command_output` (`--maxReturnLines`, default 500).",
+          "scope": "resource"
+        },
+        "wcli0.logDirectory": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Directory for command output log files (`--logDirectory`). Supports `${workspaceFolder}`.",
+          "scope": "resource"
+        },
+        "wcli0.allowAllDirs": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Disable working-directory restriction when no allowed paths are configured (`--allowAllDirs`).",
+          "scope": "resource"
+        },
+        "wcli0.safetyMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "yolo",
+            "unsafe"
+          ],
+          "enumDescriptions": [
+            "All safety checks enabled (recommended).",
+            "Disable command-blocking checks but keep allowed-directory restrictions (`--yolo`).",
+            "Disable ALL safety checks including directory restrictions (`--unsafe`). Dangerous."
+          ],
+          "default": "safe",
+          "markdownDescription": "Safety level for command execution.",
+          "scope": "resource"
+        },
+        "wcli0.debug": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable debug logging (`--debug`).",
+          "scope": "resource"
+        },
+        "wcli0.transport.mode": {
+          "type": "string",
+          "enum": [
+            "stdio",
+            "http",
+            "sse"
+          ],
+          "default": "stdio",
+          "markdownDescription": "Transport protocol (`--transport`). VS Code's built-in MCP integration uses `stdio`; `http`/`sse` are for external clients and generated config files.",
+          "scope": "resource"
+        },
+        "wcli0.transport.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "markdownDescription": "Host for `http`/`sse` transport.",
+          "scope": "resource"
+        },
+        "wcli0.transport.port": {
+          "type": "number",
+          "default": 9444,
+          "markdownDescription": "Port for `http`/`sse` transport.",
+          "scope": "resource"
+        },
+        "wcli0.transport.allowedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Browser origins allowed for `http`/`sse` transport.",
+          "scope": "resource"
+        },
+        "wcli0.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional raw arguments appended to the launch command (escape hatch).",
+          "scope": "resource"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "lint": "tsc --noEmit -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.101.0",
+    "typescript": "^5.3.3"
+  }
+}
