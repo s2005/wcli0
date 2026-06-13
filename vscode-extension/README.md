@@ -104,16 +104,11 @@ Two layers:
   they assert the extension activates, contributes its commands and setting
   defaults, round-trips a setting update, and runs a command.
 
-### Running integration tests headless / behind an egress allowlist
+### Running integration tests headless or without the VS Code download
 
-`@vscode/test-electron` normally downloads VS Code from
-`update.code.visualstudio.com` / `*.vscode-cdn.net`. In sandboxed environments
-those hosts are often blocked by an egress allowlist (you'll see
-`Failed to parse response from https://update.code.visualstudio.com … as JSON`
-or `host_not_allowed`), so the download fails.
-
-To run without contacting Microsoft hosts, provision a VS Code-compatible build
-(VSCodium) from GitHub first:
+`@vscode/test-electron` normally downloads VS Code on first run. When that
+download isn't available or you want a deterministic, self-contained run, you can
+instead provision a VS Code-compatible build (VSCodium) from GitHub:
 
 ```bash
 npm run setup:test-editor          # downloads VSCodium into .vscode-test/
@@ -121,15 +116,10 @@ xvfb-run -a npm run test:integration
 ```
 
 `setup:test-editor` writes the editor path to `.vscode-test/editor-path`, which
-`.vscode-test.mjs` picks up via `useInstallation.fromPath` — no Microsoft host
-is contacted. You can also point at any local install with
-`VSCODE_TEST_FROM_PATH=/path/to/code`, or pin a VSCodium version with
-`VSCODIUM_VERSION`. The launch args `--no-sandbox --disable-gpu
+`.vscode-test.mjs` picks up via `useInstallation.fromPath`. You can also point at
+any local install with `VSCODE_TEST_FROM_PATH=/path/to/code`, or pin a VSCodium
+version with `VSCODIUM_VERSION`. The launch args `--no-sandbox --disable-gpu
 --disable-dev-shm-usage` are set so Chromium runs as root inside containers.
 
-If you'd rather use the standard download, add these hosts to your egress
-allowlist instead: `update.code.visualstudio.com`,
-`vscode.download.prss.microsoft.com`, `*.vscode-cdn.net`.
-
 CI runs both layers (`.github/workflows/vscode-extension.yml`) using the
-VSCodium path so it's independent of Microsoft egress.
+provisioned editor so it doesn't depend on the on-demand download.

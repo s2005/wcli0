@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Provision a VS Code-compatible editor for running the Extension Host
-# integration tests WITHOUT contacting Microsoft download hosts.
+# Provision a VS Code-compatible editor (VSCodium) for the Extension Host
+# integration tests, so they can run without @vscode/test-electron's on-demand
+# VS Code download (useful offline or for a deterministic, self-contained run).
 #
-# Why: some sandboxed/CI environments enforce an egress allowlist that permits
-# github.com but blocks update.code.visualstudio.com and *.vscode-cdn.net, so
-# @vscode/test-electron's normal download fails. VSCodium publishes full,
-# VS Code-compatible Linux builds as GitHub release assets, which ARE reachable.
+# VSCodium publishes full, VS Code-compatible Linux builds as GitHub release
+# assets; this fetches one and points the test runner at it.
 #
 # Output: prints the absolute path to the editor executable on the last line and
 # writes it to .vscode-test/editor-path so npm scripts can pick it up.

@@ -3,8 +3,8 @@ import { defineConfig } from '@vscode/test-cli';
 
 // Runs the integration tests inside a real VS Code Extension Host.
 //
-// By default this downloads VS Code ("stable"). In sandboxed environments where
-// Microsoft download hosts are blocked by an egress allowlist, run
+// By default this downloads VS Code ("stable"). To run without the on-demand
+// download (e.g. offline or for a deterministic run), run
 // `npm run setup:test-editor` first: it fetches a VS Code-compatible build
 // (VSCodium) from GitHub and writes its path to .vscode-test/editor-path, which
 // is picked up here via useInstallation.fromPath so no download is attempted.
