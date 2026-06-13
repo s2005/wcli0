@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { buildLaunchSpec, renderCommandLine, validateLaunchSpec } from './argsBuilder';
+import { buildLaunchSpec, isValidPort, renderCommandLine, validateLaunchSpec } from './argsBuilder';
 import { buildConfigFile } from './configFile';
 import { primaryWorkspaceFolder, readSettings, resolveVariables } from './settings';
 import { clientHost, Wcli0McpProvider } from './mcpProvider';
@@ -52,31 +52,48 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
   }
   const settings = readSettings(folder.uri);
 
-  // Don't write a definition that cannot start (e.g. node/custom without a path).
-  const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
-  if (blocking.length > 0) {
-    void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
+  // Validate only what the generated entry actually uses. A stdio entry needs a
+  // working launch command; an http/sse entry only contains a URL, so local
+  // launch settings (method, allowed dirs) are irrelevant and only the port
+  // matters — otherwise a valid external endpoint couldn't be written.
+  if (settings.transportMode === 'stdio') {
+    const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
+    if (blocking.length > 0) {
+      void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
+      return;
+    }
+  } else if (!isValidPort(settings.transportPort)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`,
+    );
     return;
   }
 
   const spec = buildLaunchSpec(settings);
 
-  const entry: Record<string, unknown> =
-    settings.transportMode === 'stdio'
-      ? {
-          type: 'stdio',
-          command: spec.command,
-          args: spec.args,
-          ...(spec.cwd ? { cwd: spec.cwd } : {}),
-          ...(Object.keys(spec.env).length ? { env: spec.env } : {}),
-        }
-      : {
-          type: settings.transportMode === 'http' ? 'http' : 'sse',
-          // Normalize wildcard/IPv6 bind hosts into a connectable client URL.
-          url: `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
-            settings.transportMode === 'http' ? '/mcp' : '/sse'
-          }`,
-        };
+  let entry: Record<string, unknown>;
+  if (settings.transportMode === 'stdio') {
+    // Default the process cwd to the workspace folder, matching the automatic
+    // provider. VS Code otherwise starts an MCP process without `cwd` in the
+    // user home directory, changing relative-path resolution and config
+    // auto-discovery compared with the registered server.
+    const cwd = spec.cwd ?? folder.uri.fsPath;
+    entry = {
+      type: 'stdio',
+      command: spec.command,
+      args: spec.args,
+      ...(cwd ? { cwd } : {}),
+      ...(Object.keys(spec.env).length ? { env: spec.env } : {}),
+    };
+  } else {
+    entry = {
+      type: settings.transportMode === 'http' ? 'http' : 'sse',
+      // Normalize wildcard/IPv6 bind hosts into a connectable client URL.
+      url: `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
+        settings.transportMode === 'http' ? '/mcp' : '/sse'
+      }`,
+    };
+  }
 
   const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');
   let existing: Record<string, unknown> = {};
@@ -95,9 +112,11 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
   }
   if (raw) {
     try {
-      existing = JSON.parse(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
+      // VS Code registers mcp.json as JSON-with-comments, so tolerate comments
+      // and trailing commas rather than refusing to merge into a valid JSONC file.
+      existing = parseJsonc(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
     } catch (err) {
-      // The file exists but is not valid JSON — refuse rather than clobber it.
+      // The file exists but is not valid JSON/JSONC — refuse rather than clobber it.
       void vscode.window.showErrorMessage(
         `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
       );
@@ -169,6 +188,59 @@ export async function refreshServerDefinition(provider: Wcli0McpProvider): Promi
   void vscode.window.showInformationMessage(
     'wcli0: MCP server definition refreshed. If the server was already running with the same launch command, restart it from the MCP view to apply changes.',
   );
+}
+
+/**
+ * Parse JSON-with-comments (the format VS Code uses for `mcp.json`). Strips line
+ * (`//`) and block (`/* *\/`) comments and trailing commas while preserving the
+ * contents of double-quoted strings, then defers to `JSON.parse`. Throws on
+ * genuinely malformed input so callers can refuse to overwrite it.
+ */
+export function parseJsonc(text: string): unknown {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (inString) {
+      out += ch;
+      if (ch === '\\') {
+        // Emit the escaped character verbatim so an escaped quote doesn't end the string.
+        out += next ?? '';
+        i++;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') {
+        i++;
+      }
+      out += '\n';
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
+        i++;
+      }
+      i++; // skip the closing '/'
+      continue;
+    }
+    if (ch === '}' || ch === ']') {
+      // Drop a trailing comma (outside any string) before the closing bracket.
+      const trimmed = out.replace(/\s+$/, '');
+      out = trimmed.endsWith(',') ? trimmed.slice(0, -1) : out;
+    }
+    out += ch;
+  }
+  return JSON.parse(out);
 }
 
 /** Whether a workspace.fs read error means the file is simply absent. */

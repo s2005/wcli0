@@ -199,7 +199,8 @@ test('every remaining flag is emitted when set', () => {
     '--config', '/ws/cfg.json',
     '--initialDir', '/start',
     '--wslMountPoint', '/wsl/',
-    '--blockedArgument', '-e',
+    // Dash-prefixed blocked values use --opt=value so yargs keeps them as the value.
+    '--blockedArgument=-e',
     '--maxOutputLines', '50',
     '--no-enableLogResources',
     '--maxReturnLines', '200',
@@ -248,6 +249,25 @@ test('validateLaunchSpec flags missing custom command', () => {
   assert.match(
     validateLaunchSpec(defaults({ launchMethod: 'custom' }))[0].message,
     /customCommand is empty/,
+  );
+});
+
+test('dash-prefixed blocked commands and operators use --opt=value form', () => {
+  assert.deepEqual(buildServerArgs(defaults({ blockedCommands: ['-rf', 'del'] })), [
+    '--blockedCommand=-rf',
+    '--blockedCommand', 'del',
+  ]);
+  assert.deepEqual(buildServerArgs(defaults({ blockedOperators: ['-x', '|'] })), [
+    '--blockedOperator=-x',
+    '--blockedOperator', '|',
+  ]);
+});
+
+test('an unresolved node script path is blocking', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ launchMethod: 'node', nodeScriptPath: '${workspaceFolder}/dist/index.js' });
+  assert.ok(
+    validateLaunchSpec(s).some((p) => /nodeScriptPath/.test(p.message) && p.blocking),
   );
 });
 

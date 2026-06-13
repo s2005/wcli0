@@ -216,3 +216,24 @@ test('http transport carries allowed origins', () => {
   );
   assert.deepEqual(cfg.transport.httpAllowedOrigins, ['https://b.example']);
 });
+
+test('logging limits above the server maximum are omitted', () => {
+  const cfg = buildConfigFile(defaults({ maxOutputLines: 20000, maxReturnLines: 99999 }));
+  assert.equal(cfg.global.logging, undefined);
+  const ok = buildConfigFile(defaults({ maxOutputLines: 10000, maxReturnLines: 500 }));
+  assert.equal(ok.global.logging.maxOutputLines, 10000);
+  assert.equal(ok.global.logging.maxReturnLines, 500);
+});
+
+test('an out-of-range transport port is omitted from the generated config', () => {
+  const cfg = buildConfigFile(defaults({ transportMode: 'http', transportPort: 70000 }));
+  assert.equal(cfg.transport.ssePort, undefined);
+  assert.equal(cfg.transport.httpPort, undefined);
+  assert.equal(cfg.transport.mode, 'http');
+});
+
+test('an unresolved log directory is dropped from the generated config', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const cfg = buildConfigFile(defaults({ logDirectory: '${workspaceFolder}/logs' }));
+  assert.equal(cfg.global.logging, undefined);
+});

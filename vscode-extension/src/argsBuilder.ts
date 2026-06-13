@@ -32,6 +32,20 @@ export function isValidPort(port: number): boolean {
 }
 
 /**
+ * Append an option/value pair, using `--option=value` form when the value is
+ * dash-prefixed. As separate argv entries, yargs would parse a value like `-e`
+ * or `--exec` as a new option and drop it — and an emptied blocked-list option
+ * makes the server replace its defaults with nothing, weakening security.
+ */
+function pushOption(args: string[], flag: string, value: string): void {
+  if (value.startsWith('-')) {
+    args.push(`${flag}=${value}`);
+  } else {
+    args.push(flag, value);
+  }
+}
+
+/**
  * Build the wcli0 CLI flags (everything after the package/script name) from
  * normalized settings. Path-like values are variable-resolved here.
  */
@@ -65,13 +79,13 @@ export function buildServerArgs(s: Wcli0Settings): string[] {
     args.push('--wslMountPoint', s.wslMountPoint.trim());
   }
   for (const cmd of s.blockedCommands) {
-    args.push('--blockedCommand', cmd);
+    pushOption(args, '--blockedCommand', cmd);
   }
   for (const arg of s.blockedArguments) {
-    args.push('--blockedArgument', arg);
+    pushOption(args, '--blockedArgument', arg);
   }
   for (const op of s.blockedOperators) {
-    args.push('--blockedOperator', op);
+    pushOption(args, '--blockedOperator', op);
   }
   if (s.maxOutputLines != null) {
     args.push('--maxOutputLines', String(s.maxOutputLines));
@@ -185,11 +199,20 @@ export interface LaunchProblem {
 /** Validate a launch spec, returning problems (empty = OK). */
 export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
   const problems: LaunchProblem[] = [];
-  if (s.launchMethod === 'node' && !s.nodeScriptPath.trim()) {
-    problems.push({
-      message: 'Launch method is "node" but wcli0.launch.nodeScriptPath is empty.',
-      blocking: true,
-    });
+  if (s.launchMethod === 'node') {
+    if (!s.nodeScriptPath.trim()) {
+      problems.push({
+        message: 'Launch method is "node" but wcli0.launch.nodeScriptPath is empty.',
+        blocking: true,
+      });
+    } else if (hasUnresolvedVariables(resolveVariables(s.nodeScriptPath.trim()))) {
+      // An unresolved ${workspaceFolder} token would launch `node ${workspaceFolder}/...`
+      // and fail every start; refuse rather than register a broken definition.
+      problems.push({
+        message: `wcli0.launch.nodeScriptPath "${s.nodeScriptPath}" contains an unresolved variable (no matching workspace folder is open).`,
+        blocking: true,
+      });
+    }
   }
   if (s.launchMethod === 'custom' && !s.customCommand.trim()) {
     problems.push({

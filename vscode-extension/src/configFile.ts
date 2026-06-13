@@ -1,8 +1,13 @@
+import { isValidPort } from './argsBuilder';
 import { hasUnresolvedVariables, resolveVariables, Wcli0Settings } from './settings';
 
-/** Return the value only when it is a positive integer; otherwise undefined. */
-function posInt(n: number | null): number | undefined {
-  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : undefined;
+/**
+ * Return the value only when it is a positive integer within `max`; otherwise
+ * undefined. The upper bound mirrors the server's validateConfig limits so a
+ * generated config never carries a value the server rejects at startup.
+ */
+function posInt(n: number | null, max = Infinity): number | undefined {
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 && n <= max ? n : undefined;
 }
 
 /**
@@ -113,7 +118,9 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   }
 
   const logging: Record<string, unknown> = {};
-  if (posInt(s.maxOutputLines) != null) {
+  // The server's validateLoggingConfig rejects maxOutputLines/maxReturnLines
+  // above 10000, so don't emit out-of-range values the settings schema allows.
+  if (posInt(s.maxOutputLines, 10000) != null) {
     logging.maxOutputLines = s.maxOutputLines;
   }
   if (s.enableTruncation !== 'default') {
@@ -122,11 +129,16 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   if (s.enableLogResources !== 'default') {
     logging.enableLogResources = s.enableLogResources === 'enabled';
   }
-  if (posInt(s.maxReturnLines) != null) {
+  if (posInt(s.maxReturnLines, 10000) != null) {
     logging.maxReturnLines = s.maxReturnLines;
   }
   if (s.logDirectory.trim()) {
-    logging.logDirectory = resolveVariables(s.logDirectory.trim());
+    // Drop an unresolved ${workspaceFolder} token rather than writing it
+    // verbatim, which the server would treat as a literal relative directory.
+    const resolvedLog = resolveVariables(s.logDirectory.trim());
+    if (resolvedLog.trim() && !hasUnresolvedVariables(resolvedLog)) {
+      logging.logDirectory = resolvedLog;
+    }
   }
 
   const global: Record<string, unknown> = { security, paths };
@@ -180,16 +192,22 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   if (s.transportMode !== 'stdio') {
     const host = s.transportHost.trim();
     const origins = s.transportAllowedOrigins.map((o) => o.trim()).filter((o) => o.length > 0);
-    const transport: Record<string, unknown> = {
-      mode: s.transportMode,
-      ssePort: s.transportPort,
-    };
+    const transport: Record<string, unknown> = { mode: s.transportMode };
+    // Only emit a port the server accepts; an out-of-range value (the schema
+    // allows manual JSON edits) would fail validateTransportConfig at startup,
+    // so omit it and let the server default apply.
+    const portOk = isValidPort(s.transportPort);
+    if (portOk) {
+      transport.ssePort = s.transportPort;
+    }
     // The server rejects an empty host; omit it so the default applies.
     if (host) {
       transport.sseHost = host;
     }
     if (s.transportMode === 'http') {
-      transport.httpPort = s.transportPort;
+      if (portOk) {
+        transport.httpPort = s.transportPort;
+      }
       if (host) {
         transport.httpHost = host;
       }

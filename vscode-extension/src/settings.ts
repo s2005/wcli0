@@ -153,10 +153,11 @@ export function readSettingsForScope(target: ConfigScope, scope?: vscode.Uri): W
     if (!info) {
       return def;
     }
-    const value =
-      target === 'Global'
-        ? info.globalValue
-        : info.workspaceValue ?? info.workspaceFolderValue;
+    // Deliberately do NOT fall back to workspaceFolderValue: the form saves with
+    // ConfigurationTarget.Workspace, so surfacing a multi-root folder override
+    // here would misreport it as editable and leave the real folder value
+    // untouched (and still effective) after a "successful" save.
+    const value = target === 'Global' ? info.globalValue : info.workspaceValue;
     return value === undefined ? def : value;
   });
 }

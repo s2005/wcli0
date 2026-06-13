@@ -7,6 +7,7 @@ const {
   writeWorkspaceMcpJson,
   showLaunchCommand,
   refreshServerDefinition,
+  parseJsonc,
 } = require('../../dist/commands.js');
 
 const WS = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
@@ -141,6 +142,57 @@ test('writeWorkspaceMcpJson refuses a broken launch config', async () => {
   await writeWorkspaceMcpJson();
   assert.equal(vscode.__state.calls.error.length, 1);
   assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
+test('writeWorkspaceMcpJson defaults a stdio entry cwd to the workspace folder', async () => {
+  await writeWorkspaceMcpJson();
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.cwd, '/ws');
+});
+
+test('writeWorkspaceMcpJson writes an http entry despite a broken local launch config', async () => {
+  // node method with no script path would block a stdio write, but an http entry
+  // only needs a URL, so the irrelevant local-launch problem must not block it.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.method', 'node');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'http');
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 0);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.type, 'http');
+});
+
+test('writeWorkspaceMcpJson refuses an http entry with an invalid port', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'http');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.port', 70000);
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 1);
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
+test('writeWorkspaceMcpJson merges into a JSONC file with comments and trailing commas', async () => {
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from('{\n  // keep this\n  "servers": {\n    "other": { "type": "stdio", },\n  },\n}'),
+  );
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 0);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.ok(parsed.servers.other, 'existing server preserved');
+  assert.ok(parsed.servers.wcli0, 'wcli0 server added');
+});
+
+test('parseJsonc strips comments and trailing commas but preserves string contents', () => {
+  const parsed = parseJsonc(`{
+    // line comment
+    "a": 1, /* block */
+    "b": "x // y, /* z */ \\" still string",
+    "c": [1, 2,],
+  }`);
+  assert.deepEqual(parsed, { a: 1, b: 'x // y, /* z */ " still string', c: [1, 2] });
+});
+
+test('parseJsonc throws on genuinely malformed input', () => {
+  assert.throws(() => parseJsonc('{ "a": }'));
 });
 
 test('writeWorkspaceMcpJson preserves a syntactically broken existing file', async () => {
