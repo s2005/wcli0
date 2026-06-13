@@ -33,11 +33,32 @@ test('http definition maps a wildcard bind host to loopback', () => {
   assert.equal(defs[0].uri.toString(), 'http://127.0.0.1:8080/mcp');
 });
 
-test('sse mode does not auto-register (warns instead)', () => {
+test('sse mode does not auto-register (logs instead)', () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'sse');
-  const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
+  const logs = [];
+  const defs = new Wcli0McpProvider((m) => logs.push(m)).provideMcpServerDefinitions();
   assert.deepEqual(defs, []);
-  assert.equal(vscode.__state.calls.warn.length, 1);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /sse/);
+});
+
+test('http mode ignores irrelevant local-launch problems', () => {
+  // node method without a script path would block stdio, but http only connects
+  // to an external endpoint, so it should still register.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'http');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.method', 'node');
+  const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  assert.ok(defs[0] instanceof vscode.McpHttpServerDefinition);
+});
+
+test('http mode rejects an invalid port', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'http');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.port', 0);
+  const logs = [];
+  const defs = new Wcli0McpProvider((m) => logs.push(m)).provideMcpServerDefinitions();
+  assert.deepEqual(defs, []);
+  assert.equal(logs.length, 1);
 });
 
 test('clientHost translates wildcard and brackets IPv6', () => {
@@ -48,13 +69,14 @@ test('clientHost translates wildcard and brackets IPv6', () => {
   assert.equal(clientHost(''), '127.0.0.1');
 });
 
-test('returns no definition and warns on a broken launch config', () => {
+test('returns no definition and logs on a broken launch config', () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.method', 'node');
   // nodeScriptPath is empty -> blocking problem
-  const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
+  const logs = [];
+  const defs = new Wcli0McpProvider((m) => logs.push(m)).provideMcpServerDefinitions();
   assert.deepEqual(defs, []);
-  assert.equal(vscode.__state.calls.warn.length, 1);
-  assert.match(vscode.__state.calls.warn[0], /nodeScriptPath/);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /nodeScriptPath/);
 });
 
 test('refresh fires the change event', () => {

@@ -98,6 +98,37 @@ test('non-positive numeric limits are omitted from the config', () => {
   assert.equal(cfg.global.logging?.maxOutputLines, undefined);
 });
 
+test('yolo keeps restrictWorkingDirectory even with allowAllDirs', () => {
+  const cfg = buildConfigFile(defaults({ safetyMode: 'yolo', allowAllDirs: true }));
+  assert.equal(cfg.global.security.restrictWorkingDirectory, true);
+});
+
+test('whitespace-only and unresolved allowed dirs are dropped', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const cfg = buildConfigFile(
+    defaults({ allowedDirectories: ['   ', '${workspaceFolder}', '/real'] }),
+  );
+  assert.deepEqual(cfg.global.paths.allowedPaths, ['/real']);
+});
+
+test('wsl mount point gets a trailing slash', () => {
+  const cfg = buildConfigFile(defaults({ wslMountPoint: '/windows' }));
+  assert.equal(cfg.shells.wsl.wslConfig.mountPoint, '/windows/');
+});
+
+test('empty transport host is omitted and blank origins filtered', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      transportMode: 'http',
+      transportHost: '',
+      transportAllowedOrigins: ['  ', 'https://a.example'],
+    }),
+  );
+  assert.equal('httpHost' in cfg.transport, false);
+  assert.equal('sseHost' in cfg.transport, false);
+  assert.deepEqual(cfg.transport.httpAllowedOrigins, ['https://a.example']);
+});
+
 test('allowed directories are resolved into paths.allowedPaths', () => {
   const cfg = buildConfigFile(defaults({ allowedDirectories: ['${workspaceFolder}', '/data'] }));
   assert.deepEqual(cfg.global.paths.allowedPaths, ['/ws', '/data']);

@@ -93,7 +93,11 @@ export function buildServerArgs(s: Wcli0Settings): string[] {
   if (logDirectory) {
     args.push('--logDirectory', logDirectory);
   }
-  if (s.allowAllDirs) {
+  // --allowAllDirs disables the working-directory restriction before initialDir
+  // is applied, and is meaningless once paths are configured. Only emit it when
+  // nothing else constrains the working directory.
+  const dirsConfigured = s.allowedDirectories.some((d) => d.trim()) || s.initialDir.trim().length > 0;
+  if (s.allowAllDirs && !dirsConfigured) {
     args.push('--allowAllDirs');
   }
   if (s.safetyMode === 'yolo') {
@@ -205,6 +209,17 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
     if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
       problems.push({
         message: `wcli0.allowedDirectories entry "${dir}" cannot be resolved (no matching workspace folder is open); refusing to launch an unrestricted server.`,
+        blocking: true,
+      });
+    }
+  }
+  // A config file path that doesn't fully resolve would be silently dropped,
+  // leaving the server on pathless defaults instead of the intended config.
+  if (s.configFile.trim()) {
+    const resolved = resolveVariables(s.configFile.trim());
+    if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
+      problems.push({
+        message: `wcli0.configFile "${s.configFile}" cannot be resolved (no matching workspace folder is open).`,
         blocking: true,
       });
     }

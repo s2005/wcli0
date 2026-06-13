@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { buildLaunchSpec, renderCommandLine, validateLaunchSpec } from './argsBuilder';
 import { buildConfigFile } from './configFile';
 import { primaryWorkspaceFolder, readSettings, resolveVariables } from './settings';
-import { Wcli0McpProvider } from './mcpProvider';
+import { clientHost, Wcli0McpProvider } from './mcpProvider';
 
 /** Generate a wcli0 config.json from settings and offer to save it. */
 export async function generateConfigFile(): Promise<void> {
@@ -72,27 +72,37 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
         }
       : {
           type: settings.transportMode === 'http' ? 'http' : 'sse',
-          url: `http://${settings.transportHost || '127.0.0.1'}:${settings.transportPort}${
+          // Normalize wildcard/IPv6 bind hosts into a connectable client URL.
+          url: `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
             settings.transportMode === 'http' ? '/mcp' : '/sse'
           }`,
         };
 
   const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');
   let existing: Record<string, unknown> = {};
-  let fileExists = false;
+  let raw: Uint8Array | undefined;
   try {
-    const raw = await vscode.workspace.fs.readFile(mcpUri);
-    fileExists = true;
-    existing = JSON.parse(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
+    raw = await vscode.workspace.fs.readFile(mcpUri);
   } catch (err) {
-    if (fileExists) {
+    if (!isFileNotFound(err)) {
+      // A real read error (permissions, transient FS) — don't risk clobbering.
+      void vscode.window.showErrorMessage(
+        `wcli0: could not read ${mcpUri.fsPath} (${(err as Error).message}). Not writing.`,
+      );
+      return;
+    }
+    // Not found — start fresh.
+  }
+  if (raw) {
+    try {
+      existing = JSON.parse(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
+    } catch (err) {
       // The file exists but is not valid JSON — refuse rather than clobber it.
       void vscode.window.showErrorMessage(
         `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
       );
       return;
     }
-    // No existing file — start fresh.
   }
   const servers = (existing.servers as Record<string, unknown>) ?? {};
   servers.wcli0 = entry;
@@ -159,6 +169,16 @@ export async function refreshServerDefinition(provider: Wcli0McpProvider): Promi
   void vscode.window.showInformationMessage(
     'wcli0: MCP server definition refreshed. If the server was already running with the same launch command, restart it from the MCP view to apply changes.',
   );
+}
+
+/** Whether a workspace.fs read error means the file is simply absent. */
+function isFileNotFound(err: unknown): boolean {
+  const code = (err as { code?: string }).code;
+  if (code === 'FileNotFound' || code === 'ENOENT') {
+    return true;
+  }
+  const text = `${(err as { name?: string }).name ?? ''} ${(err as Error)?.message ?? ''}`;
+  return /FileNotFound|ENOENT|not found|no such file/i.test(text);
 }
 
 export { resolveVariables };

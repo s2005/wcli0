@@ -1,4 +1,4 @@
-import { resolveVariables, Wcli0Settings } from './settings';
+import { hasUnresolvedVariables, resolveVariables, Wcli0Settings } from './settings';
 
 /** Return the value only when it is a positive integer; otherwise undefined. */
 function posInt(n: number | null): number | undefined {
@@ -57,8 +57,15 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     s.allowedDirectories.some((d) => d.trim()) || s.initialDir.trim().length > 0;
   const security: Record<string, unknown> = {
     enableInjectionProtection: s.safetyMode === 'safe',
+    // unsafe disables the restriction; yolo always keeps it (the server's --yolo
+    // forces it back on even with --allowAllDirs); safe lifts it only when
+    // nothing is configured.
     restrictWorkingDirectory:
-      s.safetyMode !== 'unsafe' && !(s.allowAllDirs && !hasConfiguredPaths),
+      s.safetyMode === 'unsafe'
+        ? false
+        : s.safetyMode === 'yolo'
+          ? true
+          : !(s.allowAllDirs && !hasConfiguredPaths),
   };
   // Only emit positive-integer limits; the server's validateConfig rejects
   // zero/negative/fractional values that the settings schema would otherwise allow.
@@ -89,10 +96,20 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   }
 
   const paths: Record<string, unknown> = {
-    allowedPaths: s.allowedDirectories.map((d) => resolveVariables(d)).filter(Boolean),
+    // Trim first (filter(Boolean) alone keeps whitespace-only entries, which the
+    // server normalizes to an empty allowed prefix that matches every path), and
+    // drop entries that don't fully resolve.
+    allowedPaths: s.allowedDirectories
+      .map((d) => d.trim())
+      .filter((d) => d.length > 0)
+      .map((d) => resolveVariables(d))
+      .filter((d) => d.trim().length > 0 && !hasUnresolvedVariables(d)),
   };
   if (s.initialDir.trim()) {
-    paths.initialDir = resolveVariables(s.initialDir.trim());
+    const resolvedInitial = resolveVariables(s.initialDir.trim());
+    if (resolvedInitial.trim() && !hasUnresolvedVariables(resolvedInitial)) {
+      paths.initialDir = resolvedInitial;
+    }
   }
 
   const logging: Record<string, unknown> = {};
@@ -146,10 +163,14 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     shells[name] = entry;
   }
   if (s.wslMountPoint.trim()) {
+    // The server expects a trailing slash (e.g. /mnt/); applyCliWslMountPoint
+    // normalizes it, so match that here.
+    const mount = s.wslMountPoint.trim();
+    const normalized = mount.endsWith('/') ? mount : `${mount}/`;
     for (const name of ['wsl', 'bash']) {
       const shell = shells[name] as { wslConfig?: Record<string, unknown> } | undefined;
       if (shell?.wslConfig) {
-        shell.wslConfig.mountPoint = s.wslMountPoint.trim();
+        shell.wslConfig.mountPoint = normalized;
       }
     }
   }
@@ -157,19 +178,26 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   const config: Record<string, unknown> = { global, shells };
 
   if (s.transportMode !== 'stdio') {
+    const host = s.transportHost.trim();
+    const origins = s.transportAllowedOrigins.map((o) => o.trim()).filter((o) => o.length > 0);
     const transport: Record<string, unknown> = {
       mode: s.transportMode,
-      sseHost: s.transportHost,
       ssePort: s.transportPort,
     };
+    // The server rejects an empty host; omit it so the default applies.
+    if (host) {
+      transport.sseHost = host;
+    }
     if (s.transportMode === 'http') {
-      transport.httpHost = s.transportHost;
       transport.httpPort = s.transportPort;
-      if (s.transportAllowedOrigins.length > 0) {
-        transport.httpAllowedOrigins = s.transportAllowedOrigins;
+      if (host) {
+        transport.httpHost = host;
       }
-    } else if (s.transportAllowedOrigins.length > 0) {
-      transport.sseAllowedOrigins = s.transportAllowedOrigins;
+      if (origins.length > 0) {
+        transport.httpAllowedOrigins = origins;
+      }
+    } else if (origins.length > 0) {
+      transport.sseAllowedOrigins = origins;
     }
     config.transport = transport;
   }

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { buildLaunchSpec, validateLaunchSpec } from './argsBuilder';
+import { buildLaunchSpec, isValidPort, validateLaunchSpec } from './argsBuilder';
 import { primaryWorkspaceFolder, readSettings } from './settings';
 
 const SERVER_LABEL = 'wcli0 Windows CLI';
@@ -14,6 +14,13 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeMcpServerDefinitions = this._onDidChange.event;
 
+  /**
+   * @param log Sink for configuration problems. provideMcpServerDefinitions is
+   *   called eagerly by VS Code, so problems are logged rather than shown as
+   *   popups (per the API guidance). Defaults to console.
+   */
+  constructor(private readonly log: (message: string) => void = (m) => console.warn(m)) {}
+
   /** Notify VS Code that definitions may have changed (re-reads settings). */
   refresh(): void {
     this._onDidChange.fire();
@@ -27,30 +34,34 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     const scope = primaryWorkspaceFolder()?.uri;
     const settings = readSettings(scope);
 
-    const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
-    if (blocking.length > 0) {
-      // Misconfigured launch: surface the issue rather than register a broken server.
-      void vscode.window.showWarningMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
-      return [];
-    }
-
     if (settings.transportMode === 'sse') {
       // McpHttpServerDefinition represents the modern Streamable HTTP transport,
       // not legacy SSE, so it can't drive an SSE server. Don't auto-register;
       // users can still write a `.vscode/mcp.json` SSE entry via the command.
-      void vscode.window.showWarningMessage(
-        'wcli0: legacy "sse" transport cannot be auto-registered. Use "http" or run the server and add an SSE entry to .vscode/mcp.json.',
+      this.log(
+        'legacy "sse" transport cannot be auto-registered. Use "http" or run the server and add an SSE entry to .vscode/mcp.json.',
       );
       return [];
     }
 
     if (settings.transportMode === 'http') {
-      // The server speaks HTTP; assume the user runs it out-of-band and point
-      // VS Code at the listening endpoint (translating wildcard binds to loopback).
+      // HTTP only connects to an already-running endpoint; local launch settings
+      // (launch method, allowed dirs) are irrelevant, so validate only the port.
+      if (!isValidPort(settings.transportPort)) {
+        this.log(`transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`);
+        return [];
+      }
       const uri = vscode.Uri.parse(
         `http://${clientHost(settings.transportHost)}:${settings.transportPort}/mcp`,
       );
       return [new vscode.McpHttpServerDefinition(SERVER_LABEL, uri)];
+    }
+
+    const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
+    if (blocking.length > 0) {
+      // Misconfigured launch: log rather than register a broken server.
+      this.log(blocking.map((p) => p.message).join(' '));
+      return [];
     }
 
     const spec = buildLaunchSpec(settings);

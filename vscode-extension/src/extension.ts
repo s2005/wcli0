@@ -13,7 +13,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('wcli0');
   context.subscriptions.push(output);
 
-  const provider = new Wcli0McpProvider();
+  const provider = new Wcli0McpProvider((message) => output.appendLine(`[provider] ${message}`));
   context.subscriptions.push(provider);
 
   // Register the MCP server definition so VS Code/Copilot can launch wcli0

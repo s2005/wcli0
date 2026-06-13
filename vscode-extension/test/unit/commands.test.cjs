@@ -70,6 +70,23 @@ test('writeWorkspaceMcpJson emits an http url entry in http mode', async () => {
   assert.match(parsed.servers.wcli0.url, /:7000\/mcp$/);
 });
 
+test('writeWorkspaceMcpJson normalizes a wildcard host in the url', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'http');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.host', '0.0.0.0');
+  await writeWorkspaceMcpJson();
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.match(parsed.servers.wcli0.url, /^http:\/\/127\.0\.0\.1:/);
+});
+
+test('writeWorkspaceMcpJson aborts on a non-not-found read error', async () => {
+  const err = new Error('permission denied');
+  err.code = 'NoPermissions';
+  vscode.__state.readError = err;
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 1);
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
 test('writeWorkspaceMcpJson errors without a workspace', async () => {
   vscode.__state.workspaceFolders = undefined;
   await writeWorkspaceMcpJson();

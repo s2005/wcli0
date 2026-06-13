@@ -192,7 +192,6 @@ test('every remaining flag is emitted when set', () => {
       enableLogResources: 'disabled',
       maxReturnLines: 200,
       logDirectory: '${workspaceFolder}/logs',
-      allowAllDirs: true,
       debug: true,
     }),
   );
@@ -205,11 +204,28 @@ test('every remaining flag is emitted when set', () => {
     '--no-enableLogResources',
     '--maxReturnLines', '200',
     '--logDirectory', '/ws/logs',
-    '--allowAllDirs',
     '--debug',
     // configFile present + stdio -> force stdio so the file can't select http/sse.
     '--transport', 'stdio',
   ]);
+});
+
+test('--allowAllDirs is emitted only when no dirs/initialDir are configured', () => {
+  assert.deepEqual(buildServerArgs(defaults({ allowAllDirs: true })), ['--allowAllDirs']);
+  assert.deepEqual(buildServerArgs(defaults({ allowAllDirs: true, initialDir: '/x' })), [
+    '--initialDir', '/x',
+  ]);
+  assert.deepEqual(
+    buildServerArgs(defaults({ allowAllDirs: true, allowedDirectories: ['/srv'] })),
+    ['--allowedDir', '/srv'],
+  );
+});
+
+test('an unresolved config file path is blocking', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ configFile: '${workspaceFolder}/c.json' });
+  assert.equal(buildServerArgs(s).includes('--config'), false);
+  assert.ok(validateLaunchSpec(s).some((p) => /configFile/.test(p.message) && p.blocking));
 });
 
 test('enableLogResources enabled emits the bare flag', () => {

@@ -74,6 +74,7 @@ const state = {
   configGlobal: new Map(),
   configWorkspace: new Map(),
   files: new Map(), // fsPath -> Buffer
+  readError: undefined, // when set, fs.readFile throws it
   calls: {
     info: [],
     warn: [],
@@ -97,6 +98,7 @@ function __reset() {
   state.configGlobal.clear();
   state.configWorkspace.clear();
   state.files.clear();
+  state.readError = undefined;
   state.calls.info = [];
   state.calls.warn = [];
   state.calls.error = [];
@@ -153,8 +155,13 @@ const workspace = {
   },
   fs: {
     async readFile(uri) {
+      if (state.readError) {
+        throw state.readError;
+      }
       if (!state.files.has(uri.fsPath)) {
-        throw new Error(`ENOENT: ${uri.fsPath}`);
+        const err = new Error(`ENOENT: ${uri.fsPath}`);
+        err.code = 'FileNotFound';
+        throw err;
       }
       return state.files.get(uri.fsPath);
     },
