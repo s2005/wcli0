@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Expanded the unit suite to cover the MCP provider, commands, settings, the
+  configuration webview, and activation; ~100% line / ~96% branch / ~98%
+  function coverage. Added `npm run test:coverage` with enforced thresholds.
+- Disabled `esModuleInterop` (the code uses only namespace/named imports), so
+  compiled output requires `vscode` directly without interop helpers.
+
 ## 0.1.0
 
 Initial release.

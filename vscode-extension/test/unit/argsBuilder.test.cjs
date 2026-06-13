@@ -176,3 +176,55 @@ test('renderCommandLine quotes args with spaces', () => {
   });
   assert.equal(line, 'npx -y wcli0@latest --allowedDir "/path with space"');
 });
+
+test('every remaining flag is emitted when set', () => {
+  const args = buildServerArgs(
+    defaults({
+      configFile: '${workspaceFolder}/cfg.json',
+      initialDir: '/start',
+      wslMountPoint: '/wsl/',
+      blockedArguments: ['-e'],
+      maxOutputLines: 50,
+      enableLogResources: 'disabled',
+      maxReturnLines: 200,
+      logDirectory: '${workspaceFolder}/logs',
+      allowAllDirs: true,
+      debug: true,
+    }),
+  );
+  assert.deepEqual(args, [
+    '--config', '/ws/cfg.json',
+    '--initialDir', '/start',
+    '--wslMountPoint', '/wsl/',
+    '--blockedArgument', '-e',
+    '--maxOutputLines', '50',
+    '--no-enableLogResources',
+    '--maxReturnLines', '200',
+    '--logDirectory', '/ws/logs',
+    '--allowAllDirs',
+    '--debug',
+  ]);
+});
+
+test('enableLogResources enabled emits the bare flag', () => {
+  assert.deepEqual(buildServerArgs(defaults({ enableLogResources: 'enabled' })), [
+    '--enableLogResources',
+  ]);
+});
+
+test('launch spec carries env through unchanged', () => {
+  const spec = buildLaunchSpec(defaults({ env: { FOO: 'bar' } }));
+  assert.deepEqual(spec.env, { FOO: 'bar' });
+});
+
+test('empty package spec falls back to wcli0@latest', () => {
+  const spec = buildLaunchSpec(defaults({ packageSpec: '' }));
+  assert.deepEqual(spec.args, ['-y', 'wcli0@latest']);
+});
+
+test('validateLaunchSpec flags missing custom command', () => {
+  assert.match(
+    validateLaunchSpec(defaults({ launchMethod: 'custom' }))[0],
+    /customCommand is empty/,
+  );
+});

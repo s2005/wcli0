@@ -92,10 +92,14 @@ Host.
 
 Two layers:
 
-- **Unit tests** (`npm run test:unit`) cover the pure logic — CLI-flag building,
-  launch-spec assembly, `config.json` generation, and `${workspaceFolder}`
-  resolution. They run under plain Node via `node:test`, with a small `vscode`
-  stub (`test/stubs/`), so no VS Code download is needed. `npm test` runs these.
+- **Unit tests** (`npm run test:unit`) cover the extension logic — CLI-flag
+  building, launch-spec assembly, `config.json` generation, settings
+  normalization, the MCP definition provider, the commands, the configuration
+  webview, and activation. They run under plain Node via `node:test`, with a
+  `vscode` fake (`test/stubs/`), so no VS Code download is needed. `npm test`
+  runs these. `npm run test:coverage` adds line/branch/function coverage and
+  fails below the configured thresholds (lines 80%, functions 80%, branches
+  75%); current coverage is ~100% line / ~96% branch / ~98% function.
 - **Integration tests** (`npm run test:integration`) activate the packaged
   extension inside a real VS Code Extension Host using `@vscode/test-electron`:
   they assert the extension activates, contributes its commands and setting

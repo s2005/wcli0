@@ -107,3 +107,42 @@ test('stdio transport omits the transport block', () => {
   const cfg = buildConfigFile(defaults());
   assert.equal('transport' in cfg, false);
 });
+
+test('logging fields and initialDir/maxCommandLength are emitted', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      maxCommandLength: 4000,
+      initialDir: '${workspaceFolder}/start',
+      enableTruncation: 'disabled',
+      enableLogResources: 'enabled',
+      maxReturnLines: 300,
+      logDirectory: '/var/log/wcli0',
+      blockedOperators: ['|', '&'],
+    }),
+  );
+  assert.equal(cfg.global.security.maxCommandLength, 4000);
+  assert.equal(cfg.global.paths.initialDir, '/ws/start');
+  assert.equal(cfg.global.logging.enableTruncation, false);
+  assert.equal(cfg.global.logging.enableLogResources, true);
+  assert.equal(cfg.global.logging.maxReturnLines, 300);
+  assert.equal(cfg.global.logging.logDirectory, '/var/log/wcli0');
+  assert.deepEqual(cfg.global.restrictions.blockedOperators, ['|', '&']);
+});
+
+test('sse transport emits sse origins', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      transportMode: 'sse',
+      transportAllowedOrigins: ['https://a.example'],
+    }),
+  );
+  assert.equal(cfg.transport.mode, 'sse');
+  assert.deepEqual(cfg.transport.sseAllowedOrigins, ['https://a.example']);
+});
+
+test('http transport carries allowed origins', () => {
+  const cfg = buildConfigFile(
+    defaults({ transportMode: 'http', transportAllowedOrigins: ['https://b.example'] }),
+  );
+  assert.deepEqual(cfg.transport.httpAllowedOrigins, ['https://b.example']);
+});

@@ -338,7 +338,8 @@
     "lint": "tsc --noEmit -p ./",
     "pretest": "npm run build",
     "test": "npm run test:unit",
-    "test:unit": "node --require ./test/stubs/hook.cjs --test test/unit/argsBuilder.test.cjs test/unit/configFile.test.cjs",
+    "test:unit": "node --require ./test/stubs/hook.cjs --test test/unit/*.test.cjs",
+    "test:coverage": "node --require ./test/stubs/hook.cjs --experimental-test-coverage --test-coverage-exclude=test/** --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=75 --test test/unit/*.test.cjs",
     "setup:test-editor": "bash scripts/setup-test-editor.sh",
     "test:integration": "vscode-test"
   },
