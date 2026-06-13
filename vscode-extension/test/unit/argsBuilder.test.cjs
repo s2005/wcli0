@@ -271,6 +271,36 @@ test('an unresolved node script path is blocking', () => {
   );
 });
 
+test('unresolved custom command, cwd, and initialDir are blocking', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  assert.ok(
+    validateLaunchSpec(defaults({ launchMethod: 'custom', customCommand: '${workspaceFolder}/bin/x' }))
+      .some((p) => /customCommand/.test(p.message) && p.blocking),
+  );
+  assert.ok(
+    validateLaunchSpec(defaults({ cwd: '${workspaceFolder}/sub' }))
+      .some((p) => /launch\.cwd/.test(p.message) && p.blocking),
+  );
+  assert.ok(
+    validateLaunchSpec(defaults({ initialDir: '${workspaceFolder}/sub' }))
+      .some((p) => /initialDir/.test(p.message) && p.blocking),
+  );
+});
+
+test('resolvePaths:false preserves portable tokens in args and spec', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({
+    allowedDirectories: ['${workspaceFolder}/src'],
+    configFile: '${workspaceFolder}/c.json',
+    cwd: '${workspaceFolder}',
+  });
+  const args = buildServerArgs(s, { resolvePaths: false });
+  assert.ok(args.includes('${workspaceFolder}/src'));
+  assert.ok(args.includes('${workspaceFolder}/c.json'));
+  const spec = buildLaunchSpec(s, { resolvePaths: false });
+  assert.equal(spec.cwd, '${workspaceFolder}');
+});
+
 test('allowed dirs that do not resolve are dropped and blocked', () => {
   // No workspace open: ${workspaceFolder} stays unresolved.
   vscodeStub.workspace.workspaceFolders = undefined;

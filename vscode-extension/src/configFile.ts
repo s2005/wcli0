@@ -43,10 +43,11 @@ const SHELL_DEFAULTS: Record<string, Record<string, unknown>> = {
     wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true },
   },
   bash: {
+    // The server's default bash config has no wslConfig; adding one would make
+    // native bash apply WSL path inheritance and broaden its allowed directories.
     type: 'bash',
     enabled: true,
     executable: { command: 'bash', args: ['-c'] },
-    wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true },
   },
 };
 
@@ -179,11 +180,10 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     // normalizes it, so match that here.
     const mount = s.wslMountPoint.trim();
     const normalized = mount.endsWith('/') ? mount : `${mount}/`;
-    for (const name of ['wsl', 'bash']) {
-      const shell = shells[name] as { wslConfig?: Record<string, unknown> } | undefined;
-      if (shell?.wslConfig) {
-        shell.wslConfig.mountPoint = normalized;
-      }
+    // Only the WSL shell carries a wslConfig/mountPoint (native bash does not).
+    const wsl = shells.wsl as { wslConfig?: Record<string, unknown> } | undefined;
+    if (wsl?.wslConfig) {
+      wsl.wslConfig.mountPoint = normalized;
     }
   }
 

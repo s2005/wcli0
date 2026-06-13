@@ -45,14 +45,38 @@ function pushOption(args: string[], flag: string, value: string): void {
   }
 }
 
+/** Options controlling how a launch spec / args are built. */
+export interface BuildOptions {
+  /**
+   * When false, path-like values keep portable tokens such as
+   * `${workspaceFolder}` verbatim instead of being resolved to absolute paths.
+   * Used when emitting a committed `.vscode/mcp.json`, where VS Code resolves the
+   * tokens itself and an absolute path would break on teammates' machines.
+   */
+  resolvePaths?: boolean;
+}
+
+/**
+ * Resolve a path-like value, or — when `resolvePaths` is false — return the
+ * trimmed value with any tokens left intact. Empty values yield undefined.
+ */
+function pathValue(value: string, opts: BuildOptions): string | undefined {
+  if (opts.resolvePaths === false) {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  return resolvedPath(value);
+}
+
 /**
  * Build the wcli0 CLI flags (everything after the package/script name) from
- * normalized settings. Path-like values are variable-resolved here.
+ * normalized settings. Path-like values are variable-resolved unless
+ * `opts.resolvePaths` is false (see BuildOptions).
  */
-export function buildServerArgs(s: Wcli0Settings): string[] {
+export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): string[] {
   const args: string[] = [];
 
-  const configFile = resolvedPath(s.configFile);
+  const configFile = pathValue(s.configFile, opts);
   if (configFile) {
     args.push('--config', configFile);
   }
@@ -60,12 +84,12 @@ export function buildServerArgs(s: Wcli0Settings): string[] {
     args.push('--shell', s.shell);
   }
   for (const dir of s.allowedDirectories) {
-    const resolved = resolvedPath(dir);
+    const resolved = pathValue(dir, opts);
     if (resolved) {
       args.push('--allowedDir', resolved);
     }
   }
-  const initialDir = resolvedPath(s.initialDir);
+  const initialDir = pathValue(s.initialDir, opts);
   if (initialDir) {
     args.push('--initialDir', initialDir);
   }
@@ -103,7 +127,7 @@ export function buildServerArgs(s: Wcli0Settings): string[] {
   if (s.maxReturnLines != null) {
     args.push('--maxReturnLines', String(s.maxReturnLines));
   }
-  const logDirectory = resolvedPath(s.logDirectory);
+  const logDirectory = pathValue(s.logDirectory, opts);
   if (logDirectory) {
     args.push('--logDirectory', logDirectory);
   }
@@ -158,23 +182,30 @@ export function buildServerArgs(s: Wcli0Settings): string[] {
  * Build the full launch spec (command + launcher args + server flags) for the
  * configured launch method.
  */
-export function buildLaunchSpec(s: Wcli0Settings): LaunchSpec {
-  const serverArgs = buildServerArgs(s);
+export function buildLaunchSpec(s: Wcli0Settings, opts: BuildOptions = {}): LaunchSpec {
+  const serverArgs = buildServerArgs(s, opts);
   const env = { ...s.env };
-  const cwd = resolvedPath(s.cwd);
+  const cwd = pathValue(s.cwd, opts);
+  // When preserving tokens, leave executable paths/args untouched; otherwise
+  // resolve workspace variables to concrete values.
+  const resolve = (v: string): string =>
+    opts.resolvePaths === false ? v.trim() : resolveVariables(v.trim());
 
   switch (s.launchMethod) {
     case 'node':
       return {
         command: 'node',
-        args: [resolveVariables(s.nodeScriptPath.trim()), ...serverArgs],
+        args: [resolve(s.nodeScriptPath), ...serverArgs],
         cwd,
         env,
       };
     case 'custom':
       return {
-        command: resolveVariables(s.customCommand.trim()),
-        args: [...s.customArgs.map(resolveVariables), ...serverArgs],
+        command: resolve(s.customCommand),
+        args: [
+          ...s.customArgs.map((a) => (opts.resolvePaths === false ? a : resolveVariables(a))),
+          ...serverArgs,
+        ],
         cwd,
         env,
       };
@@ -196,6 +227,16 @@ export interface LaunchProblem {
   blocking: boolean;
 }
 
+/** Whether a non-empty value still has unresolved tokens (or resolves to empty). */
+function isUnresolvable(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const resolved = resolveVariables(trimmed);
+  return !resolved.trim() || hasUnresolvedVariables(resolved);
+}
+
 /** Validate a launch spec, returning problems (empty = OK). */
 export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
   const problems: LaunchProblem[] = [];
@@ -205,7 +246,7 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
         message: 'Launch method is "node" but wcli0.launch.nodeScriptPath is empty.',
         blocking: true,
       });
-    } else if (hasUnresolvedVariables(resolveVariables(s.nodeScriptPath.trim()))) {
+    } else if (isUnresolvable(s.nodeScriptPath)) {
       // An unresolved ${workspaceFolder} token would launch `node ${workspaceFolder}/...`
       // and fail every start; refuse rather than register a broken definition.
       problems.push({
@@ -214,9 +255,30 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
       });
     }
   }
-  if (s.launchMethod === 'custom' && !s.customCommand.trim()) {
+  if (s.launchMethod === 'custom') {
+    if (!s.customCommand.trim()) {
+      problems.push({
+        message: 'Launch method is "custom" but wcli0.launch.customCommand is empty.',
+        blocking: true,
+      });
+    } else if (isUnresolvable(s.customCommand)) {
+      problems.push({
+        message: `wcli0.launch.customCommand "${s.customCommand}" contains an unresolved variable (no matching workspace folder is open).`,
+        blocking: true,
+      });
+    }
+  }
+  // A configured cwd or initialDir that doesn't resolve would silently fall back
+  // to a different directory than the user chose; refuse rather than mislead.
+  if (isUnresolvable(s.cwd)) {
     problems.push({
-      message: 'Launch method is "custom" but wcli0.launch.customCommand is empty.',
+      message: `wcli0.launch.cwd "${s.cwd}" contains an unresolved variable (no matching workspace folder is open).`,
+      blocking: true,
+    });
+  }
+  if (isUnresolvable(s.initialDir)) {
+    problems.push({
+      message: `wcli0.initialDir "${s.initialDir}" contains an unresolved variable (no matching workspace folder is open).`,
       blocking: true,
     });
   }

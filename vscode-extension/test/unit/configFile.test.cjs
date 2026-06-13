@@ -237,3 +237,10 @@ test('an unresolved log directory is dropped from the generated config', () => {
   const cfg = buildConfigFile(defaults({ logDirectory: '${workspaceFolder}/logs' }));
   assert.equal(cfg.global.logging, undefined);
 });
+
+test('native bash has no wslConfig and is unaffected by the wsl mount point', () => {
+  const cfg = buildConfigFile(defaults({ wslMountPoint: '/windows' }));
+  assert.equal(cfg.shells.bash.wslConfig, undefined);
+  // Only the wsl shell carries the normalized mount point.
+  assert.equal(cfg.shells.wsl.wslConfig.mountPoint, '/windows/');
+});

@@ -246,7 +246,7 @@ function renderHtml(webview: vscode.Webview): string {
       <select id="transport.mode"><option value="stdio">stdio</option><option value="http">http</option><option value="sse">sse</option></select>
     </div>
     <div><label>Host</label><input type="text" id="transport.host" placeholder="127.0.0.1" /></div>
-    <div><label>Port</label><input type="number" id="transport.port" placeholder="9444" /></div>
+    <div><label>Port</label><input type="number" id="transport.port" placeholder="9444" min="1" max="65535" step="1" /></div>
   </div>
 
 <script nonce="${nonce}">
@@ -310,6 +310,13 @@ function renderHtml(webview: vscode.Webview): string {
   $('launch.method').addEventListener('change', updateLaunchRows);
 
   $('save').addEventListener('click', () => {
+    // Block out-of-range ports (the contributed setting is 1..65535) before
+    // saving; an invalid port makes the provider register no server in http mode.
+    const portEl = $('transport.port');
+    if (portEl && portEl.value !== '' && !portEl.checkValidity()) {
+      portEl.reportValidity();
+      return;
+    }
     const target = document.querySelector('input[name=scope]:checked').value;
     vscode.postMessage({ type: 'save', target, values: collectChanged() });
   });

@@ -29,10 +29,10 @@ test('generateConfigFile writes JSON and sets configFile when chosen', async () 
   const parsed = JSON.parse(written.toString('utf8'));
   assert.ok(parsed.global && parsed.shells, 'has global + shells');
   assert.equal(vscode.__state.calls.shownDocs.length, 1);
-  // configFile setting now points at the saved file.
+  // configFile setting points at the saved file as a portable workspace-relative path.
   assert.equal(
     vscode.workspace.getConfiguration('wcli0').get('configFile', ''),
-    '/ws/wcli0.config.json',
+    '${workspaceFolder}/wcli0.config.json',
   );
 });
 
@@ -129,11 +129,12 @@ test('refreshServerDefinition refreshes the provider', async () => {
   assert.equal(refreshed, 1);
 });
 
-test('writeWorkspaceMcpJson includes a configured cwd', async () => {
+test('writeWorkspaceMcpJson preserves a portable cwd token', async () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}/sub');
   await writeWorkspaceMcpJson();
   const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
-  assert.equal(parsed.servers.wcli0.cwd, '/ws/sub');
+  // Committed mcp.json keeps the portable token rather than an absolute path.
+  assert.equal(parsed.servers.wcli0.cwd, '${workspaceFolder}/sub');
 });
 
 test('writeWorkspaceMcpJson refuses a broken launch config', async () => {
@@ -144,10 +145,10 @@ test('writeWorkspaceMcpJson refuses a broken launch config', async () => {
   assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
 });
 
-test('writeWorkspaceMcpJson defaults a stdio entry cwd to the workspace folder', async () => {
+test('writeWorkspaceMcpJson defaults a stdio entry cwd to the portable workspace token', async () => {
   await writeWorkspaceMcpJson();
   const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
-  assert.equal(parsed.servers.wcli0.cwd, '/ws');
+  assert.equal(parsed.servers.wcli0.cwd, '${workspaceFolder}');
 });
 
 test('writeWorkspaceMcpJson writes an http entry despite a broken local launch config', async () => {
@@ -193,6 +194,24 @@ test('parseJsonc strips comments and trailing commas but preserves string conten
 
 test('parseJsonc throws on genuinely malformed input', () => {
   assert.throws(() => parseJsonc('{ "a": }'));
+});
+
+test('parseJsonc throws on an unterminated block comment', () => {
+  assert.throws(() => parseJsonc('{"servers": {}} /* unfinished'), /Unterminated block comment/);
+});
+
+test('writeWorkspaceMcpJson refuses a non-object root', async () => {
+  vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from('null'));
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 1);
+  assert.equal(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'), 'null');
+});
+
+test('writeWorkspaceMcpJson refuses a non-object servers value', async () => {
+  vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from('{ "servers": [] }'));
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.error.length, 1);
+  assert.equal(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'), '{ "servers": [] }');
 });
 
 test('writeWorkspaceMcpJson preserves a syntactically broken existing file', async () => {

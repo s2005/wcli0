@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { buildLaunchSpec, isValidPort, renderCommandLine, validateLaunchSpec } from './argsBuilder';
 import { buildConfigFile } from './configFile';
@@ -37,9 +38,15 @@ export async function generateConfigFile(): Promise<void> {
     const cfgTarget = folder
       ? vscode.ConfigurationTarget.Workspace
       : vscode.ConfigurationTarget.Global;
+    // For a workspace target, store a ${workspaceFolder}-relative path so the
+    // (commonly committed) setting stays valid on other machines.
+    const value =
+      folder && cfgTarget === vscode.ConfigurationTarget.Workspace
+        ? toPortablePath(folder.uri, target)
+        : target.fsPath;
     await vscode.workspace
       .getConfiguration('wcli0', scope ?? null)
-      .update('configFile', target.fsPath, cfgTarget);
+      .update('configFile', value, cfgTarget);
   }
 }
 
@@ -69,15 +76,18 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
     return;
   }
 
-  const spec = buildLaunchSpec(settings);
+  // Preserve portable ${workspaceFolder} tokens rather than resolving them: a
+  // committed mcp.json is shared across machines and VS Code resolves these
+  // variables itself, so baking in absolute paths would break for teammates.
+  const spec = buildLaunchSpec(settings, { resolvePaths: false });
 
   let entry: Record<string, unknown>;
   if (settings.transportMode === 'stdio') {
-    // Default the process cwd to the workspace folder, matching the automatic
-    // provider. VS Code otherwise starts an MCP process without `cwd` in the
-    // user home directory, changing relative-path resolution and config
+    // Default the process cwd to the (portable) workspace folder, matching the
+    // automatic provider. VS Code otherwise starts an MCP process without `cwd`
+    // in the user home directory, changing relative-path resolution and config
     // auto-discovery compared with the registered server.
-    const cwd = spec.cwd ?? folder.uri.fsPath;
+    const cwd = spec.cwd ?? '${workspaceFolder}';
     entry = {
       type: 'stdio',
       command: spec.command,
@@ -122,6 +132,21 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
       );
       return;
     }
+  }
+  // A syntactically valid file can still have a non-object root or `servers`
+  // (e.g. `null`, or `"servers": []`); merging into those would throw or
+  // silently drop the entry, so refuse rather than corrupt the file.
+  if (!isPlainObject(existing)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: ${mcpUri.fsPath} root is not a JSON object. Fix it before writing.`,
+    );
+    return;
+  }
+  if (existing.servers !== undefined && !isPlainObject(existing.servers)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: "servers" in ${mcpUri.fsPath} is not a JSON object. Fix it before writing.`,
+    );
+    return;
   }
   const servers = (existing.servers as Record<string, unknown>) ?? {};
   servers.wcli0 = entry;
@@ -230,6 +255,11 @@ export function parseJsonc(text: string): unknown {
       while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
         i++;
       }
+      if (i >= text.length) {
+        // EOF before the closing */ — malformed; don't silently accept the
+        // truncated remainder and overwrite the user's file.
+        throw new SyntaxError('Unterminated block comment in JSONC input');
+      }
       i++; // skip the closing '/'
       continue;
     }
@@ -241,6 +271,24 @@ export function parseJsonc(text: string): unknown {
     out += ch;
   }
   return JSON.parse(out);
+}
+
+/** Whether a value is a plain JSON object (not null, not an array). */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Return a `${workspaceFolder}`-relative path when `target` is inside `folder`,
+ * otherwise the absolute fsPath. Workspace settings/artifacts are commonly
+ * committed, so a portable token keeps the reference valid on other machines.
+ */
+function toPortablePath(folder: vscode.Uri, target: vscode.Uri): string {
+  const rel = path.relative(folder.fsPath, target.fsPath);
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+    return `\${workspaceFolder}/${rel.split(path.sep).join('/')}`;
+  }
+  return target.fsPath;
 }
 
 /** Whether a workspace.fs read error means the file is simply absent. */
