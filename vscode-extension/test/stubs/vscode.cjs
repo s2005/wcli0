@@ -25,7 +25,10 @@ class Uri {
     return u;
   }
   static joinPath(base, ...segs) {
-    return Uri.file(path.join(base.fsPath, ...segs));
+    // Real vscode.Uri paths always use forward slashes regardless of the host
+    // OS, so use POSIX joining here (node:path.join would emit backslashes on
+    // Windows and break the POSIX-style fsPath keys the tests assert on).
+    return Uri.file(path.posix.join(base.fsPath, ...segs));
   }
 }
 
