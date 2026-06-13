@@ -9,19 +9,27 @@ test.beforeEach(() => {
   vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
 });
 
-test('provides a stdio definition that defaults cwd to the workspace', () => {
+test('provides a stdio definition without a default cwd', () => {
   const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
   assert.equal(defs.length, 1);
   assert.ok(defs[0] instanceof vscode.McpStdioServerDefinition);
   assert.equal(defs[0].command, 'npx');
   assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest']);
-  assert.equal(defs[0].cwd.fsPath, '/ws');
+  // cwd is left unset so the server does not auto-load <workspace>/config.json.
+  assert.equal(defs[0].cwd, undefined);
 });
 
-test('sets cwd when launch.cwd is configured', () => {
+test('sets cwd only when launch.cwd is configured', () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}');
   const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
   assert.equal(defs[0].cwd.fsPath, '/ws');
+});
+
+test('logs non-blocking safety notes from the provider', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.allowedDirectories', ['/ws']);
+  const logged = [];
+  new Wcli0McpProvider((m) => logged.push(m)).provideMcpServerDefinitions();
+  assert.ok(logged.some((m) => /injection protection/i.test(m)));
 });
 
 test('http definition maps a wildcard bind host to loopback', () => {

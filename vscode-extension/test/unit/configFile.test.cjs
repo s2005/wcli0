@@ -238,9 +238,22 @@ test('an unresolved log directory is dropped from the generated config', () => {
   assert.equal(cfg.global.logging, undefined);
 });
 
-test('native bash has no wslConfig and is unaffected by the wsl mount point', () => {
+test('allowAllDirs is honored when configured paths all fail to resolve', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  // The only allowed dir is an unresolved token -> dropped -> no paths emitted,
+  // so allowAllDirs must lift the restriction (decision uses resolved paths).
+  const cfg = buildConfigFile(
+    defaults({ allowAllDirs: true, allowedDirectories: ['${workspaceFolder}/src'] }),
+  );
+  assert.deepEqual(cfg.global.paths.allowedPaths, []);
+  assert.equal(cfg.global.security.restrictWorkingDirectory, false);
+});
+
+test('native bash disables WSL path inheritance and ignores the wsl mount point', () => {
   const cfg = buildConfigFile(defaults({ wslMountPoint: '/windows' }));
-  assert.equal(cfg.shells.bash.wslConfig, undefined);
-  // Only the wsl shell carries the normalized mount point.
+  // bash must explicitly disable inheritance (the server's merge forces it on
+  // when the field is absent), and the mount point applies only to the wsl shell.
+  assert.equal(cfg.shells.bash.wslConfig.inheritGlobalPaths, false);
+  assert.equal(cfg.shells.bash.wslConfig.mountPoint, undefined);
   assert.equal(cfg.shells.wsl.wslConfig.mountPoint, '/windows/');
 });

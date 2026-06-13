@@ -57,11 +57,19 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       return [new vscode.McpHttpServerDefinition(SERVER_LABEL, uri)];
     }
 
-    const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
+    const problems = validateLaunchSpec(settings);
+    const blocking = problems.filter((p) => p.blocking);
     if (blocking.length > 0) {
       // Misconfigured launch: log rather than register a broken server.
       this.log(blocking.map((p) => p.message).join(' '));
       return [];
+    }
+    // Surface non-blocking safety notes (e.g. "safe mode + allowedDirectories
+    // disables injection protection") so a reduced-protection launch isn't silent.
+    for (const p of problems) {
+      if (!p.blocking) {
+        this.log(p.message);
+      }
     }
 
     const spec = buildLaunchSpec(settings);
@@ -71,11 +79,12 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       spec.args,
       spec.env,
     );
-    // Default the process cwd to the primary workspace folder so relative paths
-    // resolve as the setting descriptions promise.
-    const cwd = spec.cwd ?? primaryWorkspaceFolder()?.uri.fsPath;
-    if (cwd) {
-      def.cwd = vscode.Uri.file(cwd);
+    // Only set cwd when the user explicitly configured launch.cwd. Defaulting to
+    // the workspace folder would make the server auto-load <workspace>/config.json
+    // (loadConfig searches process.cwd()), letting a committed config.json
+    // silently override the extension's safe settings.
+    if (spec.cwd) {
+      def.cwd = vscode.Uri.file(spec.cwd);
     }
     return [def];
   }

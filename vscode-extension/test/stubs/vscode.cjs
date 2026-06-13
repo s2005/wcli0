@@ -84,6 +84,7 @@ const state = {
     error: [],
     saveDialog: undefined, // function or value returned by showSaveDialog
     infoReturn: undefined, // value returned by showInformationMessage
+    warnReturn: undefined, // value returned by showWarningMessage
     clipboard: [],
     executedCommands: [],
     registeredCommands: new Map(),
@@ -107,6 +108,7 @@ function __reset() {
   state.calls.error = [];
   state.calls.saveDialog = undefined;
   state.calls.infoReturn = undefined;
+  state.calls.warnReturn = undefined;
   state.calls.clipboard = [];
   state.calls.executedCommands = [];
   state.calls.registeredCommands = new Map();
@@ -190,9 +192,9 @@ const window = {
     state.calls.info.push({ message, items });
     return Promise.resolve(state.calls.infoReturn);
   },
-  showWarningMessage(message) {
-    state.calls.warn.push(message);
-    return Promise.resolve(undefined);
+  showWarningMessage(message, ...items) {
+    state.calls.warn.push({ message, items });
+    return Promise.resolve(state.calls.warnReturn);
   },
   showErrorMessage(message) {
     state.calls.error.push(message);

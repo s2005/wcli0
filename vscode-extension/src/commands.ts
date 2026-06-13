@@ -83,17 +83,33 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
 
   let entry: Record<string, unknown>;
   if (settings.transportMode === 'stdio') {
-    // Default the process cwd to the (portable) workspace folder, matching the
-    // automatic provider. VS Code otherwise starts an MCP process without `cwd`
-    // in the user home directory, changing relative-path resolution and config
-    // auto-discovery compared with the registered server.
-    const cwd = spec.cwd ?? '${workspaceFolder}';
+    // Only include cwd when launch.cwd is explicitly set. Defaulting it to the
+    // workspace would make the server auto-load <workspace>/config.json
+    // (loadConfig searches process.cwd()), letting a committed config.json
+    // silently override the extension's safe settings.
+    let env = spec.env;
+    if (Object.keys(env).length > 0) {
+      // env is serialized into the (commonly committed) mcp.json and may hold
+      // secrets inherited from User settings — require an explicit choice.
+      const pick = await vscode.window.showWarningMessage(
+        `wcli0: launch.env has ${Object.keys(env).length} variable(s) that would be written into the committed .vscode/mcp.json. These may include secrets inherited from User settings.`,
+        { modal: true },
+        'Include environment',
+        'Omit environment',
+      );
+      if (pick === undefined) {
+        return; // cancelled — don't write
+      }
+      if (pick === 'Omit environment') {
+        env = {};
+      }
+    }
     entry = {
       type: 'stdio',
       command: spec.command,
       args: spec.args,
-      ...(cwd ? { cwd } : {}),
-      ...(Object.keys(spec.env).length ? { env: spec.env } : {}),
+      ...(spec.cwd ? { cwd: spec.cwd } : {}),
+      ...(Object.keys(env).length ? { env } : {}),
     };
   } else {
     entry = {
@@ -148,6 +164,19 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
     );
     return;
   }
+  // Re-serializing with JSON.stringify drops any comments/formatting the file
+  // had. Warn before discarding them rather than silently reformatting.
+  if (raw && containsJsoncComments(Buffer.from(raw).toString('utf8'))) {
+    const pick = await vscode.window.showWarningMessage(
+      `wcli0: ${mcpUri.fsPath} contains comments that will be removed when the wcli0 entry is written (the file is rewritten as plain JSON).`,
+      { modal: true },
+      'Write anyway',
+    );
+    if (pick !== 'Write anyway') {
+      return;
+    }
+  }
+
   const servers = (existing.servers as Record<string, unknown>) ?? {};
   servers.wcli0 = entry;
   existing.servers = servers;
@@ -261,6 +290,9 @@ export function parseJsonc(text: string): unknown {
         throw new SyntaxError('Unterminated block comment in JSONC input');
       }
       i++; // skip the closing '/'
+      // Replace the comment with a space so adjacent tokens (e.g. `1/*c*/2`)
+      // don't fuse into a different value that parses successfully.
+      out += ' ';
       continue;
     }
     if (ch === '}' || ch === ']') {
@@ -271,6 +303,29 @@ export function parseJsonc(text: string): unknown {
     out += ch;
   }
   return JSON.parse(out);
+}
+
+/** Whether the text contains a `//` or block comment outside any string. */
+function containsJsoncComments(text: string): boolean {
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (inString) {
+      if (ch === '\\') {
+        i++;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '/' && (next === '/' || next === '*')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Whether a value is a plain JSON object (not null, not an array). */

@@ -43,11 +43,15 @@ const SHELL_DEFAULTS: Record<string, Record<string, unknown>> = {
     wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true },
   },
   bash: {
-    // The server's default bash config has no wslConfig; adding one would make
-    // native bash apply WSL path inheritance and broaden its allowed directories.
+    // The server's mergeConfigs always rebuilds bash.wslConfig with
+    // inheritGlobalPaths defaulting to true, so omitting it is not enough:
+    // explicitly disable inheritance so native bash doesn't gain /mnt/<drive>
+    // copies of Windows allowed paths (applyWslPathInheritance early-returns when
+    // inheritGlobalPaths is false).
     type: 'bash',
     enabled: true,
     executable: { command: 'bash', args: ['-c'] },
+    wslConfig: { inheritGlobalPaths: false },
   },
 };
 
@@ -57,10 +61,27 @@ const SHELL_DEFAULTS: Record<string, Record<string, unknown>> = {
  * can be referenced via `wcli0.configFile` / `--config`.
  */
 export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
+  // Resolve the path values that will actually be emitted first, so downstream
+  // decisions reflect what ends up in the file (an unresolved ${workspaceFolder}
+  // entry is dropped and must not count as "configured").
+  const resolvedAllowedPaths = s.allowedDirectories
+    .map((d) => d.trim())
+    .filter((d) => d.length > 0)
+    .map((d) => resolveVariables(d))
+    .filter((d) => d.trim().length > 0 && !hasUnresolvedVariables(d));
+  const resolvedInitialDir = (() => {
+    const trimmed = s.initialDir.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    const resolved = resolveVariables(trimmed);
+    return resolved.trim() && !hasUnresolvedVariables(resolved) ? resolved : undefined;
+  })();
+
   // allowAllDirs only lifts the restriction when nothing else is configured,
-  // matching the server's "when no allowed paths are configured" behavior.
-  const hasConfiguredPaths =
-    s.allowedDirectories.some((d) => d.trim()) || s.initialDir.trim().length > 0;
+  // matching the server's "when no allowed paths are configured" behavior. Base
+  // this on the resolved paths actually written, not the raw settings.
+  const hasConfiguredPaths = resolvedAllowedPaths.length > 0 || resolvedInitialDir !== undefined;
   const security: Record<string, unknown> = {
     enableInjectionProtection: s.safetyMode === 'safe',
     // unsafe disables the restriction; yolo always keeps it (the server's --yolo
@@ -101,21 +122,12 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     }
   }
 
-  const paths: Record<string, unknown> = {
-    // Trim first (filter(Boolean) alone keeps whitespace-only entries, which the
-    // server normalizes to an empty allowed prefix that matches every path), and
-    // drop entries that don't fully resolve.
-    allowedPaths: s.allowedDirectories
-      .map((d) => d.trim())
-      .filter((d) => d.length > 0)
-      .map((d) => resolveVariables(d))
-      .filter((d) => d.trim().length > 0 && !hasUnresolvedVariables(d)),
-  };
-  if (s.initialDir.trim()) {
-    const resolvedInitial = resolveVariables(s.initialDir.trim());
-    if (resolvedInitial.trim() && !hasUnresolvedVariables(resolvedInitial)) {
-      paths.initialDir = resolvedInitial;
-    }
+  // Reuse the resolved values computed above (whitespace-only and unresolved
+  // entries already dropped — the server treats an empty allowed prefix as
+  // matching every path).
+  const paths: Record<string, unknown> = { allowedPaths: resolvedAllowedPaths };
+  if (resolvedInitialDir !== undefined) {
+    paths.initialDir = resolvedInitialDir;
   }
 
   const logging: Record<string, unknown> = {};

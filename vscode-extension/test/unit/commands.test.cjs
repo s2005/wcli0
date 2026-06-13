@@ -145,10 +145,11 @@ test('writeWorkspaceMcpJson refuses a broken launch config', async () => {
   assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
 });
 
-test('writeWorkspaceMcpJson defaults a stdio entry cwd to the portable workspace token', async () => {
+test('writeWorkspaceMcpJson omits cwd unless launch.cwd is configured', async () => {
   await writeWorkspaceMcpJson();
   const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
-  assert.equal(parsed.servers.wcli0.cwd, '${workspaceFolder}');
+  // No default cwd: avoids the server auto-loading <workspace>/config.json.
+  assert.equal(parsed.servers.wcli0.cwd, undefined);
 });
 
 test('writeWorkspaceMcpJson writes an http entry despite a broken local launch config', async () => {
@@ -175,6 +176,8 @@ test('writeWorkspaceMcpJson merges into a JSONC file with comments and trailing 
     '/ws/.vscode/mcp.json',
     Buffer.from('{\n  // keep this\n  "servers": {\n    "other": { "type": "stdio", },\n  },\n}'),
   );
+  // Comments present -> the command confirms before reformatting away comments.
+  vscode.__state.calls.warnReturn = 'Write anyway';
   await writeWorkspaceMcpJson();
   assert.equal(vscode.__state.calls.error.length, 0);
   const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
@@ -198,6 +201,47 @@ test('parseJsonc throws on genuinely malformed input', () => {
 
 test('parseJsonc throws on an unterminated block comment', () => {
   assert.throws(() => parseJsonc('{"servers": {}} /* unfinished'), /Unterminated block comment/);
+});
+
+test('parseJsonc replaces a block comment with a space so tokens do not fuse', () => {
+  // `1/*c*/2` must not become `12`; the space makes it invalid JSON.
+  assert.throws(() => parseJsonc('{ "x": 1/*c*/2 }'));
+  assert.deepEqual(parseJsonc('{ "a"/* */: 1 }'), { a: 1 });
+});
+
+test('writeWorkspaceMcpJson confirms before writing env, and can omit it', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.env', { TOKEN: 'secret' });
+  // Include path
+  vscode.__state.calls.warnReturn = 'Include environment';
+  await writeWorkspaceMcpJson();
+  let parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.deepEqual(parsed.servers.wcli0.env, { TOKEN: 'secret' });
+
+  // Omit path
+  vscode.__reset();
+  vscode.__state.workspaceFolders = WS;
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.env', { TOKEN: 'secret' });
+  vscode.__state.calls.warnReturn = 'Omit environment';
+  await writeWorkspaceMcpJson();
+  parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.env, undefined);
+});
+
+test('writeWorkspaceMcpJson aborts the env write when the prompt is dismissed', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.env', { TOKEN: 'secret' });
+  vscode.__state.calls.warnReturn = undefined; // dismissed
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
+test('writeWorkspaceMcpJson leaves a commented file untouched when not confirmed', async () => {
+  vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from('{ /* note */ "servers": {} }'));
+  vscode.__state.calls.warnReturn = undefined; // declined
+  await writeWorkspaceMcpJson();
+  assert.equal(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+    '{ /* note */ "servers": {} }',
+  );
 });
 
 test('writeWorkspaceMcpJson refuses a non-object root', async () => {
