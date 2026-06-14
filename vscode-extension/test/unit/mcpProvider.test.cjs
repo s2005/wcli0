@@ -10,14 +10,18 @@ test.beforeEach(() => {
   vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
 });
 
-test('provides a stdio definition with a neutral (non-workspace) cwd', () => {
-  const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
+test('uses the injected private cwd, not the workspace, by default', () => {
+  const defs = new Wcli0McpProvider(undefined, '/priv/storage').provideMcpServerDefinitions();
   assert.equal(defs.length, 1);
   assert.ok(defs[0] instanceof vscode.McpStdioServerDefinition);
   assert.equal(defs[0].command, 'npx');
   assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest']);
-  // cwd is a temp dir, not the workspace, so the server does not auto-load
-  // <workspace>/config.json.
+  // A private extension-owned dir avoids auto-loading <workspace>/config.json.
+  assert.equal(defs[0].cwd.fsPath, '/priv/storage');
+});
+
+test('falls back to a temp dir when no private cwd is injected', () => {
+  const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
   assert.equal(defs[0].cwd.fsPath, os.tmpdir());
 });
 

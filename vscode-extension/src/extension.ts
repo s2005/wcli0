@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { Wcli0McpProvider } from './mcpProvider';
 import {
@@ -13,7 +14,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('wcli0');
   context.subscriptions.push(output);
 
-  const provider = new Wcli0McpProvider((message) => output.appendLine(`[provider] ${message}`));
+  // A private, extension-owned directory used as the server's cwd when launch.cwd
+  // is unset, so it never auto-loads a config.json from the workspace or a shared
+  // temp dir. Created best-effort; the provider falls back to a temp dir.
+  const safeCwd = context.globalStorageUri.fsPath;
+  try {
+    fs.mkdirSync(safeCwd, { recursive: true });
+  } catch {
+    // best effort — provider has its own fallback
+  }
+  const provider = new Wcli0McpProvider(
+    (message) => output.appendLine(`[provider] ${message}`),
+    safeCwd,
+  );
   context.subscriptions.push(provider);
 
   // Register the MCP server definition so VS Code/Copilot can launch wcli0

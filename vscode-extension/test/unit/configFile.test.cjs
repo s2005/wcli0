@@ -238,6 +238,21 @@ test('an unresolved log directory is dropped from the generated config', () => {
   assert.equal(cfg.global.logging, undefined);
 });
 
+test('relative allowed paths and log dir are anchored to the workspace', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(defaults({ allowedDirectories: ['src'], logDirectory: 'logs' }));
+  assert.deepEqual(cfg.global.paths.allowedPaths, [require('path').resolve('/ws', 'src')]);
+  assert.equal(cfg.global.logging.logDirectory, require('path').resolve('/ws', 'logs'));
+});
+
+test('a fractional commandTimeout is preserved in the generated config', () => {
+  const cfg = buildConfigFile(defaults({ commandTimeout: 1.5 }));
+  assert.equal(cfg.global.security.commandTimeout, 1.5);
+  // Below the server minimum is still dropped.
+  const low = buildConfigFile(defaults({ commandTimeout: 0.5 }));
+  assert.equal(low.global.security.commandTimeout, undefined);
+});
+
 test('allowAllDirs is honored when configured paths all fail to resolve', () => {
   vscodeStub.workspace.workspaceFolders = undefined;
   // The only allowed dir is an unresolved token -> dropped -> no paths emitted,

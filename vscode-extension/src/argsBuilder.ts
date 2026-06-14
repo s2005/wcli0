@@ -113,10 +113,13 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   if (initialDir) {
     args.push('--initialDir', initialDir);
   }
-  if (s.commandTimeout != null) {
+  // The server ignores non-positive commandTimeout/maxCommandLength (uses its
+  // default), so only emit positive values; invalid ones are surfaced by
+  // validateLaunchSpec rather than silently falling back.
+  if (s.commandTimeout != null && s.commandTimeout > 0) {
     args.push('--commandTimeout', String(s.commandTimeout));
   }
-  if (s.maxCommandLength != null) {
+  if (s.maxCommandLength != null && s.maxCommandLength > 0) {
     args.push('--maxCommandLength', String(s.maxCommandLength));
   }
   if (s.wslMountPoint.trim()) {
@@ -375,6 +378,19 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
     if (value != null && !isValidLogLimit(value)) {
       problems.push({
         message: `wcli0.${name} (${value}) must be an integer between 1 and 10000; the server rejects other values at startup.`,
+        blocking: true,
+      });
+    }
+  }
+  // The server ignores a non-positive commandTimeout/maxCommandLength and uses
+  // its default, so the value shown in settings would not take effect.
+  for (const [name, value] of [
+    ['commandTimeout', s.commandTimeout],
+    ['maxCommandLength', s.maxCommandLength],
+  ] as const) {
+    if (value != null && !(value > 0)) {
+      problems.push({
+        message: `wcli0.${name} (${value}) must be a positive number; the server ignores non-positive values and uses its default.`,
         blocking: true,
       });
     }

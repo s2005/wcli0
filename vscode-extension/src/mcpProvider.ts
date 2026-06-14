@@ -20,7 +20,16 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    *   called eagerly by VS Code, so problems are logged rather than shown as
    *   popups (per the API guidance). Defaults to console.
    */
-  constructor(private readonly log: (message: string) => void = (m) => console.warn(m)) {}
+  /**
+   * @param log Sink for configuration problems (see above).
+   * @param safeCwd A private, extension-owned directory to use as the process cwd
+   *   when launch.cwd is unset — avoids the server auto-loading a config.json
+   *   from the workspace or a world-writable temp dir. Falls back to os.tmpdir().
+   */
+  constructor(
+    private readonly log: (message: string) => void = (m) => console.warn(m),
+    private readonly safeCwd?: string,
+  ) {}
 
   /** Notify VS Code that definitions may have changed (re-reads settings). */
   refresh(): void {
@@ -80,13 +89,14 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       spec.args,
       spec.env,
     );
-    // Use the configured cwd when set, otherwise a neutral temp directory. VS
-    // Code defaults an stdio server's cwd to the workspace folder, which would
-    // make the server auto-load <workspace>/config.json (loadConfig searches
-    // process.cwd()) and let a committed config.json silently override the
-    // extension's safe settings. All path args are already resolved to absolute
-    // values, so a non-workspace cwd does not change their meaning.
-    def.cwd = vscode.Uri.file(spec.cwd ?? os.tmpdir());
+    // Use the configured cwd when set, otherwise a private extension-owned
+    // directory. VS Code defaults an stdio server's cwd to the workspace folder,
+    // which would make the server auto-load <workspace>/config.json (loadConfig
+    // searches process.cwd()) and let a committed config.json silently override
+    // safe settings. A world-writable temp dir is also unsafe (another user could
+    // plant /tmp/config.json), so prefer the injected private dir. All path args
+    // are already resolved to absolute values, so a non-workspace cwd is fine.
+    def.cwd = vscode.Uri.file(spec.cwd ?? this.safeCwd ?? os.tmpdir());
     return [def];
   }
 }

@@ -1,5 +1,11 @@
+import * as path from 'path';
 import { isValidPort } from './argsBuilder';
-import { hasUnresolvedVariables, resolveVariables, Wcli0Settings } from './settings';
+import {
+  hasUnresolvedVariables,
+  primaryWorkspaceFolder,
+  resolveVariables,
+  Wcli0Settings,
+} from './settings';
 
 /**
  * Return the value only when it is a positive integer within `max`; otherwise
@@ -8,6 +14,31 @@ import { hasUnresolvedVariables, resolveVariables, Wcli0Settings } from './setti
  */
 function posInt(n: number | null, max = Infinity): number | undefined {
   return typeof n === 'number' && Number.isInteger(n) && n > 0 && n <= max ? n : undefined;
+}
+
+/**
+ * Return the value only when it is a finite number >= 1 (fractional allowed); the
+ * server's validateConfig accepts e.g. commandTimeout 1.5 and only rejects < 1.
+ */
+function posNum(n: number | null): number | undefined {
+  return typeof n === 'number' && Number.isFinite(n) && n >= 1 ? n : undefined;
+}
+
+/**
+ * Resolve a path-like value to an absolute path: resolve variables, drop values
+ * that don't fully resolve, and anchor a relative result to the workspace folder
+ * (the server resolves relative config paths against C:\, not the workspace).
+ */
+function resolveConfigPath(value: string): string | undefined {
+  const resolved = resolveVariables(value.trim());
+  if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
+    return undefined;
+  }
+  if (!path.isAbsolute(resolved)) {
+    const base = primaryWorkspaceFolder()?.uri.fsPath;
+    return base ? path.resolve(base, resolved) : resolved;
+  }
+  return resolved;
 }
 
 /**
@@ -65,18 +96,9 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   // decisions reflect what ends up in the file (an unresolved ${workspaceFolder}
   // entry is dropped and must not count as "configured").
   const resolvedAllowedPaths = s.allowedDirectories
-    .map((d) => d.trim())
-    .filter((d) => d.length > 0)
-    .map((d) => resolveVariables(d))
-    .filter((d) => d.trim().length > 0 && !hasUnresolvedVariables(d));
-  const resolvedInitialDir = (() => {
-    const trimmed = s.initialDir.trim();
-    if (!trimmed) {
-      return undefined;
-    }
-    const resolved = resolveVariables(trimmed);
-    return resolved.trim() && !hasUnresolvedVariables(resolved) ? resolved : undefined;
-  })();
+    .map((d) => resolveConfigPath(d))
+    .filter((d): d is string => d !== undefined);
+  const resolvedInitialDir = resolveConfigPath(s.initialDir);
 
   // allowAllDirs only lifts the restriction when nothing else is configured,
   // matching the server's "when no allowed paths are configured" behavior. Base
@@ -96,10 +118,12 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   };
   // Only emit positive-integer limits; the server's validateConfig rejects
   // zero/negative/fractional values that the settings schema would otherwise allow.
-  if (posInt(s.commandTimeout) != null) {
+  // commandTimeout/maxCommandLength accept fractional values >= 1 (the server
+  // only rejects < 1), unlike the integer-bounded logging limits below.
+  if (posNum(s.commandTimeout) != null) {
     security.commandTimeout = s.commandTimeout;
   }
-  if (posInt(s.maxCommandLength) != null) {
+  if (posNum(s.maxCommandLength) != null) {
     security.maxCommandLength = s.maxCommandLength;
   }
 
@@ -145,13 +169,11 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   if (posInt(s.maxReturnLines, 10000) != null) {
     logging.maxReturnLines = s.maxReturnLines;
   }
-  if (s.logDirectory.trim()) {
-    // Drop an unresolved ${workspaceFolder} token rather than writing it
-    // verbatim, which the server would treat as a literal relative directory.
-    const resolvedLog = resolveVariables(s.logDirectory.trim());
-    if (resolvedLog.trim() && !hasUnresolvedVariables(resolvedLog)) {
-      logging.logDirectory = resolvedLog;
-    }
+  // Drop an unresolved ${workspaceFolder} token and anchor a relative path to
+  // the workspace rather than writing something the server resolves against C:\.
+  const resolvedLog = resolveConfigPath(s.logDirectory);
+  if (resolvedLog !== undefined) {
+    logging.logDirectory = resolvedLog;
   }
 
   const global: Record<string, unknown> = { security, paths };

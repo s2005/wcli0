@@ -304,6 +304,20 @@ test('the injection-protection warning fires even when a config file is set', ()
   assert.ok(problems.some((p) => /injection protection/i.test(p.message) && !p.blocking));
 });
 
+test('non-positive security limits are blocking and omitted from args', () => {
+  const s = defaults({ commandTimeout: 0, maxCommandLength: -5 });
+  const problems = validateLaunchSpec(s);
+  assert.ok(problems.some((p) => /commandTimeout/.test(p.message) && p.blocking));
+  assert.ok(problems.some((p) => /maxCommandLength/.test(p.message) && p.blocking));
+  const args = buildServerArgs(s);
+  assert.equal(args.includes('--commandTimeout'), false);
+  assert.equal(args.includes('--maxCommandLength'), false);
+  // A fractional positive timeout is still emitted (server accepts > 0).
+  assert.deepEqual(buildServerArgs(defaults({ commandTimeout: 1.5 })), [
+    '--commandTimeout', '1.5',
+  ]);
+});
+
 test('out-of-range log limits are blocking and omitted from args', () => {
   const s = defaults({ maxOutputLines: 20000, maxReturnLines: 0 });
   const problems = validateLaunchSpec(s);

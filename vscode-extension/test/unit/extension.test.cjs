@@ -5,7 +5,9 @@ const vscode = require('../stubs/vscode.cjs');
 const { activate, deactivate } = require('../../dist/extension.js');
 
 function makeContext() {
-  return { subscriptions: [] };
+  // globalStorageUri.fsPath is used as the private "safe cwd"; point it at the
+  // OS temp dir so the best-effort mkdir in activate() succeeds during tests.
+  return { subscriptions: [], globalStorageUri: { fsPath: require('os').tmpdir() } };
 }
 
 test.beforeEach(() => {
