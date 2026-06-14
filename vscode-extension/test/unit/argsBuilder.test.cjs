@@ -287,6 +287,37 @@ test('unresolved custom command, cwd, and initialDir are blocking', () => {
   );
 });
 
+test('a relative config file is resolved against the workspace folder', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const args = buildServerArgs(defaults({ configFile: 'wcli0.config.json' }));
+  const i = args.indexOf('--config');
+  assert.ok(i >= 0);
+  // Resolved against the workspace so it does not depend on the process cwd.
+  assert.equal(require('path').isAbsolute(args[i + 1]), true);
+  assert.match(args[i + 1], /wcli0\.config\.json$/);
+});
+
+test('the injection-protection warning fires even when a config file is set', () => {
+  const problems = validateLaunchSpec(
+    defaults({ allowedDirectories: ['/ws'], configFile: '/ws/c.json' }),
+  );
+  assert.ok(problems.some((p) => /injection protection/i.test(p.message) && !p.blocking));
+});
+
+test('out-of-range log limits are blocking and omitted from args', () => {
+  const s = defaults({ maxOutputLines: 20000, maxReturnLines: 0 });
+  const problems = validateLaunchSpec(s);
+  assert.ok(problems.some((p) => /maxOutputLines/.test(p.message) && p.blocking));
+  assert.ok(problems.some((p) => /maxReturnLines/.test(p.message) && p.blocking));
+  const args = buildServerArgs(s);
+  assert.equal(args.includes('--maxOutputLines'), false);
+  assert.equal(args.includes('--maxReturnLines'), false);
+  // In-range values are still emitted.
+  assert.deepEqual(buildServerArgs(defaults({ maxOutputLines: 10000 })), [
+    '--maxOutputLines', '10000',
+  ]);
+});
+
 test('resolvePaths:false preserves portable tokens in args and spec', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
   const s = defaults({

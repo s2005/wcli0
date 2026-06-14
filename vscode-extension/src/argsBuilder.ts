@@ -1,4 +1,10 @@
-import { hasUnresolvedVariables, resolveVariables, Wcli0Settings } from './settings';
+import * as path from 'path';
+import {
+  hasUnresolvedVariables,
+  primaryWorkspaceFolder,
+  resolveVariables,
+  Wcli0Settings,
+} from './settings';
 
 export interface LaunchSpec {
   /** Executable to run (e.g. `npx`, `node`, or a custom command). */
@@ -23,7 +29,21 @@ function resolvedPath(value: string): string | undefined {
   if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
     return undefined;
   }
+  // Resolve a relative path against the workspace folder so it does not depend
+  // on the server's process cwd (the provider runs from a neutral temp dir, and
+  // the server resolves --config and other paths against process.cwd()).
+  if (!path.isAbsolute(resolved)) {
+    const base = primaryWorkspaceFolder()?.uri.fsPath;
+    if (base) {
+      return path.resolve(base, resolved);
+    }
+  }
   return resolved;
+}
+
+/** A logging line limit the server accepts: an integer in 1..10000. */
+function isValidLogLimit(n: number): boolean {
+  return Number.isInteger(n) && n >= 1 && n <= 10000;
 }
 
 /** A transport port the server will accept: an integer in 1..65535. */
@@ -111,7 +131,9 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   for (const op of s.blockedOperators) {
     pushOption(args, '--blockedOperator', op);
   }
-  if (s.maxOutputLines != null) {
+  // Only emit log limits the server accepts; an out-of-range value makes
+  // validateLoggingConfig throw on startup (surfaced by validateLaunchSpec).
+  if (s.maxOutputLines != null && isValidLogLimit(s.maxOutputLines)) {
     args.push('--maxOutputLines', String(s.maxOutputLines));
   }
   if (s.enableTruncation === 'enabled') {
@@ -124,7 +146,7 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   } else if (s.enableLogResources === 'disabled') {
     args.push('--no-enableLogResources');
   }
-  if (s.maxReturnLines != null) {
+  if (s.maxReturnLines != null && isValidLogLimit(s.maxReturnLines)) {
     args.push('--maxReturnLines', String(s.maxReturnLines));
   }
   const logDirectory = pathValue(s.logDirectory, opts);
@@ -318,15 +340,13 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
     });
   }
   // The server disables injection protection whenever directories are restricted
-  // via --allowedDir (see applyCliShellAndAllowedDirs). A config file preserves it.
-  if (
-    s.safetyMode === 'safe' &&
-    !s.configFile.trim() &&
-    s.allowedDirectories.some((d) => d.trim())
-  ) {
+  // via --allowedDir (see applyCliShellAndAllowedDirs). This happens even when a
+  // config file is referenced, because the extension still emits --allowedDir, so
+  // warn whenever allowedDirectories is set in safe mode.
+  if (s.safetyMode === 'safe' && s.allowedDirectories.some((d) => d.trim())) {
     problems.push({
       message:
-        'Restricting directories with --allowedDir makes the server disable command-injection protection. To keep it enabled, define allowed paths in a config file (wcli0.configFile) instead.',
+        'Restricting directories with wcli0.allowedDirectories passes --allowedDir, which makes the server disable command-injection protection. To keep it enabled, define allowed paths inside the config file (wcli0.configFile) and clear wcli0.allowedDirectories.',
       blocking: false,
     });
   }
@@ -344,6 +364,20 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
       message: 'Safety mode is "unsafe": all command and directory restrictions are disabled.',
       blocking: false,
     });
+  }
+  // The server's validateLoggingConfig throws (and the server fails to start) for
+  // log limits outside 1..10000, so refuse rather than register a server that
+  // crashes on launch.
+  for (const [name, value] of [
+    ['maxOutputLines', s.maxOutputLines],
+    ['maxReturnLines', s.maxReturnLines],
+  ] as const) {
+    if (value != null && !isValidLogLimit(value)) {
+      problems.push({
+        message: `wcli0.${name} (${value}) must be an integer between 1 and 10000; the server rejects other values at startup.`,
+        blocking: true,
+      });
+    }
   }
   return problems;
 }
