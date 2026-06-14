@@ -389,6 +389,72 @@ test('renderCommandLine keeps backslashes and quotes metacharacters', () => {
   assert.match(line, /"C:\\safe path"/); // backslash not doubled
 });
 
+test('P1: resolvePaths:false converts plain relative paths to ${workspaceFolder} tokens', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({
+    allowedDirectories: ['src', '${workspaceFolder}/lib', '/abs/dir'],
+    configFile: 'cfg/wcli0.json',
+    initialDir: 'work',
+    cwd: 'sub/dir',
+  });
+  const args = buildServerArgs(s, { resolvePaths: false });
+  // Bare relative values become workspace-relative tokens (server would otherwise
+  // C-root them); tokenized and absolute values are kept verbatim.
+  assert.ok(args.includes('${workspaceFolder}/src'));
+  assert.ok(args.includes('${workspaceFolder}/lib'));
+  assert.ok(args.includes('/abs/dir'));
+  assert.ok(args.includes('${workspaceFolder}/cfg/wcli0.json'));
+  assert.ok(args.includes('${workspaceFolder}/work'));
+  assert.equal(args.includes('src'), false); // not emitted bare
+  const spec = buildLaunchSpec(s, { resolvePaths: false });
+  assert.equal(spec.cwd, '${workspaceFolder}/sub/dir');
+});
+
+test('P1: resolvePaths:false normalizes backslash relative paths to forward-slash tokens', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const args = buildServerArgs(defaults({ allowedDirectories: ['src\\nested'] }), {
+    resolvePaths: false,
+  });
+  assert.ok(args.includes('${workspaceFolder}/src/nested'));
+});
+
+test('P2: a fractional maxOutputLines is accepted (server only range-checks it)', () => {
+  // Server's validateLoggingConfig enforces 1..10000 but not integer-ness.
+  assert.deepEqual(buildServerArgs(defaults({ maxOutputLines: 1.5 })), [
+    '--maxOutputLines', '1.5',
+  ]);
+  assert.equal(validateLaunchSpec(defaults({ maxOutputLines: 1.5 })).length, 0);
+  // Still range-checked: out-of-range fractional values are blocking and omitted.
+  const s = defaults({ maxOutputLines: 0.5 });
+  assert.ok(validateLaunchSpec(s).some((p) => /maxOutputLines/.test(p.message) && p.blocking));
+  assert.equal(buildServerArgs(s).includes('--maxOutputLines'), false);
+});
+
+test('P2: a fractional maxReturnLines is still blocking (server requires an integer)', () => {
+  const s = defaults({ maxReturnLines: 1.5 });
+  assert.ok(
+    validateLaunchSpec(s).some(
+      (p) => /maxReturnLines/.test(p.message) && /integer/.test(p.message) && p.blocking,
+    ),
+  );
+  assert.equal(buildServerArgs(s).includes('--maxReturnLines'), false);
+});
+
+test('P2: an unresolved custom arg is blocking', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({
+    launchMethod: 'custom',
+    customCommand: 'node',
+    customArgs: ['--inspect', '${workspaceFolder}/server.js'],
+  });
+  assert.ok(
+    validateLaunchSpec(s).some((p) => /customArgs/.test(p.message) && p.blocking),
+  );
+  // A fully resolvable arg (no tokens) is fine.
+  const ok = defaults({ launchMethod: 'custom', customCommand: 'node', customArgs: ['--inspect'] });
+  assert.equal(validateLaunchSpec(ok).filter((p) => p.blocking).length, 0);
+});
+
 test('managedConfigPath produces a minimal config-only arg list', () => {
   const args = buildServerArgs(
     defaults({

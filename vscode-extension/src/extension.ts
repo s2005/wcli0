@@ -17,11 +17,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // A private, extension-owned directory used as the server's cwd when launch.cwd
   // is unset, so it never auto-loads a config.json from the workspace or a shared
   // temp dir. Created best-effort; the provider falls back to a temp dir.
-  const safeCwd = context.globalStorageUri.fsPath;
+  let safeCwd: string | undefined = context.globalStorageUri.fsPath;
   try {
     fs.mkdirSync(safeCwd, { recursive: true });
   } catch {
-    // best effort — provider has its own fallback
+    // Could not create the private dir (read-only/permission-restricted storage).
+    // Drop it so the provider falls back to its own temp dir rather than launching
+    // with an unusable, nonexistent cwd that would fail every server start.
+    safeCwd = undefined;
   }
   // Workspace-scoped storage for the auto-managed per-shell config, so separate
   // windows (each with their own workspace settings) don't clobber each other's
@@ -52,6 +55,16 @@ export function activate(context: vscode.ExtensionContext): void {
       if (e.affectsConfiguration(CONFIG_SECTION)) {
         provider.refresh();
       }
+    }),
+  );
+
+  // The provider reads settings for, and resolves ${workspaceFolder} against, the
+  // primary workspace folder. In a multi-root workspace that folder can change
+  // (removed/reordered) without any wcli0 setting changing, so refresh here too;
+  // otherwise the cached definition keeps using the old folder's paths/settings.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      provider.refresh();
     }),
   );
 

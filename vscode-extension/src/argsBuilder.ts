@@ -41,9 +41,22 @@ function resolvedPath(value: string): string | undefined {
   return resolved;
 }
 
-/** A logging line limit the server accepts: an integer in 1..10000. */
+/**
+ * A logging line limit the server requires as an integer in 1..10000. Used for
+ * `maxReturnLines`, whose `validateLoggingConfig` check enforces `Number.isInteger`.
+ */
 function isValidLogLimit(n: number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= 10000;
+}
+
+/**
+ * The server's `validateLoggingConfig` only enforces the 1..10000 range for
+ * `maxOutputLines` (no integer requirement), so a fractional value like 1.5 is
+ * accepted. Validate it on that looser constraint to avoid blocking a config the
+ * server would run.
+ */
+function isValidMaxOutputLines(n: number): boolean {
+  return n >= 1 && n <= 10000;
 }
 
 /** A transport port the server will accept: an integer in 1..65535. */
@@ -110,7 +123,19 @@ function buildManagedServerArgs(s: Wcli0Settings, managedConfigPath: string): st
 function pathValue(value: string, opts: BuildOptions): string | undefined {
   if (opts.resolvePaths === false) {
     const trimmed = value.trim();
-    return trimmed ? trimmed : undefined;
+    if (!trimmed) {
+      return undefined;
+    }
+    // Convert a plain relative path to a ${workspaceFolder}-relative token so VS
+    // Code anchors it to the workspace, matching the resolved-path and config-file
+    // generators. A bare relative value would otherwise be C-rooted by the
+    // server's normalizeWindowsPath (e.g. "src" -> C:\src), denying the intended
+    // directory and possibly allowing an unrelated one. Values that already carry
+    // a token (or are absolute) are kept verbatim for VS Code to resolve.
+    if (!path.isAbsolute(trimmed) && !hasUnresolvedVariables(trimmed)) {
+      return `\${workspaceFolder}/${trimmed.split(/[\\/]/).join('/')}`;
+    }
+    return trimmed;
   }
   return resolvedPath(value);
 }
@@ -166,7 +191,7 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   }
   // Only emit log limits the server accepts; an out-of-range value makes
   // validateLoggingConfig throw on startup (surfaced by validateLaunchSpec).
-  if (s.maxOutputLines != null && isValidLogLimit(s.maxOutputLines)) {
+  if (s.maxOutputLines != null && isValidMaxOutputLines(s.maxOutputLines)) {
     args.push('--maxOutputLines', String(s.maxOutputLines));
   }
   if (s.enableTruncation === 'enabled') {
@@ -328,6 +353,17 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
         blocking: true,
       });
     }
+    // Custom args are variable-resolved like the command; an arg such as
+    // ${workspaceFolder}/server.js with no workspace open would be passed
+    // literally, so refuse rather than launch with a broken/unintended argument.
+    for (const arg of s.customArgs) {
+      if (isUnresolvable(arg)) {
+        problems.push({
+          message: `wcli0.launch.customArgs entry "${arg}" contains an unresolved variable (no matching workspace folder is open).`,
+          blocking: true,
+        });
+      }
+    }
   }
   // A configured cwd or initialDir that doesn't resolve would silently fall back
   // to a different directory than the user chose; refuse rather than mislead.
@@ -408,17 +444,19 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
   }
   // The server's validateLoggingConfig throws (and the server fails to start) for
   // log limits outside 1..10000, so refuse rather than register a server that
-  // crashes on launch.
-  for (const [name, value] of [
-    ['maxOutputLines', s.maxOutputLines],
-    ['maxReturnLines', s.maxReturnLines],
-  ] as const) {
-    if (value != null && !isValidLogLimit(value)) {
-      problems.push({
-        message: `wcli0.${name} (${value}) must be an integer between 1 and 10000; the server rejects other values at startup.`,
-        blocking: true,
-      });
-    }
+  // crashes on launch. maxOutputLines is range-checked only; maxReturnLines must
+  // also be an integer (matching each field's server-side validation).
+  if (s.maxOutputLines != null && !isValidMaxOutputLines(s.maxOutputLines)) {
+    problems.push({
+      message: `wcli0.maxOutputLines (${s.maxOutputLines}) must be between 1 and 10000; the server rejects other values at startup.`,
+      blocking: true,
+    });
+  }
+  if (s.maxReturnLines != null && !isValidLogLimit(s.maxReturnLines)) {
+    problems.push({
+      message: `wcli0.maxReturnLines (${s.maxReturnLines}) must be an integer between 1 and 10000; the server rejects other values at startup.`,
+      blocking: true,
+    });
   }
   // The server ignores a non-positive commandTimeout/maxCommandLength and uses
   // its default, so the value shown in settings would not take effect.

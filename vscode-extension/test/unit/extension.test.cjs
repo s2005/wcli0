@@ -89,6 +89,48 @@ test('each registered command callback runs without throwing', async () => {
   }
 });
 
+test('P2: workspace folder changes refresh the provider', () => {
+  activate(makeContext());
+  const { provider } = vscode.__state.registeredMcpProviders[0];
+  let fired = 0;
+  provider.onDidChangeMcpServerDefinitions(() => (fired += 1));
+  assert.ok(vscode.__state.workspaceFoldersChangeListeners.length >= 1);
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) {
+    cb({ added: [], removed: [] });
+  }
+  assert.ok(fired >= 1);
+});
+
+test('P2: a failed private-cwd mkdir falls back to a temp dir, not the unusable path', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const realMkdir = fs.mkdirSync;
+  const badDir = require('node:path').join(os.tmpdir(), 'wcli0-unwritable-private-cwd');
+  // Simulate read-only/permission-restricted extension storage for the private cwd.
+  fs.mkdirSync = (dir, opts) => {
+    if (dir === badDir) {
+      throw new Error('EACCES: permission denied');
+    }
+    return realMkdir(dir, opts);
+  };
+  try {
+    activate({
+      subscriptions: [],
+      globalStorageUri: { fsPath: badDir },
+      storageUri: { fsPath: os.tmpdir() },
+    });
+    const { provider } = vscode.__state.registeredMcpProviders[0];
+    const defs = provider.provideMcpServerDefinitions();
+    assert.equal(defs.length, 1);
+    // safeCwd was dropped, so the cwd falls back to the OS temp dir rather than the
+    // unusable directory that would have failed every launch.
+    assert.notEqual(defs[0].cwd.fsPath, badDir);
+    assert.equal(defs[0].cwd.fsPath, os.tmpdir());
+  } finally {
+    fs.mkdirSync = realMkdir;
+  }
+});
+
 test('deactivate is callable', () => {
   assert.doesNotThrow(() => deactivate());
 });

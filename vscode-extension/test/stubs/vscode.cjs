@@ -96,6 +96,7 @@ const state = {
   lmHasProvider: true,
   registeredMcpProviders: [],
   configChangeListeners: [],
+  workspaceFoldersChangeListeners: [],
 };
 
 function __reset() {
@@ -120,6 +121,7 @@ function __reset() {
   state.lmHasProvider = true;
   state.registeredMcpProviders = [];
   state.configChangeListeners = [];
+  state.workspaceFoldersChangeListeners = [];
 }
 
 function __setConfig(target, key, value) {
@@ -194,6 +196,10 @@ const workspace = {
   },
   onDidChangeConfiguration(cb) {
     state.configChangeListeners.push(cb);
+    return { dispose: () => {} };
+  },
+  onDidChangeWorkspaceFolders(cb) {
+    state.workspaceFoldersChangeListeners.push(cb);
     return { dispose: () => {} };
   },
   async openTextDocument(uri) {
