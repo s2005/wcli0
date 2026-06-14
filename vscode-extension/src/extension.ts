@@ -86,7 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('wcli0.writeWorkspaceMcpJson', () => writeWorkspaceMcpJson()),
     vscode.commands.registerCommand('wcli0.restartServer', () => refreshServerDefinition(provider)),
     vscode.commands.registerCommand('wcli0.showLaunchCommand', () =>
-      showLaunchCommand(output, managedConfigDir),
+      showLaunchCommand(output, provider),
     ),
   );
 }

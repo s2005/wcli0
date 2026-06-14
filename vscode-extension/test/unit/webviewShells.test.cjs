@@ -148,6 +148,24 @@ test('collectShells builds the wcli0.shells object from the form on save', () =>
   });
 });
 
+test('P20: an explicitly-empty per-shell allowedPaths survives an edit to another field', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { cmd: { overrides: { paths: { allowedPaths: [] } } } } },
+  });
+  // User toggles an unrelated field on the same shell, then saves.
+  h.els.get('sh-cmd-enabled').value = 'disabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  // The explicit [] must be preserved (dropping it would re-inherit global paths).
+  assert.deepEqual(save.values.shells.cmd.overrides.paths.allowedPaths, []);
+  assert.equal(save.values.shells.cmd.enabled, false);
+});
+
 test('untouched shells produce an empty object (cleared, not persisted as {})', async () => {
   // Host-side: an empty shells object should clear the setting.
   vscode.__reset();

@@ -6,6 +6,7 @@ import {
   primaryWorkspaceFolder,
   resolveVariables,
   ShellName,
+  SHELL_NAMES,
   Wcli0Settings,
 } from './settings';
 
@@ -47,7 +48,10 @@ function resolveConfigPath(value: string): string | undefined {
   }
   if (!path.isAbsolute(resolved)) {
     const base = primaryWorkspaceFolder()?.uri.fsPath;
-    return base ? path.resolve(base, resolved) : resolved;
+    // No workspace to anchor a relative path: drop it rather than emit a value
+    // the server would C-root (normalizeWindowsPath turns "src" into C:\src),
+    // matching the launch-path handling in argsBuilder.resolvedPath.
+    return base ? path.resolve(base, resolved) : undefined;
   }
   return resolved;
 }
@@ -230,10 +234,25 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     .filter((d): d is string => d !== undefined);
   const resolvedInitialDir = resolveConfigPath(s.initialDir);
 
+  // Per-shell allowed paths / initialDir also count as configured paths: a shell
+  // inherits the global restrictWorkingDirectory unless it overrides it, so if
+  // allowAllDirs disabled the global restriction the shell's allowlist would be
+  // present but never enforced. Include resolved per-shell paths in the decision.
+  const hasPerShellPaths = SHELL_NAMES.some((name) => {
+    const p = s.shells?.[name]?.overrides?.paths;
+    if (!p) {
+      return false;
+    }
+    const resolvedShellPaths = (p.allowedPaths ?? [])
+      .map((x) => resolveConfigPath(x))
+      .filter((x): x is string => x !== undefined);
+    return resolvedShellPaths.length > 0 || (p.initialDir ? resolveConfigPath(p.initialDir) !== undefined : false);
+  });
   // allowAllDirs only lifts the restriction when nothing else is configured,
   // matching the server's "when no allowed paths are configured" behavior. Base
   // this on the resolved paths actually written, not the raw settings.
-  const hasConfiguredPaths = resolvedAllowedPaths.length > 0 || resolvedInitialDir !== undefined;
+  const hasConfiguredPaths =
+    resolvedAllowedPaths.length > 0 || resolvedInitialDir !== undefined || hasPerShellPaths;
   const security: Record<string, unknown> = {
     enableInjectionProtection: s.safetyMode === 'safe',
     // unsafe disables the restriction; yolo always keeps it (the server's --yolo

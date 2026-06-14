@@ -512,6 +512,23 @@ test('P17: custom args may carry literal shell variables but not unresolved VS C
   assert.ok(validateLaunchSpec(bad).some((p) => /customArgs/.test(p.message) && p.blocking));
 });
 
+test('P24: a log directory with server-invalid characters is blocking', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({ logDirectory: 'C:/logs/a?b' });
+  if (process.platform === 'win32') {
+    // Mirrors the server's validateLoggingConfig (rejects <>"|?* on Windows).
+    assert.ok(validateLaunchSpec(s).some((p) => /logDirectory/.test(p.message) && p.blocking));
+  } else {
+    // The server only rejects these characters on Windows.
+    assert.equal(validateLaunchSpec(s).filter((p) => p.blocking).length, 0);
+  }
+  // A traversal path is rejected on any platform.
+  const t = defaults({ logDirectory: '../../etc' });
+  vscodeStub.workspace.workspaceFolders = undefined;
+  // (no workspace -> unanchorable -> blocking via the P16 branch)
+  assert.ok(validateLaunchSpec(t).some((p) => /logDirectory/.test(p.message) && p.blocking));
+});
+
 test('P10: unresolved per-shell paths are blocking only in managed mode', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
   const s = defaults({

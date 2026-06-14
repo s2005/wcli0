@@ -454,14 +454,26 @@ function renderHtml(webview: vscode.Webview): string {
     const out = {};
     for (const d of SHELL_DEFS) {
       const n = d.name; const cfg = {};
+      const loaded = loadedShells[n] || {};
+      const lEx = loaded.executable || {};
+      const lOv = loaded.overrides || {};
+      const lRest = lOv.restrictions || {};
+      const lPaths = lOv.paths || {};
+      // A textarea can't distinguish "unset" from an explicit empty array, so when
+      // it is empty keep [] only if the loaded config had [] there; otherwise omit.
+      const arr = (id, loadedVal) => {
+        const lines = linesOf(id);
+        if (lines.length) return lines;
+        return Array.isArray(loadedVal) ? [] : undefined;
+      };
       const en = triToBool($('sh-' + n + '-enabled').value);
       if (en !== undefined) cfg.enabled = en;
       const cmd = $('sh-' + n + '-cmd').value.trim();
-      const args = linesOf('sh-' + n + '-args');
-      if (cmd || args.length) {
+      const args = arr('sh-' + n + '-args', lEx.args);
+      if (cmd || args !== undefined) {
         cfg.executable = {};
         if (cmd) cfg.executable.command = cmd;
-        if (args.length) cfg.executable.args = args;
+        if (args !== undefined) cfg.executable.args = args;
       }
       const overrides = {};
       const sec = {};
@@ -471,12 +483,12 @@ function renderHtml(webview: vscode.Webview): string {
       const restrict = triToBool($('sh-' + n + '-sec-restrict').value); if (restrict !== undefined) sec.restrictWorkingDirectory = restrict;
       if (Object.keys(sec).length) overrides.security = sec;
       const rest = {};
-      const bc = linesOf('sh-' + n + '-block-cmd'); if (bc.length) rest.blockedCommands = bc;
-      const ba = linesOf('sh-' + n + '-block-arg'); if (ba.length) rest.blockedArguments = ba;
-      const bo = linesOf('sh-' + n + '-block-op'); if (bo.length) rest.blockedOperators = bo;
+      const bc = arr('sh-' + n + '-block-cmd', lRest.blockedCommands); if (bc !== undefined) rest.blockedCommands = bc;
+      const ba = arr('sh-' + n + '-block-arg', lRest.blockedArguments); if (ba !== undefined) rest.blockedArguments = ba;
+      const bo = arr('sh-' + n + '-block-op', lRest.blockedOperators); if (bo !== undefined) rest.blockedOperators = bo;
       if (Object.keys(rest).length) overrides.restrictions = rest;
       const paths = {};
-      const ap = linesOf('sh-' + n + '-paths'); if (ap.length) paths.allowedPaths = ap;
+      const ap = arr('sh-' + n + '-paths', lPaths.allowedPaths); if (ap !== undefined) paths.allowedPaths = ap;
       const idir = $('sh-' + n + '-initdir').value.trim(); if (idir) paths.initialDir = idir;
       if (Object.keys(paths).length) overrides.paths = paths;
       if (Object.keys(overrides).length) cfg.overrides = overrides;
@@ -493,6 +505,9 @@ function renderHtml(webview: vscode.Webview): string {
 
   function setShellsVal(shells) {
     shells = shells || {};
+    // Remember the loaded per-shell config so collectShells can distinguish an
+    // explicitly-empty array (which a textarea renders identically to "unset").
+    loadedShells = shells;
     for (const d of SHELL_DEFS) {
       const n = d.name; const c = shells[n] || {};
       const ex = c.executable || {}; const ov = c.overrides || {};
@@ -538,6 +553,7 @@ function renderHtml(webview: vscode.Webview): string {
   }
 
   let initial = {};
+  let loadedShells = {};
 
   function collect() {
     const values = {};

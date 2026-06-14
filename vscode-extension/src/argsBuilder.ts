@@ -428,6 +428,22 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
       message: `wcli0.logDirectory "${s.logDirectory}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
       blocking: true,
     });
+  } else if (s.logDirectory.trim()) {
+    // It resolves, but the server's validateLoggingConfig still rejects a path
+    // with `..` traversal or (on Windows) the characters <>"|?*; mirror that here
+    // so we don't register a server that exits at startup.
+    const resolved = resolvedPath(s.logDirectory);
+    if (resolved) {
+      const normalized = path.normalize(resolved);
+      const invalidWinChars =
+        process.platform === 'win32' && /[<>"|?*]/.test(normalized.replace(/^[a-zA-Z]:/, ''));
+      if (normalized.includes('..') || invalidWinChars) {
+        problems.push({
+          message: `wcli0.logDirectory "${s.logDirectory}" is not a valid log directory (path traversal or invalid characters); the server rejects it at startup.`,
+          blocking: true,
+        });
+      }
+    }
   }
   // A config file path that doesn't fully resolve would be silently dropped,
   // leaving the server on pathless defaults instead of the intended config. In

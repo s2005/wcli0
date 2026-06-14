@@ -55,19 +55,32 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    * subdirectory once (mkdtemp) and reuse it; fall back to the shared root only
    * if even that fails.
    */
-  private privateDir(): string {
+  private privateDir(): string | undefined {
     if (this.safeCwd) {
       return this.safeCwd;
     }
-    if (!this.fallbackDir) {
-      try {
-        this.fallbackDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wcli0-'));
-      } catch (err) {
-        this.log(`could not create a private temp dir: ${(err as Error).message}`);
-        this.fallbackDir = os.tmpdir();
-      }
+    if (this.fallbackDir) {
+      return this.fallbackDir;
+    }
+    try {
+      this.fallbackDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wcli0-'));
+    } catch (err) {
+      // Do NOT fall back to the shared os.tmpdir() root: loadConfig reads
+      // config.json from the cwd, so a world-writable dir would let another user
+      // plant one. The caller registers no server instead.
+      this.log(`could not create a private temp dir: ${(err as Error).message}`);
+      return undefined;
     }
     return this.fallbackDir;
+  }
+
+  /**
+   * The directory the provider would write the auto-managed config into, using
+   * the same fallback chain as launch — so a "show launch command" display
+   * reflects what is actually registered. Undefined if no private dir is available.
+   */
+  managedConfigTargetDir(): string | undefined {
+    return this.managedConfigDir ?? this.privateDir();
   }
 
   /**
@@ -77,6 +90,10 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    */
   private writeManagedConfig(settings: Wcli0Settings): string | undefined {
     const dir = this.managedConfigDir ?? this.privateDir();
+    if (!dir) {
+      this.log('no writable private directory available for the managed config; not registering.');
+      return undefined;
+    }
     const target = path.join(dir, MANAGED_CONFIG_FILE);
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -175,7 +192,16 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     // safe settings. A world-writable temp dir is also unsafe (another user could
     // plant /tmp/config.json), so prefer the injected private dir. All path args
     // are already resolved to absolute values, so a non-workspace cwd is fine.
-    def.cwd = vscode.Uri.file(spec.cwd ?? this.privateDir());
+    const cwd = spec.cwd ?? this.privateDir();
+    if (!cwd) {
+      // No configured cwd and no writable private dir: refuse rather than launch
+      // from the shared temp root (where another user could plant config.json).
+      this.log(
+        'no writable private working directory available; refusing to launch from the shared temp root.',
+      );
+      return [];
+    }
+    def.cwd = vscode.Uri.file(cwd);
     return [def];
   }
 }
@@ -186,7 +212,9 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
  * literal IPv6 addresses are wrapped in brackets for use in a URL authority.
  */
 export function clientHost(bindHost: string): string {
-  const host = (bindHost || '127.0.0.1').trim();
+  // Trim before defaulting so a whitespace-only host falls back to loopback
+  // rather than producing an empty authority (e.g. "http://:9444/mcp").
+  const host = (bindHost ?? '').trim() || '127.0.0.1';
   if (host === '0.0.0.0' || host === '::' || host === '[::]') {
     return host === '0.0.0.0' ? '127.0.0.1' : '[::1]';
   }

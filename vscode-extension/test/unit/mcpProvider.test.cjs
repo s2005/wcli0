@@ -31,6 +31,35 @@ test('P9: falls back to a uniquely-created private temp dir, not the shared root
   assert.ok(path.basename(cwd).startsWith('wcli0-'));
 });
 
+test('P19: refuses to launch (no server) when no private dir can be created', () => {
+  const fs = require('node:fs');
+  const realMkdtemp = fs.mkdtempSync;
+  fs.mkdtempSync = () => {
+    throw new Error('EACCES: permission denied');
+  };
+  try {
+    const logs = [];
+    // No safeCwd injected and no launch.cwd set: privateDir() fails, so the
+    // provider must register no server rather than launch from the shared root.
+    const defs = new Wcli0McpProvider((m) => logs.push(m)).provideMcpServerDefinitions();
+    assert.deepEqual(defs, []);
+    assert.ok(logs.some((m) => /shared temp root/i.test(m)));
+  } finally {
+    fs.mkdtempSync = realMkdtemp;
+  }
+});
+
+test('P25: a whitespace-only bind host falls back to loopback', () => {
+  assert.equal(clientHost('   '), '127.0.0.1');
+  assert.equal(clientHost(''), '127.0.0.1');
+  // An http definition built from a whitespace host yields a usable URL.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'http');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.host', '   ');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.port', 9444);
+  const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
+  assert.equal(defs[0].uri.toString(), 'http://127.0.0.1:9444/mcp');
+});
+
 test('sets cwd only when launch.cwd is configured', () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}');
   const defs = new Wcli0McpProvider().provideMcpServerDefinitions();

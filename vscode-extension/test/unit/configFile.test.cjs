@@ -376,6 +376,33 @@ test('P11: an explicit empty per-shell executable args list replaces the default
   assert.deepEqual(cfg.shells.cmd.executable.args, []);
 });
 
+test('P21: relative paths with no workspace are dropped from the generated config', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const cfg = buildConfigFile(
+    defaults({ allowedDirectories: ['src'], logDirectory: 'logs', initialDir: 'work' }),
+  );
+  // No base to anchor against: the server would C-root these, so drop them.
+  assert.deepEqual(cfg.global.paths.allowedPaths, []);
+  assert.equal(cfg.global.paths.initialDir, undefined);
+  assert.equal(cfg.global.logging, undefined);
+});
+
+test('P22: per-shell allowed paths keep restrictWorkingDirectory on under allowAllDirs', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({ allowAllDirs: true, shells: { cmd: { overrides: { paths: { allowedPaths: ['/srv'] } } } } }),
+  );
+  // No global paths, but a per-shell allowlist exists -> must not lift the global
+  // restriction, or the shell inherits restrictWorkingDirectory:false and the
+  // allowlist is never enforced.
+  assert.equal(cfg.global.security.restrictWorkingDirectory, true);
+  // Without any configured paths at all, allowAllDirs still lifts the restriction.
+  assert.equal(
+    buildConfigFile(defaults({ allowAllDirs: true })).global.security.restrictWorkingDirectory,
+    false,
+  );
+});
+
 test('P13: yolo/unsafe force per-shell injection protection off', () => {
   for (const mode of ['yolo', 'unsafe']) {
     const cfg = buildConfigFile(

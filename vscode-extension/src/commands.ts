@@ -207,16 +207,19 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
 /** Show the resolved launch command line and offer to copy it. */
 export async function showLaunchCommand(
   output: vscode.OutputChannel,
-  managedConfigDir?: string,
+  provider?: Wcli0McpProvider,
 ): Promise<void> {
   const scope = primaryWorkspaceFolder()?.uri;
   const settings = readSettings(scope);
   // Mirror the provider: when shells are configured individually the server is
   // launched against an auto-managed config file, not the global CLI flags.
   const managed = hasPerShellConfig(settings) && settings.transportMode === 'stdio';
-  const managedConfigPath = managed
-    ? path.join(managedConfigDir ?? '', MANAGED_CONFIG_FILE)
-    : undefined;
+  // Use the provider's resolved managed-config directory (which applies the same
+  // private-dir fallback used at launch) so the displayed command matches what is
+  // actually registered, instead of a bare relative "managed-config.json".
+  const managedConfigDir = provider?.managedConfigTargetDir();
+  const managedConfigPath =
+    managed && managedConfigDir ? path.join(managedConfigDir, MANAGED_CONFIG_FILE) : undefined;
   const spec = buildLaunchSpec(settings, managedConfigPath ? { managedConfigPath } : {});
   const line = renderCommandLine(spec);
   const problems = validateLaunchSpec(settings, managed);

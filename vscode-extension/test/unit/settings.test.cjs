@@ -126,6 +126,14 @@ test('hasPerShellConfig detects any meaningful per-shell field', () => {
   assert.equal(hasPerShellConfig(readSettings()), false);
 });
 
+test('P23: the LICENSE retains the MIT copyright notice', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const license = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'LICENSE'), 'utf8');
+  // The MIT license's own terms require the copyright notice be retained.
+  assert.match(license, /Copyright \(c\) 2024 Simon Benedict/);
+});
+
 test('P18: the wcli0.shells schema restricts keys to the known shell names', () => {
   const manifest = require('../../package.json');
   const schema = manifest.contributes.configuration.properties['wcli0.shells'];

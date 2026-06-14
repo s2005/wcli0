@@ -23,3 +23,14 @@
 - [x] P16: Reject unresolved log directories (fixed - blocking `logDirectory` check)
 - [x] P17: Allow literal shell variables in custom arguments (fixed - `hasUnresolvedExtensionVariable` refines the round-1 check)
 - [x] P18: Reject unknown per-shell configuration keys (fixed - `propertyNames.enum` in the schema)
+
+## Review Feedback (PR #86) - round 3
+
+- [x] P19: Refuse to launch from the shared temp root (fixed - `privateDir()` returns undefined, provider registers no server)
+- [x] P20: Preserve explicit empty per-shell allowed paths in the form (fixed - `loadedShells` + `arr()` helper)
+- [x] P21: Drop relative config paths when no workspace can anchor them (fixed - `resolveConfigPath` returns undefined)
+- [x] P22: Count per-shell paths before honoring allowAllDirs (fixed - `hasPerShellPaths` in `buildConfigFile`)
+- [x] P23: Restore the required MIT copyright notice (fixed - restored `Copyright (c) 2024 Simon Benedict`)
+- [x] P24: Validate log directories rejected by the server (fixed - mirror `..`/Windows-char rules)
+- [x] P25: Default whitespace-only HTTP hosts to loopback (fixed - trim before defaulting in `clientHost`)
+- [x] P26: Show the provider's fallback managed-config path (fixed - `managedConfigTargetDir()` shared with `showLaunchCommand`)

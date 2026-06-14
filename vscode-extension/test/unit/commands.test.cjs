@@ -51,6 +51,18 @@ test('writeWorkspaceMcpJson creates a stdio server entry', async () => {
   assert.equal(parsed.servers.wcli0.command, 'npx');
 });
 
+test('P26: showLaunchCommand shows the provider resolved managed-config path', async () => {
+  const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  const output = vscode.window.createOutputChannel('t');
+  // Provider resolves its managed-config dir to '/managed/dir' (no private-dir fallback needed).
+  const provider = new Wcli0McpProvider(() => {}, undefined, '/managed/dir');
+  await showLaunchCommand(output, provider);
+  const text = output.lines.join('\n');
+  // The --config path uses the provider's resolved dir, not a bare relative name.
+  assert.ok(text.includes(require('node:path').join('/managed/dir', 'managed-config.json')));
+});
+
 test('P6: writeWorkspaceMcpJson refuses to export when shells are configured individually', async () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
     cmd: { executable: { command: 'cmd.exe', args: ['/k'] } },
