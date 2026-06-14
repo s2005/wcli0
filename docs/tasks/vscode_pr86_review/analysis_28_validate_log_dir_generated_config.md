@@ -12,3 +12,5 @@ The provider path was protected by `validateLaunchSpec`, but `generateConfigFile
 **Why:** The generated config should never contain a value that makes the server crash on launch;
 mirroring the server's own validation keeps the file usable and matches the existing path-resolution
 philosophy already applied to allowed/initial directories.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

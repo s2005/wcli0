@@ -12,3 +12,5 @@ config target use `managedConfigDir ?? uniqueTempDir()` — never the shared `sa
 **Why:** The managed config is written to a fixed filename, so its directory must be unique per
 window/workspace; a per-window `mkdtemp` directory guarantees isolation while preserving the existing
 behavior when workspace storage is available.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

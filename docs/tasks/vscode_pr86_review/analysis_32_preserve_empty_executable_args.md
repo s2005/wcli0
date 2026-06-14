@@ -12,3 +12,5 @@ only.
 **Why:** The server passes `executable.args` verbatim to `spawn`, so empty positional arguments are
 significant and must round-trip losslessly; path/restriction lists keep their empty-filtering because
 an empty prefix there would dangerously match every path.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

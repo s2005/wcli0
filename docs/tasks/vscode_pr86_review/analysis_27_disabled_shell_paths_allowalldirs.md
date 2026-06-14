@@ -12,3 +12,5 @@ and gated the per-shell path count on it.
 **Why:** A shell only inherits the global `restrictWorkingDirectory` when it is actually launched.
 Paths belonging to a disabled shell cannot constrain anything, so they must not suppress the
 `allowAllDirs` lift — exactly the server's "when no allowed paths are configured" semantics.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

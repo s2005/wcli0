@@ -11,3 +11,5 @@ before. Explicit `ready`/`scopeChange` reloads are unaffected.
 **Why:** A background settings change (settings.json save, another extension, the other wcli0 view)
 must not silently destroy in-progress edits; deferring the reload while dirty preserves the user's
 work, and a clean form still picks up external changes immediately.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

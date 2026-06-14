@@ -10,3 +10,5 @@ auto-registered (at `/mcp`) and that `sse` requires running the server yourself 
 
 **Why:** Documentation describing a non-existent automatic SSE connection misleads users into waiting
 for a server that never appears; the text now matches the provider's actual behavior.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

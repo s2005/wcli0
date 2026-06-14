@@ -12,3 +12,5 @@ cannot be anchored (unresolved variable, or relative with no workspace open).
 **Why:** The node script path is as path-like as `cwd`/`initialDir`/`allowedDirectories`, which are
 already anchored to the workspace; treating it the same way removes the silent dependence on the
 server's process cwd and refuses misconfigurations rather than launching a server that never starts.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

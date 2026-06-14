@@ -12,3 +12,5 @@ the provider) instead of rendering a mismatched global command.
 **Why:** The displayed command must reflect what the provider would actually register. A global-flag
 command in per-shell mode is misleading and could lead a user to run a server with none of their
 per-shell settings applied.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86

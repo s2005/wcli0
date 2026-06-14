@@ -13,3 +13,5 @@ executable command/arg that still contains an unresolved `${workspaceFolder}`/`$
 expansion), mirroring how the global launch path and other per-shell paths are handled; bare PATH
 executables (`bash`, `cmd.exe`) carry no tokens and pass through unchanged, and arbitrary `${FOO}`
 shell templates are intentionally not flagged.
+
+**Commit:** 174b9ce — fix(vscode): address Codex round-4 review feedback for PR #86
