@@ -207,7 +207,9 @@ export async function showLaunchCommand(output: vscode.OutputChannel): Promise<v
     output.appendLine(`cwd: ${spec.cwd}`);
   }
   if (Object.keys(spec.env).length) {
-    output.appendLine(`env: ${JSON.stringify(spec.env)}`);
+    // Show only variable names: values may be secrets and this output channel
+    // persists. (The mcp.json command similarly guards launch.env.)
+    output.appendLine(`env (values hidden): ${Object.keys(spec.env).join(', ')}`);
   }
   if (problems.length) {
     output.appendLine('');

@@ -120,7 +120,9 @@ test('showLaunchCommand reports cwd and env when configured', async () => {
   await showLaunchCommand(output);
   const text = output.lines.join('\n');
   assert.match(text, /cwd: \/ws/);
-  assert.match(text, /env: .*FOO/);
+  // env values are redacted; only names are shown.
+  assert.match(text, /env \(values hidden\): FOO/);
+  assert.equal(/bar/.test(text), false);
 });
 
 test('refreshServerDefinition refreshes the provider', async () => {

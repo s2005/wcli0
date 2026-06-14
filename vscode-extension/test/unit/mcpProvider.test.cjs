@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const os = require('os');
 const vscode = require('../stubs/vscode.cjs');
 const { Wcli0McpProvider, clientHost } = require('../../dist/mcpProvider.js');
 
@@ -9,14 +10,15 @@ test.beforeEach(() => {
   vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
 });
 
-test('provides a stdio definition without a default cwd', () => {
+test('provides a stdio definition with a neutral (non-workspace) cwd', () => {
   const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
   assert.equal(defs.length, 1);
   assert.ok(defs[0] instanceof vscode.McpStdioServerDefinition);
   assert.equal(defs[0].command, 'npx');
   assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest']);
-  // cwd is left unset so the server does not auto-load <workspace>/config.json.
-  assert.equal(defs[0].cwd, undefined);
+  // cwd is a temp dir, not the workspace, so the server does not auto-load
+  // <workspace>/config.json.
+  assert.equal(defs[0].cwd.fsPath, os.tmpdir());
 });
 
 test('sets cwd only when launch.cwd is configured', () => {

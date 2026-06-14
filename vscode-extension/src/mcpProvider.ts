@@ -1,3 +1,4 @@
+import * as os from 'os';
 import * as vscode from 'vscode';
 import { buildLaunchSpec, isValidPort, validateLaunchSpec } from './argsBuilder';
 import { primaryWorkspaceFolder, readSettings } from './settings';
@@ -79,13 +80,13 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       spec.args,
       spec.env,
     );
-    // Only set cwd when the user explicitly configured launch.cwd. Defaulting to
-    // the workspace folder would make the server auto-load <workspace>/config.json
-    // (loadConfig searches process.cwd()), letting a committed config.json
-    // silently override the extension's safe settings.
-    if (spec.cwd) {
-      def.cwd = vscode.Uri.file(spec.cwd);
-    }
+    // Use the configured cwd when set, otherwise a neutral temp directory. VS
+    // Code defaults an stdio server's cwd to the workspace folder, which would
+    // make the server auto-load <workspace>/config.json (loadConfig searches
+    // process.cwd()) and let a committed config.json silently override the
+    // extension's safe settings. All path args are already resolved to absolute
+    // values, so a non-workspace cwd does not change their meaning.
+    def.cwd = vscode.Uri.file(spec.cwd ?? os.tmpdir());
     return [def];
   }
 }
