@@ -34,3 +34,16 @@
 - [x] P24: Validate log directories rejected by the server (fixed - mirror `..`/Windows-char rules)
 - [x] P25: Default whitespace-only HTTP hosts to loopback (fixed - trim before defaulting in `clientHost`)
 - [x] P26: Show the provider's fallback managed-config path (fixed - `managedConfigTargetDir()` shared with `showLaunchCommand`)
+
+## Review Feedback (PR #86) - round 4
+
+- [x] P27: Exclude disabled-shell paths from the allowAllDirs check (fixed - `isShellEnabled` gates `hasPerShellPaths`)
+- [x] P28: Validate logDirectory before emitting generated configs (fixed - shared `isServerInvalidLogPath` applied in `buildConfigFile`)
+- [x] P29: Export the scope shown by the configuration form (fixed - selected scope threaded into the export commands)
+- [x] P30: Resolve relative node script paths before launch (fixed - `pathValue` anchors the node script path; validation blocks unanchorable)
+- [x] P31: Isolate fallback managed configs between windows (fixed - managed config falls back to a per-window unique temp dir, never the shared safeCwd)
+- [x] P32: Preserve empty positional executable arguments in the form (fixed - dedicated `argLines` helper with lossless round-trip)
+- [x] P33: Correct the SSE automatic-provider documentation (fixed - README states only HTTP auto-registers)
+- [x] P34: Do not show a global launch when managed storage is unavailable (fixed - `showLaunchCommand` reports no launch instead of a mismatched command)
+- [x] P35: Preserve unsaved form edits on external configuration changes (fixed - external reload deferred while the form is dirty)
+- [x] P36: Resolve per-shell executable command variables (fixed - `applyPerShellOverrides` resolves vars; validation rejects unresolved)

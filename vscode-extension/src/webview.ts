@@ -76,10 +76,14 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   // scope (not inherited), so saving never re-writes the other scope's values.
   let currentScope: ConfigScope = primaryWorkspaceFolder() ? 'Workspace' : 'Global';
 
-  const post = () => {
+  // `external` marks a reload triggered by a background configuration change (not
+  // an explicit ready/scope-change). The webview ignores such a reload while the
+  // form has unsaved edits so it doesn't silently overwrite the user's work.
+  const post = (external = false) => {
     const scope = primaryWorkspaceFolder()?.uri;
     webview.postMessage({
       type: 'init',
+      external,
       hasWorkspace: !!primaryWorkspaceFolder(),
       scope: currentScope,
       settings: readSettingsForScope(currentScope, scope),
@@ -118,13 +122,17 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
           : msg.type === 'writeMcpJson'
             ? 'wcli0.writeWorkspaceMcpJson'
             : 'wcli0.showLaunchCommand';
-      await vscode.commands.executeCommand(command);
+      // Pass the form's selected scope so the export reads exactly the values the
+      // form shows (readSettingsForScope), not the merged effective settings —
+      // otherwise a hidden override from the other scope (e.g. a workspace
+      // safetyMode: unsafe) could leak into an export the form claims matches.
+      await vscode.commands.executeCommand(command, currentScope);
     }
   });
 
   const cfgSub = vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(CONFIG_SECTION)) {
-      post();
+      post(true);
     }
   });
 
@@ -466,10 +474,20 @@ function renderHtml(webview: vscode.Webview): string {
         if (lines.length) return lines;
         return Array.isArray(loadedVal) ? [] : undefined;
       };
+      // Executable args must round-trip losslessly, including an empty positional
+      // arg (e.g. ['--flag','']) which the server passes verbatim to spawn. Unlike
+      // path/restriction lists, do NOT drop empty lines; treat only a wholly blank
+      // textarea as "no list" (and keep [] vs unset via the loaded value).
+      const argLines = (id, loadedVal) => {
+        const el = $(id);
+        const raw = el ? el.value : '';
+        if (raw.trim() === '') return Array.isArray(loadedVal) ? [] : undefined;
+        return raw.split('\\n').map((x) => x.trim());
+      };
       const en = triToBool($('sh-' + n + '-enabled').value);
       if (en !== undefined) cfg.enabled = en;
       const cmd = $('sh-' + n + '-cmd').value.trim();
-      const args = arr('sh-' + n + '-args', lEx.args);
+      const args = argLines('sh-' + n + '-args', lEx.args);
       if (cmd || args !== undefined) {
         cfg.executable = {};
         if (cmd) cfg.executable.command = cmd;
@@ -580,6 +598,12 @@ function renderHtml(webview: vscode.Webview): string {
     return changed;
   }
 
+  // Whether the form has unsaved edits (any field differs from the last loaded/
+  // saved baseline). Used to avoid clobbering edits on an external reload.
+  function isDirty() {
+    return Object.keys(collectChanged()).length > 0;
+  }
+
   function updateLaunchRows() {
     const m = $('launch.method').value;
     $('npxRow').style.display = m === 'npx' ? '' : 'none';
@@ -645,6 +669,12 @@ function renderHtml(webview: vscode.Webview): string {
       return;
     }
     if (msg.type === 'init') {
+      // A background configuration change must not discard unsaved edits. Skip an
+      // external reload while the form is dirty; explicit ready/scope-change
+      // reloads (external falsy) always apply. A later save re-baselines cleanly.
+      if (msg.external && isDirty()) {
+        return;
+      }
       if (msg.scope) {
         const r = document.querySelector('input[name=scope][value=' + msg.scope + ']');
         if (r) r.checked = true;

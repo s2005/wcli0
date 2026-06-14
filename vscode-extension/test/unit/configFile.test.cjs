@@ -416,3 +416,67 @@ test('P13: yolo/unsafe force per-shell injection protection off', () => {
     assert.equal(cfg.shells.cmd.overrides.security.enableInjectionProtection, false);
   }
 });
+
+test('P27: a disabled shell\'s allowed paths do not keep restrictWorkingDirectory under allowAllDirs', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // cmd is disabled (shell selector picks powershell) but carries an allowlist.
+  const viaSelector = buildConfigFile(
+    defaults({
+      allowAllDirs: true,
+      shell: 'powershell',
+      shells: { cmd: { overrides: { paths: { allowedPaths: ['/srv'] } } } },
+    }),
+  );
+  // The disabled cmd shell can't be constrained, so allowAllDirs still lifts the
+  // global restriction (else the enabled powershell inherits an empty allowlist).
+  assert.equal(viaSelector.global.security.restrictWorkingDirectory, false);
+
+  // Same via an explicit enabled:false.
+  const viaFlag = buildConfigFile(
+    defaults({
+      allowAllDirs: true,
+      shells: { cmd: { enabled: false, overrides: { paths: { allowedPaths: ['/srv'] } } } },
+    }),
+  );
+  assert.equal(viaFlag.global.security.restrictWorkingDirectory, false);
+});
+
+test('P27: an enabled shell\'s allowed paths still keep the restriction under allowAllDirs', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({
+      allowAllDirs: true,
+      shells: { cmd: { enabled: true, overrides: { paths: { allowedPaths: ['/srv'] } } } },
+    }),
+  );
+  assert.equal(cfg.global.security.restrictWorkingDirectory, true);
+});
+
+test('P28: a server-invalid log directory is dropped from the generated config', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  if (process.platform === 'win32') {
+    const cfg = buildConfigFile(defaults({ logDirectory: 'C:/logs/a?b' }));
+    // validateLoggingConfig rejects Windows-invalid characters; don't emit it.
+    assert.equal(cfg.global.logging?.logDirectory, undefined);
+  }
+  // A clean absolute log dir is still emitted.
+  const ok = buildConfigFile(defaults({ logDirectory: '/var/log/wcli0' }));
+  assert.equal(ok.global.logging.logDirectory, '/var/log/wcli0');
+});
+
+test('P36: per-shell executable command/args resolve extension variables', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({
+      shells: {
+        gitbash: {
+          executable: { command: '${workspaceFolder}/bin/sh', args: ['${workspaceFolder}/x', '-c'] },
+        },
+      },
+    }),
+  );
+  // The server passes executable.command/args to spawn without expanding VS Code
+  // variables, so they must be resolved into the generated config.
+  assert.equal(cfg.shells.gitbash.executable.command, '/ws/bin/sh');
+  assert.deepEqual(cfg.shells.gitbash.executable.args, ['/ws/x', '-c']);
+});

@@ -82,11 +82,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('wcli0.configure', () => openConfigPanel(context)),
-    vscode.commands.registerCommand('wcli0.generateConfigFile', () => generateConfigFile()),
-    vscode.commands.registerCommand('wcli0.writeWorkspaceMcpJson', () => writeWorkspaceMcpJson()),
+    // The config form passes its selected scope ('Global'|'Workspace') so exports
+    // reflect exactly what it displays; command-palette invocations pass nothing
+    // and fall back to the merged effective settings.
+    vscode.commands.registerCommand('wcli0.generateConfigFile', (scope?: unknown) =>
+      generateConfigFile(scope),
+    ),
+    vscode.commands.registerCommand('wcli0.writeWorkspaceMcpJson', (scope?: unknown) =>
+      writeWorkspaceMcpJson(scope),
+    ),
     vscode.commands.registerCommand('wcli0.restartServer', () => refreshServerDefinition(provider)),
-    vscode.commands.registerCommand('wcli0.showLaunchCommand', () =>
-      showLaunchCommand(output, provider),
+    vscode.commands.registerCommand('wcli0.showLaunchCommand', (scope?: unknown) =>
+      showLaunchCommand(output, provider, scope),
     ),
   );
 }

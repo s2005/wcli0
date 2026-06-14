@@ -202,3 +202,24 @@ test('managed mode does not emit the --allowedDir injection-protection warning',
   assert.ok(!logs.some((m) => /injection protection/i.test(m)));
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('P31: managed config fallback is per-window unique, not the shared safeCwd', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  // safeCwd is the shared global storage; managedConfigDir (workspace storage) is
+  // unavailable. The managed config must NOT land in the shared safeCwd, where
+  // every window would clobber the fixed managed-config.json filename.
+  const defs = new Wcli0McpProvider(() => {}, '/priv/global', undefined).provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  const args = defs[0].args;
+  const configPath = args[args.indexOf('--config') + 1];
+  const configDir = path.dirname(configPath);
+  assert.notEqual(configDir, '/priv/global');
+  // A unique mkdtemp subdir of the temp root.
+  assert.equal(path.dirname(configDir), os.tmpdir());
+  assert.ok(path.basename(configDir).startsWith('wcli0-'));
+  // The server cwd still uses the shared safeCwd (safe — it is only a neutral cwd).
+  assert.equal(defs[0].cwd.fsPath, '/priv/global');
+  const written = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.equal(written.shells.cmd.enabled, true);
+  fs.rmSync(configDir, { recursive: true, force: true });
+});

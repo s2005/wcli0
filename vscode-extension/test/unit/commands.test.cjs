@@ -290,3 +290,50 @@ test('writeWorkspaceMcpJson preserves a syntactically broken existing file', asy
   // File left untouched.
   assert.equal(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'), '{ not json');
 });
+
+test('P29: export honors the form scope (no hidden workspace override leaks)', async () => {
+  // Workspace sets safetyMode: unsafe; the form is on the User (Global) scope.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.safetyMode', 'unsafe');
+  const target = vscode.Uri.file('/ws/wcli0.config.json');
+  vscode.__state.calls.saveDialog = target;
+  vscode.__state.calls.infoReturn = 'Not now';
+  await generateConfigFile('Global');
+  const written = JSON.parse(vscode.__state.files.get('/ws/wcli0.config.json').toString('utf8'));
+  // Global scope has no safetyMode -> default 'safe'; the workspace 'unsafe' must
+  // not leak into the export the form claims matches what is on screen.
+  assert.equal(written.global.security.enableInjectionProtection, true);
+  assert.equal(written.global.security.restrictWorkingDirectory, true);
+});
+
+test('P29: export with no form scope uses the merged effective settings', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.safetyMode', 'unsafe');
+  const target = vscode.Uri.file('/ws/wcli0.config.json');
+  vscode.__state.calls.saveDialog = target;
+  vscode.__state.calls.infoReturn = 'Not now';
+  await generateConfigFile(); // command-palette invocation: effective settings
+  const written = JSON.parse(vscode.__state.files.get('/ws/wcli0.config.json').toString('utf8'));
+  assert.equal(written.global.security.enableInjectionProtection, false);
+});
+
+test('P34: showLaunchCommand reports no launch when managed storage is unavailable', async () => {
+  const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
+  const fs = require('node:fs');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  const output = vscode.window.createOutputChannel('t');
+  const realMkdtemp = fs.mkdtempSync;
+  fs.mkdtempSync = () => {
+    throw new Error('EACCES');
+  };
+  try {
+    // No managedConfigDir and mkdtemp fails -> managedConfigTargetDir() undefined.
+    const provider = new Wcli0McpProvider(() => {}, undefined, undefined);
+    await showLaunchCommand(output, provider);
+  } finally {
+    fs.mkdtempSync = realMkdtemp;
+  }
+  const text = output.lines.join('\n');
+  assert.match(text, /No wcli0 launch command available/);
+  // Must NOT render a global-flag command or claim a config written to undefined.
+  assert.ok(!/written to undefined/.test(text));
+  assert.ok(!/--config/.test(text));
+});

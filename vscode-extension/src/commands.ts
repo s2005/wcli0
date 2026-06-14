@@ -2,13 +2,36 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { buildLaunchSpec, isValidPort, renderCommandLine, validateLaunchSpec } from './argsBuilder';
 import { buildConfigFile } from './configFile';
-import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, resolveVariables } from './settings';
+import {
+  ConfigScope,
+  hasPerShellConfig,
+  primaryWorkspaceFolder,
+  readSettings,
+  readSettingsForScope,
+  resolveVariables,
+  Wcli0Settings,
+} from './settings';
 import { clientHost, MANAGED_CONFIG_FILE, Wcli0McpProvider } from './mcpProvider';
 
+/**
+ * Read settings for an export action. When the config form supplies its selected
+ * scope, read only that scope's stored values (matching exactly what the form
+ * shows) so the export can't pick up hidden overrides from the other scope.
+ * Command-palette invocations pass no scope and get the merged effective view.
+ */
+function readExportSettings(formScope: ConfigScope | undefined, uri?: vscode.Uri): Wcli0Settings {
+  return formScope ? readSettingsForScope(formScope, uri) : readSettings(uri);
+}
+
+/** Narrow an arbitrary command argument to a valid form scope, else undefined. */
+function asScope(arg: unknown): ConfigScope | undefined {
+  return arg === 'Global' || arg === 'Workspace' ? arg : undefined;
+}
+
 /** Generate a wcli0 config.json from settings and offer to save it. */
-export async function generateConfigFile(): Promise<void> {
+export async function generateConfigFile(formScopeArg?: unknown): Promise<void> {
   const scope = primaryWorkspaceFolder()?.uri;
-  const settings = readSettings(scope);
+  const settings = readExportSettings(asScope(formScopeArg), scope);
   const config = buildConfigFile(settings);
   const content = JSON.stringify(config, null, 2) + '\n';
 
@@ -51,13 +74,13 @@ export async function generateConfigFile(): Promise<void> {
 }
 
 /** Write a `.vscode/mcp.json` entry for the wcli0 server (for clients that read it). */
-export async function writeWorkspaceMcpJson(): Promise<void> {
+export async function writeWorkspaceMcpJson(formScopeArg?: unknown): Promise<void> {
   const folder = primaryWorkspaceFolder();
   if (!folder) {
     void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
     return;
   }
-  const settings = readSettings(folder.uri);
+  const settings = readExportSettings(asScope(formScopeArg), folder.uri);
 
   // Validate only what the generated entry actually uses. A stdio entry needs a
   // working launch command; an http/sse entry only contains a URL, so local
@@ -208,9 +231,10 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
 export async function showLaunchCommand(
   output: vscode.OutputChannel,
   provider?: Wcli0McpProvider,
+  formScopeArg?: unknown,
 ): Promise<void> {
   const scope = primaryWorkspaceFolder()?.uri;
-  const settings = readSettings(scope);
+  const settings = readExportSettings(asScope(formScopeArg), scope);
   // Mirror the provider: when shells are configured individually the server is
   // launched against an auto-managed config file, not the global CLI flags.
   const managed = hasPerShellConfig(settings) && settings.transportMode === 'stdio';
@@ -220,11 +244,34 @@ export async function showLaunchCommand(
   const managedConfigDir = provider?.managedConfigTargetDir();
   const managedConfigPath =
     managed && managedConfigDir ? path.join(managedConfigDir, MANAGED_CONFIG_FILE) : undefined;
+
+  output.clear();
+  // In per-shell mode the provider launches against an auto-managed config file.
+  // If no private directory is available to write it, the provider registers no
+  // server — so don't render a global-flag command that ignores every per-shell
+  // setting (and would claim the config was "written to undefined"). Report that
+  // no launch is available instead, mirroring the provider's behavior.
+  if (managed && !managedConfigPath) {
+    output.appendLine('No wcli0 launch command available.');
+    output.appendLine('');
+    output.appendLine(
+      'Shells are configured individually (wcli0.shells), so the server must launch with an',
+    );
+    output.appendLine(
+      'auto-managed config file, but no private directory is available to write it. The MCP',
+    );
+    output.appendLine(
+      'provider registers no server in this state. Set wcli0.launch.cwd, free up extension',
+    );
+    output.appendLine('storage, or clear wcli0.shells to use the global launch flags.');
+    output.show(true);
+    return;
+  }
+
   const spec = buildLaunchSpec(settings, managedConfigPath ? { managedConfigPath } : {});
   const line = renderCommandLine(spec);
   const problems = validateLaunchSpec(settings, managed);
 
-  output.clear();
   output.appendLine('Resolved wcli0 launch command:');
   output.appendLine('');
   output.appendLine(line);

@@ -70,6 +70,20 @@ export function isValidPort(port: number): boolean {
 }
 
 /**
+ * Whether a RESOLVED (absolute) log directory is one the server's
+ * `validateLoggingConfig` rejects at startup: a `..` traversal segment, or (on
+ * Windows) any of the characters `<>"|?*` outside the drive letter. Shared by
+ * `validateLaunchSpec` and `buildConfigFile` so neither the launched server nor a
+ * generated config carries a log directory that crashes the server on launch.
+ */
+export function isServerInvalidLogPath(resolved: string): boolean {
+  const normalized = path.normalize(resolved);
+  const invalidWinChars =
+    process.platform === 'win32' && /[<>"|?*]/.test(normalized.replace(/^[a-zA-Z]:/, ''));
+  return normalized.includes('..') || invalidWinChars;
+}
+
+/**
  * Append an option/value pair, using `--option=value` form when the value is
  * dash-prefixed. As separate argv entries, yargs would parse a value like `-e`
  * or `--exec` as a new option and drop it — and an emptied blocked-list option
@@ -278,9 +292,15 @@ export function buildLaunchSpec(s: Wcli0Settings, opts: BuildOptions = {}): Laun
 
   switch (s.launchMethod) {
     case 'node':
+      // Resolve the script path like the other path-like settings: anchor a
+      // relative value to the workspace (or keep the ${workspaceFolder} token when
+      // emitting mcp.json) instead of leaving it relative to the server's process
+      // cwd — the provider runs from a private extension dir, so a bare relative
+      // "dist/index.js" would resolve there and never start. Fall back to the raw
+      // resolved value when it cannot be anchored (validateLaunchSpec blocks it).
       return {
         command: 'node',
-        args: [resolve(s.nodeScriptPath), ...serverArgs],
+        args: [pathValue(s.nodeScriptPath, opts) ?? resolve(s.nodeScriptPath), ...serverArgs],
         cwd,
         env,
       };
@@ -360,11 +380,13 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
         message: 'Launch method is "node" but wcli0.launch.nodeScriptPath is empty.',
         blocking: true,
       });
-    } else if (isUnresolvable(s.nodeScriptPath)) {
-      // An unresolved ${workspaceFolder} token would launch `node ${workspaceFolder}/...`
-      // and fail every start; refuse rather than register a broken definition.
+    } else if (isUnanchorablePath(s.nodeScriptPath)) {
+      // The script path can't be turned into an absolute path: an unresolved
+      // ${workspaceFolder} token, or a relative path with no workspace folder to
+      // anchor it. Either way `node <path>` would resolve against the provider's
+      // private cwd and fail every start; refuse rather than register a broken one.
       problems.push({
-        message: `wcli0.launch.nodeScriptPath "${s.nodeScriptPath}" contains an unresolved variable (no matching workspace folder is open).`,
+        message: `wcli0.launch.nodeScriptPath "${s.nodeScriptPath}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
         blocking: true,
       });
     }
@@ -434,10 +456,7 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
     // so we don't register a server that exits at startup.
     const resolved = resolvedPath(s.logDirectory);
     if (resolved) {
-      const normalized = path.normalize(resolved);
-      const invalidWinChars =
-        process.platform === 'win32' && /[<>"|?*]/.test(normalized.replace(/^[a-zA-Z]:/, ''));
-      if (normalized.includes('..') || invalidWinChars) {
+      if (isServerInvalidLogPath(resolved)) {
         problems.push({
           message: `wcli0.logDirectory "${s.logDirectory}" is not a valid log directory (path traversal or invalid characters); the server rejects it at startup.`,
           blocking: true,
@@ -487,6 +506,27 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
         if (value != null && !(Number.isFinite(value) && value >= 1)) {
           problems.push({
             message: `wcli0.shells.${name}.overrides.security.${field} (${value}) must be a number >= 1; the server rejects smaller values at startup.`,
+            blocking: true,
+          });
+        }
+      }
+      // A per-shell executable command/arg with an extension-owned variable is
+      // resolved when the managed config is written (the server does NOT expand
+      // ${workspaceFolder}/${userHome} before spawn). If such a token can't be
+      // resolved (no workspace open) the spawned shell path would be wrong, so
+      // refuse rather than register a server whose shell never starts. Arbitrary
+      // ${FOO} shell templates are not flagged (handled like custom args).
+      const cmd = sh.executable?.command;
+      if (cmd && cmd.trim() && hasUnresolvedExtensionVariable(cmd)) {
+        problems.push({
+          message: `wcli0.shells.${name}.executable.command "${cmd}" contains an unresolved \${workspaceFolder}/\${userHome} variable (no matching workspace folder is open).`,
+          blocking: true,
+        });
+      }
+      for (const a of sh.executable?.args ?? []) {
+        if (hasUnresolvedExtensionVariable(a)) {
+          problems.push({
+            message: `wcli0.shells.${name}.executable.args entry "${a}" contains an unresolved \${workspaceFolder}/\${userHome} variable (no matching workspace folder is open).`,
             blocking: true,
           });
         }

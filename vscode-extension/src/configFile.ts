@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { isValidPort } from './argsBuilder';
+import { isServerInvalidLogPath, isValidPort } from './argsBuilder';
 import {
   hasUnresolvedVariables,
   PerShellConfig,
@@ -101,6 +101,21 @@ const SHELL_DEFAULTS: Record<string, Record<string, unknown>> = {
   },
 };
 
+/**
+ * Whether a shell is effectively enabled in the generated config, using the same
+ * precedence applied when each shell entry is emitted: an explicit per-shell
+ * `enabled` wins, otherwise the legacy `wcli0.shell` selector ("all" or this
+ * shell's name). Used to decide whether a shell's allowlist can actually
+ * constrain anything (a disabled shell's paths are never enforced).
+ */
+function isShellEnabled(s: Wcli0Settings, name: ShellName): boolean {
+  const explicit = s.shells?.[name]?.enabled;
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  return s.shell === 'all' || name === s.shell;
+}
+
 /** Normalize a WSL mount point to the trailing-slash form the server expects. */
 function normalizeMount(mount: string): string {
   const m = mount.trim();
@@ -129,13 +144,19 @@ function applyPerShellOverrides(
 
   const exec = entry.executable as { command: string; args: string[] };
   if (perShell.executable?.command?.trim()) {
-    exec.command = perShell.executable.command.trim();
+    // Resolve extension-owned variables (${workspaceFolder}/${userHome}) before
+    // emitting: the server passes executable.command to spawn without expanding
+    // them, so a token like ${workspaceFolder}/bin/shell must become a concrete
+    // path here. An unresolvable token is left intact and refused by
+    // validateLaunchSpec; a bare PATH command (e.g. bash) has no token to resolve.
+    exec.command = resolveVariables(perShell.executable.command.trim());
   }
   // Honor an explicit args list, including an empty one: `args: []` is valid
   // server config (run the executable with no prefix args) and must replace the
-  // shell's default arguments rather than being treated as "not set".
+  // shell's default arguments rather than being treated as "not set". Resolve
+  // extension-owned variables for the same reason as the command above.
   if (perShell.executable?.args !== undefined) {
-    exec.args = [...perShell.executable.args];
+    exec.args = perShell.executable.args.map((a) => resolveVariables(a));
   }
 
   const ov = perShell.overrides;
@@ -239,6 +260,13 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   // allowAllDirs disabled the global restriction the shell's allowlist would be
   // present but never enforced. Include resolved per-shell paths in the decision.
   const hasPerShellPaths = SHELL_NAMES.some((name) => {
+    // A disabled shell is never launched, so its allowlist can't constrain
+    // anything; counting it would keep restrictWorkingDirectory on and leave the
+    // ENABLED shells with an empty global allowlist (commands fail with "No
+    // allowed paths configured"). Only enabled shells' paths block the lift.
+    if (!isShellEnabled(s, name)) {
+      return false;
+    }
     const p = s.shells?.[name]?.overrides?.paths;
     if (!p) {
       return false;
@@ -320,8 +348,12 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   }
   // Drop an unresolved ${workspaceFolder} token and anchor a relative path to
   // the workspace rather than writing something the server resolves against C:\.
+  // Also drop a resolved path the server's validateLoggingConfig would reject
+  // (`..` traversal or Windows-invalid characters): the Generate Config File
+  // command builds the config directly (no validateLaunchSpec), so without this
+  // it could emit a logDirectory that crashes the server at startup.
   const resolvedLog = resolveConfigPath(s.logDirectory);
-  if (resolvedLog !== undefined) {
+  if (resolvedLog !== undefined && !isServerInvalidLogPath(resolvedLog)) {
     logging.logDirectory = resolvedLog;
   }
 

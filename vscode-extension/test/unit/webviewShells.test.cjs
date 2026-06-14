@@ -190,3 +190,47 @@ test('a configured shell round-trips through save into settings', async () => {
   const cfg = vscode.workspace.getConfiguration('wcli0');
   assert.deepEqual(cfg.get('shells', {}), shells);
 });
+
+test('P32: an empty positional executable arg survives an edit to another field', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { cmd: { executable: { command: 'cmd.exe', args: ['--flag', ''] } } } },
+  });
+  // Toggle an unrelated field on the same shell, then save.
+  h.els.get('sh-cmd-enabled').value = 'disabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  // The empty positional arg must be preserved (the server passes args to spawn).
+  assert.deepEqual(save.values.shells.cmd.executable.args, ['--flag', '']);
+});
+
+test('P35: an external config change does not discard unsaved edits', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('initialDir').value = '/my/edit'; // unsaved edit
+  h.dispatch({
+    type: 'init',
+    external: true,
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { initialDir: '/other', shells: {} },
+  });
+  assert.equal(h.els.get('initialDir').value, '/my/edit');
+});
+
+test('P35: an external change applies when the form is clean', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.dispatch({
+    type: 'init',
+    external: true,
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { initialDir: '/other', shells: {} },
+  });
+  assert.equal(h.els.get('initialDir').value, '/other');
+});

@@ -101,10 +101,12 @@ target either scope explicitly.
 ## Transport
 
 VS Code's built-in MCP integration uses **stdio** — keep `wcli0.transport.mode`
-at `stdio` for the automatic provider. Selecting `http`/`sse` is intended for
-external clients and generated config files; in that case the provider points
-VS Code at `http://<host>:<port>/mcp` (or `/sse`) and assumes you run the server
-yourself.
+at `stdio` for the automatic provider. Selecting `http` is intended for an
+already-running server: the provider auto-registers a connection to
+`http://<host>:<port>/mcp` and assumes you run the server yourself. Selecting
+`sse` is **not** auto-registered (VS Code's API exposes only the modern
+Streamable HTTP transport, not legacy SSE); use the **Write `.vscode/mcp.json`**
+command to add an SSE entry and run the server yourself.
 
 ## Requirements
 

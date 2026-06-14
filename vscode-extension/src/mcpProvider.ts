@@ -48,17 +48,14 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
   private fallbackDir?: string;
 
   /**
-   * A private directory to use when no cwd is configured and no safe cwd was
-   * injected. Never the shared `os.tmpdir()` root: the server reads `config.json`
-   * from its process cwd, so a world-writable directory would let another user
-   * plant one and control safety settings/shell executables. Create a unique
-   * subdirectory once (mkdtemp) and reuse it; fall back to the shared root only
-   * if even that fails.
+   * A unique, extension-owned temp directory created once (mkdtemp) and reused.
+   * Never the shared `os.tmpdir()` root: the server reads `config.json` from its
+   * process cwd, so a world-writable directory would let another user plant one
+   * and control safety settings/shell executables. Returns undefined (caller
+   * registers no server) if even mkdtemp fails. Unique per provider instance, so
+   * two VS Code windows never share it.
    */
-  private privateDir(): string | undefined {
-    if (this.safeCwd) {
-      return this.safeCwd;
-    }
+  private uniqueTempDir(): string | undefined {
     if (this.fallbackDir) {
       return this.fallbackDir;
     }
@@ -75,12 +72,27 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
   }
 
   /**
-   * The directory the provider would write the auto-managed config into, using
-   * the same fallback chain as launch — so a "show launch command" display
-   * reflects what is actually registered. Undefined if no private dir is available.
+   * A private directory to use as the server cwd when no cwd is configured. Uses
+   * the injected safe cwd (global storage) when available — safe to share across
+   * windows because it is only a neutral cwd — otherwise a unique temp dir.
+   */
+  private privateDir(): string | undefined {
+    if (this.safeCwd) {
+      return this.safeCwd;
+    }
+    return this.uniqueTempDir();
+  }
+
+  /**
+   * The directory the provider writes the auto-managed config into. NEVER the
+   * shared global `safeCwd`: the config has a fixed filename (managed-config.json),
+   * so every window would write the same path there and clobber each other's
+   * per-shell/safety settings. Prefer the workspace-scoped managedConfigDir, else
+   * a per-window-unique temp dir. Shared with `showLaunchCommand` so the displayed
+   * command matches what is actually registered.
    */
   managedConfigTargetDir(): string | undefined {
-    return this.managedConfigDir ?? this.privateDir();
+    return this.managedConfigDir ?? this.uniqueTempDir();
   }
 
   /**
@@ -89,7 +101,10 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    * rather than launching with no per-shell config silently in effect).
    */
   private writeManagedConfig(settings: Wcli0Settings): string | undefined {
-    const dir = this.managedConfigDir ?? this.privateDir();
+    // Use the same target as managedConfigTargetDir (workspace storage, else a
+    // per-window-unique temp dir) — never the shared global safeCwd, which two
+    // windows would clobber via the fixed managed-config.json filename.
+    const dir = this.managedConfigTargetDir();
     if (!dir) {
       this.log('no writable private directory available for the managed config; not registering.');
       return undefined;

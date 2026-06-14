@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const path = require('node:path');
 const vscodeStub = require('../stubs/vscode.cjs');
 const {
   buildServerArgs,
@@ -8,6 +9,7 @@ const {
   validateLaunchSpec,
   renderCommandLine,
   isValidPort,
+  isServerInvalidLogPath,
 } = require('../../dist/argsBuilder.js');
 
 function defaults(overrides = {}) {
@@ -566,4 +568,65 @@ test('managed validateLaunchSpec suppresses CLI-flag-only safe-mode notes', () =
   assert.ok(normal.some((m) => /injection protection/i.test(m)));
   assert.ok(!managed.some((m) => /injection protection/i.test(m)));
   assert.ok(!managed.some((m) => /config file is referenced/i.test(m)));
+});
+
+test('P30: a relative node script path is anchored to the workspace', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildLaunchSpec(defaults({ launchMethod: 'node', nodeScriptPath: 'dist/index.js' }));
+  // Anchored to the workspace, not left relative to the provider's private cwd.
+  assert.equal(spec.command, 'node');
+  assert.equal(spec.args[0], path.resolve('/ws', 'dist/index.js'));
+});
+
+test('P30: a relative node script path keeps a portable token for mcp.json', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildLaunchSpec(
+    defaults({ launchMethod: 'node', nodeScriptPath: 'dist/index.js' }),
+    { resolvePaths: false },
+  );
+  assert.equal(spec.args[0], '${workspaceFolder}/dist/index.js');
+});
+
+test('P30: a relative node script path with no workspace is blocking', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const problems = validateLaunchSpec(defaults({ launchMethod: 'node', nodeScriptPath: 'dist/index.js' }));
+  assert.ok(problems.some((p) => /nodeScriptPath/.test(p.message) && p.blocking));
+});
+
+test('P30: an absolute node script path is unchanged', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildLaunchSpec(defaults({ launchMethod: 'node', nodeScriptPath: '/opt/wcli0/dist/index.js' }));
+  assert.equal(spec.args[0], '/opt/wcli0/dist/index.js');
+});
+
+test('P28: isServerInvalidLogPath mirrors the server log-dir rules', () => {
+  // A `..` segment that survives normalization (escapes the root) is rejected.
+  assert.equal(isServerInvalidLogPath('../up'), true);
+  if (process.platform === 'win32') {
+    assert.equal(isServerInvalidLogPath('C:/logs/a?b'), true);
+    assert.equal(isServerInvalidLogPath('C:/logs/ok'), false);
+  } else {
+    assert.equal(isServerInvalidLogPath('/var/log/ok'), false);
+  }
+});
+
+test('P36: an unresolved per-shell executable command is blocking in managed mode', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ shells: { cmd: { executable: { command: '${workspaceFolder}/bin/sh' } } } });
+  const problems = validateLaunchSpec(s, true);
+  assert.ok(problems.some((p) => /shells\.cmd\.executable\.command/.test(p.message) && p.blocking));
+});
+
+test('P36: an unresolved per-shell executable arg is blocking in managed mode', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ shells: { cmd: { executable: { command: 'sh', args: ['${workspaceFolder}/x'] } } } });
+  const problems = validateLaunchSpec(s, true);
+  assert.ok(problems.some((p) => /shells\.cmd\.executable\.args/.test(p.message) && p.blocking));
+});
+
+test('P36: a bare PATH executable command is not flagged', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ shells: { cmd: { executable: { command: 'cmd.exe', args: ['/c'] } } } });
+  const problems = validateLaunchSpec(s, true);
+  assert.ok(!problems.some((p) => /executable\.command|executable\.args/.test(p.message)));
 });
