@@ -83,10 +83,11 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
 
   let entry: Record<string, unknown>;
   if (settings.transportMode === 'stdio') {
-    // Only include cwd when launch.cwd is explicitly set. Defaulting it to the
-    // workspace would make the server auto-load <workspace>/config.json
-    // (loadConfig searches process.cwd()), letting a committed config.json
-    // silently override the extension's safe settings.
+    // Include cwd only when launch.cwd is explicitly set. NOTE: omitting it does
+    // not avoid the workspace — VS Code defaults a committed stdio entry's cwd to
+    // the workspace folder, so the server may still auto-load <workspace>/config.json.
+    // There is no portable "safe" cwd for a shared mcp.json (an absolute temp path
+    // would not be portable); set wcli0.launch.cwd or wcli0.configFile to control it.
     let env = spec.env;
     if (Object.keys(env).length > 0) {
       // env is serialized into the (commonly committed) mcp.json and may hold
