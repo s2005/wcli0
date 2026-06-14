@@ -74,6 +74,33 @@ export interface BuildOptions {
    * tokens itself and an absolute path would break on teammates' machines.
    */
   resolvePaths?: boolean;
+
+  /**
+   * When set, the server is launched against this auto-managed config file
+   * (`--config <path>`) and the global CLI flags are NOT emitted. Used when the
+   * user configures shells individually (`wcli0.shells`), which can only be
+   * expressed in a config file — emitting `--shell`/`--allowedDir`/etc. on top
+   * would conflict with the file's per-shell `enabled`/security settings.
+   */
+  managedConfigPath?: string;
+}
+
+/**
+ * Build the minimal arg list for an auto-managed-config launch: point the server
+ * at the generated config file and force stdio (a provider-launched process must
+ * not start an HTTP listener even if the file selected one). Everything else the
+ * server needs lives in the file; only `--debug` (a launch-time concern) and the
+ * raw `extraArgs` escape hatch are carried over.
+ */
+function buildManagedServerArgs(s: Wcli0Settings, managedConfigPath: string): string[] {
+  const args = ['--config', managedConfigPath, '--transport', 'stdio'];
+  if (s.debug) {
+    args.push('--debug');
+  }
+  for (const extra of s.extraArgs) {
+    args.push(extra);
+  }
+  return args;
 }
 
 /**
@@ -94,6 +121,9 @@ function pathValue(value: string, opts: BuildOptions): string | undefined {
  * `opts.resolvePaths` is false (see BuildOptions).
  */
 export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): string[] {
+  if (opts.managedConfigPath) {
+    return buildManagedServerArgs(s, opts.managedConfigPath);
+  }
   const args: string[] = [];
 
   const configFile = pathValue(s.configFile, opts);
@@ -262,8 +292,14 @@ function isUnresolvable(raw: string): boolean {
   return !resolved.trim() || hasUnresolvedVariables(resolved);
 }
 
-/** Validate a launch spec, returning problems (empty = OK). */
-export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
+/**
+ * Validate a launch spec, returning problems (empty = OK). When `managed` is
+ * true the server is launched against an auto-managed config file (per-shell
+ * mode), so CLI-flag-specific notes (the `--allowedDir` injection-protection
+ * warning and the referenced-config-file warning) are suppressed — they do not
+ * apply because those values live in the generated file instead of CLI flags.
+ */
+export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchProblem[] {
   const problems: LaunchProblem[] = [];
   if (s.launchMethod === 'node') {
     if (!s.nodeScriptPath.trim()) {
@@ -324,8 +360,9 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
     }
   }
   // A config file path that doesn't fully resolve would be silently dropped,
-  // leaving the server on pathless defaults instead of the intended config.
-  if (s.configFile.trim()) {
+  // leaving the server on pathless defaults instead of the intended config. In
+  // managed mode the user configFile is bypassed entirely, so don't block on it.
+  if (!managed && s.configFile.trim()) {
     const resolved = resolveVariables(s.configFile.trim());
     if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
       problems.push({
@@ -346,7 +383,7 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
   // via --allowedDir (see applyCliShellAndAllowedDirs). This happens even when a
   // config file is referenced, because the extension still emits --allowedDir, so
   // warn whenever allowedDirectories is set in safe mode.
-  if (s.safetyMode === 'safe' && s.allowedDirectories.some((d) => d.trim())) {
+  if (!managed && s.safetyMode === 'safe' && s.allowedDirectories.some((d) => d.trim())) {
     problems.push({
       message:
         'Restricting directories with wcli0.allowedDirectories passes --allowedDir, which makes the server disable command-injection protection. To keep it enabled, define allowed paths inside the config file (wcli0.configFile) and clear wcli0.allowedDirectories.',
@@ -355,7 +392,8 @@ export function validateLaunchSpec(s: Wcli0Settings): LaunchProblem[] {
   }
   // A referenced config file can disable safety checks that "safe" mode implies;
   // the extension can't override the file, so warn rather than imply enforcement.
-  if (s.safetyMode === 'safe' && s.configFile.trim()) {
+  // In managed mode the file is generated from these settings, so no such warning.
+  if (!managed && s.safetyMode === 'safe' && s.configFile.trim()) {
     problems.push({
       message:
         'A config file is referenced while safety mode is "safe": settings in the file (including disabled safety checks) take effect and are not overridden by the extension.',

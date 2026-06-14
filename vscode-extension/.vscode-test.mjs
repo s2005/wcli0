@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@vscode/test-cli';
 
 // Runs the integration tests inside a real VS Code Extension Host.
@@ -16,8 +17,14 @@ if (!fromPath && existsSync(editorPathFile)) {
   fromPath = readFileSync(editorPathFile, 'utf8').trim();
 }
 
+// Open a real workspace folder so workspace-scoped features (e.g. writing
+// .vscode/mcp.json) can be exercised end-to-end. Generated artifacts under this
+// folder are git-ignored and cleaned up by the tests.
+const workspaceFolder = fileURLToPath(new URL('test/integration/fixtures/ws', import.meta.url));
+
 export default defineConfig({
   files: 'test/integration/**/*.test.js',
+  workspaceFolder,
   // Chromium needs these to run as root inside a container/CI.
   launchArgs: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
   ...(fromPath ? { useInstallation: { fromPath } } : { version: 'stable' }),

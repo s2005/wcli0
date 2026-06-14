@@ -1,5 +1,6 @@
 .gitignore
 .vscode/**
+scripts/**
 .vscode-test.mjs
 .vscode-test/**
 src/**

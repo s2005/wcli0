@@ -92,6 +92,7 @@ const state = {
     shownDocs: [],
   },
   lastWebviewPanel: undefined,
+  registeredViewProviders: new Map(),
   lmHasProvider: true,
   registeredMcpProviders: [],
   configChangeListeners: [],
@@ -115,6 +116,7 @@ function __reset() {
   state.calls.openedDocs = [];
   state.calls.shownDocs = [];
   state.lastWebviewPanel = undefined;
+  state.registeredViewProviders = new Map();
   state.lmHasProvider = true;
   state.registeredMcpProviders = [];
   state.configChangeListeners = [];
@@ -127,6 +129,36 @@ function __setConfig(target, key, value) {
   } else {
     map.set(key, value);
   }
+}
+
+function __createWebviewView() {
+  const view = {
+    visible: true,
+    webview: {
+      html: '',
+      options: undefined,
+      posted: [],
+      _handler: undefined,
+      postMessage(m) {
+        this.posted.push(m);
+        return Promise.resolve(true);
+      },
+      onDidReceiveMessage(cb) {
+        this._handler = cb;
+        return { dispose: () => {} };
+      },
+    },
+    _disposeCbs: [],
+    onDidDispose(cb) {
+      this._disposeCbs.push(cb);
+      return { dispose: () => {} };
+    },
+    show() {},
+    dispose() {
+      for (const cb of this._disposeCbs) cb();
+    },
+  };
+  return view;
 }
 
 const workspace = {
@@ -260,6 +292,10 @@ const window = {
     state.lastWebviewPanel = panel;
     return panel;
   },
+  registerWebviewViewProvider(viewId, provider) {
+    state.registeredViewProviders.set(viewId, provider);
+    return { dispose: () => {} };
+  },
 };
 
 const commands = {
@@ -322,4 +358,5 @@ module.exports = {
   __state: state,
   __reset,
   __setConfig,
+  __createWebviewView,
 };

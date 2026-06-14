@@ -30,6 +30,10 @@ test('activate registers all commands and the MCP provider', () => {
   }
   assert.equal(vscode.__state.registeredMcpProviders.length, 1);
   assert.equal(vscode.__state.registeredMcpProviders[0].id, 'wcli0.serverProvider');
+  assert.ok(
+    vscode.__state.registeredViewProviders.has('wcli0.configView'),
+    'registered the configuration view provider',
+  );
   assert.ok(ctx.subscriptions.length > 0);
 });
 

@@ -1,6 +1,6 @@
-# wcli0 — Windows CLI MCP Server (VS Code extension)
+# wcli0 — MCP Server (VS Code extension)
 
-Configure and run the [`wcli0`](https://github.com/s2005/wcli0) Windows CLI MCP
+Configure and run the [`wcli0`](https://github.com/s2005/wcli0) MCP
 server from VS Code, with all configuration driven by ordinary VS Code
 settings. Because VS Code settings split into **User** and **Workspace** scopes,
 you get per-user defaults plus per-project overrides for free — no hand-edited
@@ -15,13 +15,18 @@ you get per-user defaults plus per-project overrides for free — no hand-edited
 - **Provides a configuration form.** `wcli0: Configure Server…` opens a panel
   where you pick a scope (User or Workspace) and edit the common options
   (launch method, shells, allowed directories, timeouts, safety level,
-  logging, transport).
+  logging, transport) as well as per-shell configuration (enable/disable each
+  shell, custom executables, and per-shell overrides).
 - **Generates artifacts on demand:**
   - `wcli0: Generate config.json From Settings` writes a `wcli0` JSON config
     file (the `--config` format).
   - `wcli0: Write .vscode/mcp.json` writes a workspace `mcp.json` entry for
     clients that read that file directly.
   - `wcli0: Show Resolved Launch Command` prints the exact command line.
+
+  When triggered from the configuration panel's buttons, these export actions
+  first persist the form's current edits to the selected scope, so the generated
+  output always matches what you see (no separate "Save settings" click needed).
 
 ## Configuration model
 
@@ -55,6 +60,36 @@ Every `wcli0.*` setting maps to a wcli0 CLI flag. Highlights:
 Path-like values support `${workspaceFolder}` (and `${workspaceFolder:name}`,
 `${userHome}`).
 
+### Per-shell configuration (`wcli0.shells`)
+
+The single `wcli0.shell` flag only selects **one** shell. To configure shells
+**individually** — enable an arbitrary subset, point a shell at a custom
+executable, or give one shell different limits/blocklists/paths than another —
+use `wcli0.shells`, an object keyed by shell name (`powershell`, `cmd`,
+`gitbash`, `wsl`, `bash`). Edit it from the **Per-Shell Configuration** section
+of the Configure panel.
+
+Per shell you can set:
+
+| Field | Meaning |
+| ----- | ------- |
+| `enabled` | Whether this shell is enabled. |
+| `executable.command` / `executable.args` | Override the shell executable and its arguments. |
+| `overrides.security.*` | Per-shell `maxCommandLength`, `commandTimeout`, `enableInjectionProtection`, `restrictWorkingDirectory`. |
+| `overrides.restrictions.*` | Per-shell `blockedCommands` / `blockedArguments` / `blockedOperators` (replaces this shell's default blocklist). |
+| `overrides.paths.*` | Per-shell `allowedPaths` / `initialDir` (supports `${workspaceFolder}`). |
+| `wslConfig.*` | `mountPoint` / `inheritGlobalPaths` (wsl/bash only). |
+
+Per-shell settings **cannot** be passed as CLI flags, so whenever `wcli0.shells`
+configures at least one shell the extension switches to an **auto-managed config
+file**: it writes a generated `config.json` into its private storage and launches
+the server with `--config <that file>`. In this mode `wcli0.shell` and the global
+limit/restriction/path flags are bypassed (their values are folded into the
+generated file instead), and any `wcli0.configFile` you set is ignored in favor
+of the managed file. **Restart the MCP server** (from the MCP view) to apply
+changes. Use `wcli0: Show Resolved Launch Command` to see the managed `--config`
+command and the file's location.
+
 ### User vs. workspace
 
 Set machine-wide defaults in **User** settings (e.g. launch method, package
@@ -87,6 +122,30 @@ npm run build      # tsc -> dist/
 Press F5 in VS Code (with this folder open) to launch an Extension Development
 Host.
 
+### Icons
+
+There are two icons, with different requirements:
+
+- **Activity-bar icon** (`media/activity-icon.svg`) — the sidebar view container
+  icon. VS Code accepts an SVG here; it is monochrome and uses `currentColor` so
+  it adapts to the theme.
+- **Marketplace icon** (`media/icon.png`, referenced by the `icon` field in
+  `package.json`) — shown in the Marketplace and the Extensions list. This **must
+  be a PNG** of at least 128×128 (we ship 512×512); SVG is not accepted here.
+
+The PNG is generated from the editable source `media/icon.svg`:
+
+```bash
+npm run build:icon            # media/icon.svg -> media/icon.png (512x512)
+npm run build:icon -- --size 256
+```
+
+`scripts/build-icon.mjs` rasterizes with no extra npm dependencies, using the
+first available tool: headless Chromium (Chrome/Edge — set `CHROME_PATH` to
+override), then ImageMagick (`magick`/`convert`), then Inkscape. To change the
+icon, edit `media/icon.svg` and re-run `npm run build:icon`, then commit the
+regenerated `media/icon.png`.
+
 ## Testing
 
 Two layers:
@@ -98,11 +157,15 @@ Two layers:
   `vscode` fake (`test/stubs/`), so no VS Code download is needed. `npm test`
   runs these. `npm run test:coverage` adds line/branch/function coverage and
   fails below the configured thresholds (lines 80%, functions 80%, branches
-  75%); current coverage is ~100% line / ~96% branch / ~98% function.
+  75%); current coverage is ~97% line / ~88% branch / ~84% function.
 - **Integration tests** (`npm run test:integration`) activate the packaged
-  extension inside a real VS Code Extension Host using `@vscode/test-electron`:
-  they assert the extension activates, contributes its commands and setting
-  defaults, round-trips a setting update, and runs a command.
+  extension inside a real VS Code Extension Host using `@vscode/test-electron`,
+  opening the workspace fixture in `test/integration/fixtures/ws`. They assert the
+  extension activates, contributes its commands and setting defaults, round-trips
+  setting updates (including a per-shell configuration), and — to guard against
+  dropped settings — write a real `.vscode/mcp.json` and verify that **every**
+  supported setting (Limits & Safety, logging, restrictions, paths, shell,
+  safety mode, transport) is represented in the generated entry.
 
 ### Running integration tests headless or without the VS Code download
 

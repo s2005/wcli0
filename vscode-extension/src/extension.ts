@@ -7,7 +7,7 @@ import {
   showLaunchCommand,
   writeWorkspaceMcpJson,
 } from './commands';
-import { openConfigPanel } from './webview';
+import { openConfigPanel, Wcli0ConfigViewProvider } from './webview';
 import { CONFIG_SECTION } from './settings';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -23,9 +23,19 @@ export function activate(context: vscode.ExtensionContext): void {
   } catch {
     // best effort — provider has its own fallback
   }
+  // Workspace-scoped storage for the auto-managed per-shell config, so separate
+  // windows (each with their own workspace settings) don't clobber each other's
+  // file. Falls back to global storage when no workspace is open.
+  const managedConfigDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
+  try {
+    fs.mkdirSync(managedConfigDir, { recursive: true });
+  } catch {
+    // best effort — provider has its own fallback
+  }
   const provider = new Wcli0McpProvider(
     (message) => output.appendLine(`[provider] ${message}`),
     safeCwd,
+    managedConfigDir,
   );
   context.subscriptions.push(provider);
 
@@ -46,11 +56,21 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('wcli0.configView', new Wcli0ConfigViewProvider(), {
+      // Preserve unsaved form edits when the sidebar view is collapsed/hidden,
+      // matching the panel's retainContextWhenHidden behavior.
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('wcli0.configure', () => openConfigPanel(context)),
     vscode.commands.registerCommand('wcli0.generateConfigFile', () => generateConfigFile()),
     vscode.commands.registerCommand('wcli0.writeWorkspaceMcpJson', () => writeWorkspaceMcpJson()),
     vscode.commands.registerCommand('wcli0.restartServer', () => refreshServerDefinition(provider)),
-    vscode.commands.registerCommand('wcli0.showLaunchCommand', () => showLaunchCommand(output)),
+    vscode.commands.registerCommand('wcli0.showLaunchCommand', () =>
+      showLaunchCommand(output, managedConfigDir),
+    ),
   );
 }
 

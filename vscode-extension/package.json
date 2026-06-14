@@ -1,8 +1,8 @@
 {
   "name": "wcli0-vscode",
-  "displayName": "wcli0 — Windows CLI MCP Server",
-  "description": "Configure and run the wcli0 Windows CLI MCP server with simple user- and workspace-level settings.",
-  "version": "0.1.0",
+  "displayName": "wcli0 — MCP Server",
+  "description": "Configure and run the wcli0 MCP server with simple user- and workspace-level settings.",
+  "version": "0.20260614.5",
   "publisher": "s2005",
   "license": "MIT",
   "engines": {
@@ -28,6 +28,7 @@
     "url": "https://github.com/s2005/wcli0/issues"
   },
   "homepage": "https://github.com/s2005/wcli0",
+  "icon": "media/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished"
@@ -36,36 +37,54 @@
     "mcpServerDefinitionProviders": [
       {
         "id": "wcli0.serverProvider",
-        "label": "wcli0 Windows CLI"
+        "label": "wcli0"
       }
     ],
     "commands": [
       {
         "command": "wcli0.configure",
-        "title": "wcli0: Configure Server…",
+        "title": "Configure Server…",
         "category": "wcli0"
       },
       {
         "command": "wcli0.generateConfigFile",
-        "title": "wcli0: Generate config.json From Settings",
+        "title": "Generate config.json From Settings",
         "category": "wcli0"
       },
       {
         "command": "wcli0.writeWorkspaceMcpJson",
-        "title": "wcli0: Write .vscode/mcp.json",
+        "title": "Write .vscode/mcp.json",
         "category": "wcli0"
       },
       {
         "command": "wcli0.restartServer",
-        "title": "wcli0: Refresh MCP Server Definition",
+        "title": "Refresh MCP Server Definition",
         "category": "wcli0"
       },
       {
         "command": "wcli0.showLaunchCommand",
-        "title": "wcli0: Show Resolved Launch Command",
+        "title": "Show Resolved Launch Command",
         "category": "wcli0"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wcli0-activitybar",
+          "title": "wcli0",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "wcli0-activitybar": [
+        {
+          "id": "wcli0.configView",
+          "name": "Configuration",
+          "type": "webview"
+        }
+      ]
+    },
     "configuration": {
       "title": "wcli0",
       "properties": {
@@ -144,8 +163,128 @@
             "bash"
           ],
           "default": "all",
-          "markdownDescription": "Restrict the server to a single shell (`--shell`). `all` leaves every configured shell enabled.",
+          "markdownDescription": "Restrict the server to a single shell (`--shell`). `all` leaves every configured shell enabled. Ignored when `#wcli0.shells#` configures shells individually.",
           "scope": "resource"
+        },
+        "wcli0.shells": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Per-shell configuration, keyed by shell name (`powershell`, `cmd`, `gitbash`, `wsl`, `bash`). When any shell is configured here, the extension writes an auto-managed config file and launches the server with `--config` (per-shell settings cannot be passed as CLI flags, so `#wcli0.shell#` and the global limit/restriction flags are bypassed). Edit this from the wcli0 Configuration view. Restart the MCP server to apply changes.",
+          "scope": "resource",
+          "additionalProperties": {
+            "type": "object",
+            "markdownDescription": "Configuration for a single shell.",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "markdownDescription": "Whether this shell is enabled."
+              },
+              "executable": {
+                "type": "object",
+                "markdownDescription": "Override the shell executable.",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "markdownDescription": "Executable to run (e.g. `cmd.exe`, `C:\\\\Program Files\\\\Git\\\\bin\\\\bash.exe`)."
+                  },
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "markdownDescription": "Arguments passed to the executable (e.g. `[\"-c\"]`, `[\"/c\"]`)."
+                  }
+                },
+                "additionalProperties": false
+              },
+              "overrides": {
+                "type": "object",
+                "markdownDescription": "Shell-specific overrides for the global security, restrictions, and paths.",
+                "properties": {
+                  "security": {
+                    "type": "object",
+                    "properties": {
+                      "maxCommandLength": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "commandTimeout": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "enableInjectionProtection": {
+                        "type": "boolean"
+                      },
+                      "restrictWorkingDirectory": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "restrictions": {
+                    "type": "object",
+                    "properties": {
+                      "blockedCommands": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "blockedArguments": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "blockedOperators": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "paths": {
+                    "type": "object",
+                    "properties": {
+                      "allowedPaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "initialDir": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "wslConfig": {
+                "type": "object",
+                "markdownDescription": "WSL-specific options (only meaningful for the `wsl` and `bash` shells).",
+                "properties": {
+                  "mountPoint": {
+                    "type": "string",
+                    "markdownDescription": "Mount point for Windows drives in WSL (e.g. `/mnt/`)."
+                  },
+                  "inheritGlobalPaths": {
+                    "type": "boolean",
+                    "markdownDescription": "Whether to inherit global allowed paths and convert them to WSL format."
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
         },
         "wcli0.allowedDirectories": {
           "type": "array",
@@ -335,10 +474,13 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "tsc -p ./",
+    "build:icon": "node scripts/build-icon.mjs",
+    "version:bump": "node scripts/bump-version.js",
+    "compile": "tsc -p ./",
+    "build": "npm run version:bump && npm run compile",
     "watch": "tsc -w -p ./",
     "lint": "tsc --noEmit -p ./",
-    "pretest": "npm run build",
+    "pretest": "npm run compile",
     "test": "npm run test:unit",
     "test:unit": "node --require ./test/stubs/hook.cjs --test test/unit/*.test.cjs",
     "test:coverage": "node --require ./test/stubs/hook.cjs --experimental-test-coverage --test-coverage-exclude=test/** --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=75 --test test/unit/*.test.cjs",

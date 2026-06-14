@@ -31,6 +31,24 @@ describe('wcli0 extension', function () {
     assert.equal(cfg.get('shell'), 'all');
     assert.equal(cfg.get('safetyMode'), 'safe');
     assert.equal(cfg.get('transport.mode'), 'stdio');
+    assert.deepEqual(cfg.get('shells'), {});
+  });
+
+  it('round-trips a per-shell configuration at the global scope', async function () {
+    const shells = {
+      cmd: { enabled: true },
+      gitbash: { enabled: false, executable: { command: 'C:/Git/bin/bash.exe', args: ['-c'] } },
+    };
+    await vscode.workspace
+      .getConfiguration('wcli0')
+      .update('shells', shells, vscode.ConfigurationTarget.Global);
+    const updated = vscode.workspace.getConfiguration('wcli0').get('shells');
+    assert.deepEqual(updated, shells);
+    // showLaunchCommand should now reflect managed mode without throwing.
+    await vscode.commands.executeCommand('wcli0.showLaunchCommand');
+    await vscode.workspace
+      .getConfiguration('wcli0')
+      .update('shells', undefined, vscode.ConfigurationTarget.Global);
   });
 
   it('round-trips a setting update at the global scope', async function () {
@@ -46,5 +64,29 @@ describe('wcli0 extension', function () {
 
   it('runs showLaunchCommand without throwing', async function () {
     await vscode.commands.executeCommand('wcli0.showLaunchCommand');
+  });
+
+  it('contributes the activity bar configuration view', function () {
+    const ext = vscode.extensions.getExtension(EXT_ID);
+    assert.ok(ext, `extension ${EXT_ID} not found`);
+    const contributes = ext.packageJSON.contributes;
+
+    const container = (contributes.viewsContainers.activitybar || []).find(
+      (c) => c.id === 'wcli0-activitybar',
+    );
+    assert.ok(container, 'missing wcli0-activitybar view container');
+    assert.ok(container.icon, 'view container has no icon');
+
+    const view = (contributes.views['wcli0-activitybar'] || []).find(
+      (v) => v.id === 'wcli0.configView',
+    );
+    assert.ok(view, 'missing wcli0.configView view');
+    assert.equal(view.type, 'webview');
+  });
+
+  it('can focus the configuration view without throwing', async function () {
+    // The webview view provider is resolved lazily; focusing it exercises
+    // registration end-to-end in a real Extension Host.
+    await vscode.commands.executeCommand('wcli0.configView.focus');
   });
 });

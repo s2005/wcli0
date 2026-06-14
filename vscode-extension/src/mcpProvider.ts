@@ -1,9 +1,15 @@
+import * as fs from 'fs';
 import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { buildLaunchSpec, isValidPort, validateLaunchSpec } from './argsBuilder';
-import { primaryWorkspaceFolder, readSettings } from './settings';
+import { buildConfigFile } from './configFile';
+import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, Wcli0Settings } from './settings';
 
-const SERVER_LABEL = 'wcli0 Windows CLI';
+/** File name for the extension-owned, auto-generated per-shell config. */
+export const MANAGED_CONFIG_FILE = 'managed-config.json';
+
+const SERVER_LABEL = 'wcli0';
 
 /**
  * Provides the wcli0 MCP server definition to VS Code based on the current
@@ -26,10 +32,36 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    *   when launch.cwd is unset — avoids the server auto-loading a config.json
    *   from the workspace or a world-writable temp dir. Falls back to os.tmpdir().
    */
+  /**
+   * @param managedConfigDir A private, extension-owned directory where the
+   *   auto-managed per-shell config file is written. Should be workspace-scoped
+   *   (context.storageUri) so separate windows don't clobber each other's config;
+   *   falls back to safeCwd, then os.tmpdir().
+   */
   constructor(
     private readonly log: (message: string) => void = (m) => console.warn(m),
     private readonly safeCwd?: string,
+    private readonly managedConfigDir?: string,
   ) {}
+
+  /**
+   * Write the auto-managed config file from settings and return its absolute
+   * path, or undefined if it cannot be written (caller then registers no server
+   * rather than launching with no per-shell config silently in effect).
+   */
+  private writeManagedConfig(settings: Wcli0Settings): string | undefined {
+    const dir = this.managedConfigDir ?? this.safeCwd ?? os.tmpdir();
+    const target = path.join(dir, MANAGED_CONFIG_FILE);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const config = buildConfigFile(settings);
+      fs.writeFileSync(target, JSON.stringify(config, null, 2) + '\n', 'utf8');
+      return target;
+    } catch (err) {
+      this.log(`could not write managed config at ${target}: ${(err as Error).message}`);
+      return undefined;
+    }
+  }
 
   /** Notify VS Code that definitions may have changed (re-reads settings). */
   refresh(): void {
@@ -67,7 +99,21 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       return [new vscode.McpHttpServerDefinition(SERVER_LABEL, uri)];
     }
 
-    const problems = validateLaunchSpec(settings);
+    // When any shell is configured individually, per-shell settings can only be
+    // expressed in a config file, so launch against an auto-managed one instead
+    // of the global CLI flags.
+    const managed = hasPerShellConfig(settings);
+    let managedConfigPath: string | undefined;
+    if (managed) {
+      managedConfigPath = this.writeManagedConfig(settings);
+      if (!managedConfigPath) {
+        // Could not write the managed config — don't launch with per-shell config
+        // silently missing (the global flags wouldn't reflect the user's intent).
+        return [];
+      }
+    }
+
+    const problems = validateLaunchSpec(settings, managed);
     const blocking = problems.filter((p) => p.blocking);
     if (blocking.length > 0) {
       // Misconfigured launch: log rather than register a broken server.
@@ -81,8 +127,15 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
         this.log(p.message);
       }
     }
+    // The auto-managed config takes precedence over any wcli0.configFile; say so
+    // rather than letting the referenced file appear to be in effect.
+    if (managed && settings.configFile.trim()) {
+      this.log(
+        'wcli0.configFile is ignored while shells are configured individually (wcli0.shells); the auto-managed config is used instead.',
+      );
+    }
 
-    const spec = buildLaunchSpec(settings);
+    const spec = buildLaunchSpec(settings, managedConfigPath ? { managedConfigPath } : {});
     const def = new vscode.McpStdioServerDefinition(
       SERVER_LABEL,
       spec.command,

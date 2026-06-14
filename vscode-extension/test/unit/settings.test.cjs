@@ -8,6 +8,7 @@ const {
   resolveVariables,
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
+  hasPerShellConfig,
   CONFIG_SECTION,
 } = require('../../dist/settings.js');
 
@@ -92,4 +93,30 @@ test('primaryWorkspaceFolder returns the first folder or undefined', () => {
   assert.equal(primaryWorkspaceFolder().name, 'ws');
   vscode.__state.workspaceFolders = undefined;
   assert.equal(primaryWorkspaceFolder(), undefined);
+});
+
+test('hasPerShellConfig detects any meaningful per-shell field', () => {
+  assert.equal(hasPerShellConfig(readSettings()), false);
+  // Each kind of meaningful field independently triggers managed mode.
+  const cases = [
+    { cmd: { enabled: false } },
+    { cmd: { executable: { command: 'cmd.exe' } } },
+    { cmd: { executable: { args: ['/c'] } } },
+    { cmd: { overrides: { security: { maxCommandLength: 10 } } } },
+    { cmd: { overrides: { security: { enableInjectionProtection: false } } } },
+    { cmd: { overrides: { restrictions: { blockedCommands: ['x'] } } } },
+    { cmd: { overrides: { paths: { allowedPaths: ['/a'] } } } },
+    { cmd: { overrides: { paths: { initialDir: '/a' } } } },
+    { wsl: { wslConfig: { mountPoint: '/mnt/' } } },
+    { wsl: { wslConfig: { inheritGlobalPaths: false } } },
+  ];
+  for (const shells of cases) {
+    vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', shells);
+    assert.equal(hasPerShellConfig(readSettings()), true, JSON.stringify(shells));
+  }
+  // Empty/whitespace-only fields are not meaningful.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { executable: { command: '   ', args: [] }, overrides: { restrictions: { blockedCommands: [] } } },
+  });
+  assert.equal(hasPerShellConfig(readSettings()), false);
 });

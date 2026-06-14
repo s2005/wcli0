@@ -272,3 +272,88 @@ test('native bash disables WSL path inheritance and ignores the wsl mount point'
   assert.equal(cfg.shells.bash.wslConfig.mountPoint, undefined);
   assert.equal(cfg.shells.wsl.wslConfig.mountPoint, '/windows/');
 });
+
+// --- per-shell configuration (wcli0.shells) -------------------------------
+
+test('per-shell enabled flags override the single-shell selector', () => {
+  const cfg = buildConfigFile(
+    defaults({ shell: 'powershell', shells: { cmd: { enabled: true }, gitbash: { enabled: false } } }),
+  );
+  // cmd/gitbash come from wcli0.shells; powershell still follows the selector,
+  // wsl/bash fall back to the selector (disabled) since not set per-shell.
+  assert.equal(cfg.shells.cmd.enabled, true);
+  assert.equal(cfg.shells.gitbash.enabled, false);
+  assert.equal(cfg.shells.powershell.enabled, true);
+  assert.equal(cfg.shells.wsl.enabled, false);
+});
+
+test('per-shell executable command and args replace the defaults', () => {
+  const cfg = buildConfigFile(
+    defaults({ shells: { gitbash: { executable: { command: 'D:/git/bash.exe', args: ['-lc'] } } } }),
+  );
+  assert.equal(cfg.shells.gitbash.executable.command, 'D:/git/bash.exe');
+  assert.deepEqual(cfg.shells.gitbash.executable.args, ['-lc']);
+  // Untouched shells keep their defaults.
+  assert.equal(cfg.shells.cmd.executable.command, 'cmd.exe');
+});
+
+test('per-shell security overrides are sanitized like the global section', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      shells: {
+        powershell: {
+          overrides: {
+            security: {
+              maxCommandLength: 5000,
+              commandTimeout: 0, // non-positive -> dropped
+              enableInjectionProtection: false,
+              restrictWorkingDirectory: true,
+            },
+          },
+        },
+      },
+    }),
+  );
+  const sec = cfg.shells.powershell.overrides.security;
+  assert.equal(sec.maxCommandLength, 5000);
+  assert.equal(sec.commandTimeout, undefined);
+  assert.equal(sec.enableInjectionProtection, false);
+  assert.equal(sec.restrictWorkingDirectory, true);
+});
+
+test('per-shell restrictions replace the default blocklist (empties filtered)', () => {
+  const cfg = buildConfigFile(
+    defaults({ shells: { cmd: { overrides: { restrictions: { blockedCommands: ['format', ''] } } } } }),
+  );
+  // Replaces the cmd default ['del','rd','rmdir'].
+  assert.deepEqual(cfg.shells.cmd.overrides.restrictions.blockedCommands, ['format']);
+});
+
+test('per-shell allowed paths resolve and unresolved entries drop', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({
+      shells: {
+        cmd: { overrides: { paths: { allowedPaths: ['${workspaceFolder}/a', '${workspaceFolder:nope}/b'], initialDir: '${workspaceFolder}/a' } } },
+      },
+    }),
+  );
+  const paths = cfg.shells.cmd.overrides.paths;
+  assert.deepEqual(paths.allowedPaths, ['/ws/a']);
+  assert.equal(paths.initialDir, '/ws/a');
+});
+
+test('per-shell wsl mount point overrides the global wslMountPoint', () => {
+  const cfg = buildConfigFile(
+    defaults({ wslMountPoint: '/global', shells: { wsl: { wslConfig: { mountPoint: '/perShell', inheritGlobalPaths: false } } } }),
+  );
+  assert.equal(cfg.shells.wsl.wslConfig.mountPoint, '/perShell/');
+  assert.equal(cfg.shells.wsl.wslConfig.inheritGlobalPaths, false);
+});
+
+test('yolo clears per-shell restrictions too', () => {
+  const cfg = buildConfigFile(
+    defaults({ safetyMode: 'yolo', shells: { cmd: { overrides: { restrictions: { blockedCommands: ['format'] } } } } }),
+  );
+  assert.deepEqual(cfg.shells.cmd.overrides.restrictions.blockedCommands, []);
+});

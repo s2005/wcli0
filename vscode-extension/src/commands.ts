@@ -2,8 +2,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { buildLaunchSpec, isValidPort, renderCommandLine, validateLaunchSpec } from './argsBuilder';
 import { buildConfigFile } from './configFile';
-import { primaryWorkspaceFolder, readSettings, resolveVariables } from './settings';
-import { clientHost, Wcli0McpProvider } from './mcpProvider';
+import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, resolveVariables } from './settings';
+import { clientHost, MANAGED_CONFIG_FILE, Wcli0McpProvider } from './mcpProvider';
 
 /** Generate a wcli0 config.json from settings and offer to save it. */
 export async function generateConfigFile(): Promise<void> {
@@ -192,17 +192,35 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
 }
 
 /** Show the resolved launch command line and offer to copy it. */
-export async function showLaunchCommand(output: vscode.OutputChannel): Promise<void> {
+export async function showLaunchCommand(
+  output: vscode.OutputChannel,
+  managedConfigDir?: string,
+): Promise<void> {
   const scope = primaryWorkspaceFolder()?.uri;
   const settings = readSettings(scope);
-  const spec = buildLaunchSpec(settings);
+  // Mirror the provider: when shells are configured individually the server is
+  // launched against an auto-managed config file, not the global CLI flags.
+  const managed = hasPerShellConfig(settings) && settings.transportMode === 'stdio';
+  const managedConfigPath = managed
+    ? path.join(managedConfigDir ?? '', MANAGED_CONFIG_FILE)
+    : undefined;
+  const spec = buildLaunchSpec(settings, managedConfigPath ? { managedConfigPath } : {});
   const line = renderCommandLine(spec);
-  const problems = validateLaunchSpec(settings);
+  const problems = validateLaunchSpec(settings, managed);
 
   output.clear();
   output.appendLine('Resolved wcli0 launch command:');
   output.appendLine('');
   output.appendLine(line);
+  if (managed) {
+    output.appendLine('');
+    output.appendLine(
+      'Note: shells are configured individually (wcli0.shells), so the server is launched',
+    );
+    output.appendLine(
+      `with an auto-managed config file (written to ${managedConfigPath} on launch).`,
+    );
+  }
   if (spec.cwd) {
     output.appendLine('');
     output.appendLine(`cwd: ${spec.cwd}`);

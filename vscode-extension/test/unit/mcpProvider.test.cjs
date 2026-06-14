@@ -103,3 +103,67 @@ test('refresh fires the change event', () => {
   assert.equal(fired, 1);
   provider.dispose();
 });
+
+// --- auto-managed per-shell launch ----------------------------------------
+
+const fs = require('fs');
+const path = require('path');
+
+function managedDir() {
+  return path.join(
+    os.tmpdir(),
+    'wcli0-test-managed-' + process.pid + '-' + Math.random().toString(36).slice(2),
+  );
+}
+
+test('per-shell config launches via an auto-managed --config file', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { enabled: true },
+    gitbash: { enabled: false },
+  });
+  const dir = managedDir();
+  const defs = new Wcli0McpProvider(undefined, '/priv', dir).provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  const args = defs[0].args;
+  // npx launcher + managed config; no global per-shell-conflicting flags.
+  assert.deepEqual(args.slice(0, 2), ['-y', 'wcli0@latest']);
+  const ci = args.indexOf('--config');
+  assert.ok(ci >= 0, '--config present');
+  assert.equal(args[ci + 1], path.join(dir, 'managed-config.json'));
+  assert.ok(args.includes('--transport') && args[args.indexOf('--transport') + 1] === 'stdio');
+  assert.ok(!args.includes('--shell'), 'no --shell in managed mode');
+  assert.ok(!args.includes('--allowedDir'), 'no --allowedDir in managed mode');
+
+  const written = JSON.parse(fs.readFileSync(path.join(dir, 'managed-config.json'), 'utf8'));
+  assert.equal(written.shells.cmd.enabled, true);
+  assert.equal(written.shells.gitbash.enabled, false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('without per-shell config the normal CLI-flag launch is unchanged', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  const defs = new Wcli0McpProvider(undefined, '/priv', managedDir()).provideMcpServerDefinitions();
+  assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
+});
+
+test('managed mode notes that wcli0.configFile is ignored', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '/ws/wcli0.json');
+  const dir = managedDir();
+  const logs = [];
+  new Wcli0McpProvider((m) => logs.push(m), '/priv', dir).provideMcpServerDefinitions();
+  assert.ok(logs.some((m) => /configFile is ignored/i.test(m)));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('managed mode does not emit the --allowedDir injection-protection warning', () => {
+  // allowedDirectories would normally warn in safe mode; in managed mode the
+  // value lives in the config file, so the warning is suppressed.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.allowedDirectories', ['/ws']);
+  const dir = managedDir();
+  const logs = [];
+  new Wcli0McpProvider((m) => logs.push(m), '/priv', dir).provideMcpServerDefinitions();
+  assert.ok(!logs.some((m) => /injection protection/i.test(m)));
+  fs.rmSync(dir, { recursive: true, force: true });
+});

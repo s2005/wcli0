@@ -388,3 +388,36 @@ test('renderCommandLine keeps backslashes and quotes metacharacters', () => {
   assert.match(line, /--blockedOperator "\|"/);
   assert.match(line, /"C:\\safe path"/); // backslash not doubled
 });
+
+test('managedConfigPath produces a minimal config-only arg list', () => {
+  const args = buildServerArgs(
+    defaults({
+      shell: 'cmd',
+      allowedDirectories: ['/ws'],
+      blockedCommands: ['rm'],
+      commandTimeout: 99,
+      debug: true,
+      extraArgs: ['--foo'],
+    }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  // Only --config, forced stdio, --debug and extraArgs; no global flags that
+  // would conflict with the config file's per-shell settings.
+  assert.deepEqual(args, [
+    '--config',
+    '/priv/managed-config.json',
+    '--transport',
+    'stdio',
+    '--debug',
+    '--foo',
+  ]);
+});
+
+test('managed validateLaunchSpec suppresses CLI-flag-only safe-mode notes', () => {
+  const s = defaults({ safetyMode: 'safe', allowedDirectories: ['/ws'], configFile: '/ws/x.json' });
+  const normal = validateLaunchSpec(s).map((p) => p.message);
+  const managed = validateLaunchSpec(s, true).map((p) => p.message);
+  assert.ok(normal.some((m) => /injection protection/i.test(m)));
+  assert.ok(!managed.some((m) => /injection protection/i.test(m)));
+  assert.ok(!managed.some((m) => /config file is referenced/i.test(m)));
+});

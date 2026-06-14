@@ -2,8 +2,10 @@ import * as path from 'path';
 import { isValidPort } from './argsBuilder';
 import {
   hasUnresolvedVariables,
+  PerShellConfig,
   primaryWorkspaceFolder,
   resolveVariables,
+  ShellName,
   Wcli0Settings,
 } from './settings';
 
@@ -86,10 +88,126 @@ const SHELL_DEFAULTS: Record<string, Record<string, unknown>> = {
   },
 };
 
+/** Normalize a WSL mount point to the trailing-slash form the server expects. */
+function normalizeMount(mount: string): string {
+  const m = mount.trim();
+  return m.endsWith('/') ? m : `${m}/`;
+}
+
+/**
+ * Merge a user's per-shell config (`wcli0.shells[name]`) onto a shell entry built
+ * from SHELL_DEFAULTS. Values are sanitized the same way the global section is:
+ * numeric limits via posNum, paths via resolveConfigPath, empty strings dropped.
+ * Per-shell restriction lists REPLACE the shell's default blocked list for
+ * whichever list is provided, matching the server's override semantics (shell
+ * `overrides` replace, not merge with, the resolved global values).
+ */
+function applyPerShellOverrides(
+  entry: Record<string, unknown>,
+  perShell: PerShellConfig | undefined,
+  name: string,
+): void {
+  if (!perShell) {
+    return;
+  }
+  if (perShell.enabled !== undefined) {
+    entry.enabled = perShell.enabled;
+  }
+
+  const exec = entry.executable as { command: string; args: string[] };
+  if (perShell.executable?.command?.trim()) {
+    exec.command = perShell.executable.command.trim();
+  }
+  if ((perShell.executable?.args?.length ?? 0) > 0) {
+    exec.args = [...(perShell.executable!.args as string[])];
+  }
+
+  const ov = perShell.overrides;
+  if (ov) {
+    const overrides = (entry.overrides as Record<string, unknown>) ?? {};
+
+    if (ov.security) {
+      const sec = (overrides.security as Record<string, unknown>) ?? {};
+      // commandTimeout/maxCommandLength accept fractional values >= 1 (the server
+      // only rejects < 1), so validate with posNum like the global section.
+      if (posNum(ov.security.maxCommandLength ?? null) != null) {
+        sec.maxCommandLength = ov.security.maxCommandLength;
+      }
+      if (posNum(ov.security.commandTimeout ?? null) != null) {
+        sec.commandTimeout = ov.security.commandTimeout;
+      }
+      if (ov.security.enableInjectionProtection !== undefined) {
+        sec.enableInjectionProtection = ov.security.enableInjectionProtection;
+      }
+      if (ov.security.restrictWorkingDirectory !== undefined) {
+        sec.restrictWorkingDirectory = ov.security.restrictWorkingDirectory;
+      }
+      if (Object.keys(sec).length > 0) {
+        overrides.security = sec;
+      }
+    }
+
+    if (ov.restrictions) {
+      const rest = (overrides.restrictions as Record<string, unknown>) ?? {};
+      const r = ov.restrictions;
+      if (r.blockedCommands) {
+        rest.blockedCommands = r.blockedCommands.filter((v) => v !== '');
+      }
+      if (r.blockedArguments) {
+        rest.blockedArguments = r.blockedArguments.filter((v) => v !== '');
+      }
+      if (r.blockedOperators) {
+        rest.blockedOperators = r.blockedOperators.filter((v) => v !== '');
+      }
+      if (Object.keys(rest).length > 0) {
+        overrides.restrictions = rest;
+      }
+    }
+
+    if (ov.paths) {
+      const paths = (overrides.paths as Record<string, unknown>) ?? {};
+      if (ov.paths.allowedPaths) {
+        // Drop unresolved/empty entries (the server treats an empty allowed
+        // prefix as matching every path), mirroring the global paths handling.
+        paths.allowedPaths = ov.paths.allowedPaths
+          .map((p) => resolveConfigPath(p))
+          .filter((p): p is string => p !== undefined);
+      }
+      const initial = ov.paths.initialDir ? resolveConfigPath(ov.paths.initialDir) : undefined;
+      if (initial !== undefined) {
+        paths.initialDir = initial;
+      }
+      if (Object.keys(paths).length > 0) {
+        overrides.paths = paths;
+      }
+    }
+
+    if (Object.keys(overrides).length > 0) {
+      entry.overrides = overrides;
+    }
+  }
+
+  // wslConfig only applies to the wsl/bash shells.
+  if (perShell.wslConfig && (name === 'wsl' || name === 'bash')) {
+    const wsl = (entry.wslConfig as Record<string, unknown>) ?? {};
+    if (perShell.wslConfig.mountPoint?.trim()) {
+      wsl.mountPoint = normalizeMount(perShell.wslConfig.mountPoint);
+    }
+    if (perShell.wslConfig.inheritGlobalPaths !== undefined) {
+      wsl.inheritGlobalPaths = perShell.wslConfig.inheritGlobalPaths;
+    }
+    if (Object.keys(wsl).length > 0) {
+      entry.wslConfig = wsl;
+    }
+  }
+}
+
 /**
  * Build a wcli0 config.json object from settings. This is a convenience for
  * users who prefer a committed config file over CLI flags; the produced file
- * can be referenced via `wcli0.configFile` / `--config`.
+ * can be referenced via `wcli0.configFile` / `--config`. It is also the source
+ * for the auto-managed config the extension launches with when any shell is
+ * configured individually via `wcli0.shells` (see mcpProvider.ts).
  */
 export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   // Resolve the path values that will actually be emitted first, so downstream
@@ -187,38 +305,41 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   // Emit every known shell with an explicit `enabled` flag. Omitting a shell is
   // not enough to disable it: the server's mergeConfigs restores any shell that
   // is absent from the file (with enabled: true) from its defaults.
-  const knownShells = ['powershell', 'cmd', 'gitbash', 'wsl', 'bash'];
+  const knownShells: ShellName[] = ['powershell', 'cmd', 'gitbash', 'wsl', 'bash'];
   const clearShellRestrictions = s.safetyMode === 'unsafe' || s.safetyMode === 'yolo';
   const shells: Record<string, unknown> = {};
   for (const name of knownShells) {
     if (!SHELL_DEFAULTS[name]) {
       continue;
     }
-    const entry = structuredClone(SHELL_DEFAULTS[name]) as {
-      enabled: boolean;
-      overrides?: { restrictions?: Record<string, unknown> };
-    };
+    const entry = structuredClone(SHELL_DEFAULTS[name]) as Record<string, unknown>;
+    // Default enabled honors the legacy single-shell selector; a per-shell
+    // `enabled` set in wcli0.shells (applied below) overrides it.
     entry.enabled = s.shell === 'all' ? true : name === s.shell;
-    if (clearShellRestrictions && entry.overrides?.restrictions) {
-      // --yolo/--unsafe also clear shell-specific blocked lists.
-      entry.overrides.restrictions = {
-        blockedCommands: [],
-        blockedArguments: [],
-        blockedOperators: [],
-      };
+    // Seed the wsl mount point from the global --wslMountPoint; a per-shell
+    // wslConfig.mountPoint (applied next) overrides it. The server expects a
+    // trailing slash (e.g. /mnt/), matching applyCliWslMountPoint.
+    if (name === 'wsl' && s.wslMountPoint.trim()) {
+      const wsl = entry.wslConfig as Record<string, unknown> | undefined;
+      if (wsl) {
+        wsl.mountPoint = normalizeMount(s.wslMountPoint);
+      }
+    }
+    applyPerShellOverrides(entry, s.shells?.[name], name);
+    if (clearShellRestrictions) {
+      // --yolo/--unsafe also clear shell-specific blocked lists, overriding any
+      // per-shell restrictions (matching how the server's flags behave at runtime).
+      const overrides = (entry.overrides as { restrictions?: Record<string, unknown> }) ?? {};
+      if (overrides.restrictions) {
+        overrides.restrictions = {
+          blockedCommands: [],
+          blockedArguments: [],
+          blockedOperators: [],
+        };
+        entry.overrides = overrides;
+      }
     }
     shells[name] = entry;
-  }
-  if (s.wslMountPoint.trim()) {
-    // The server expects a trailing slash (e.g. /mnt/); applyCliWslMountPoint
-    // normalizes it, so match that here.
-    const mount = s.wslMountPoint.trim();
-    const normalized = mount.endsWith('/') ? mount : `${mount}/`;
-    // Only the WSL shell carries a wslConfig/mountPoint (native bash does not).
-    const wsl = shells.wsl as { wslConfig?: Record<string, unknown> } | undefined;
-    if (wsl?.wslConfig) {
-      wsl.wslConfig.mountPoint = normalized;
-    }
   }
 
   const config: Record<string, unknown> = { global, shells };

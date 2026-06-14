@@ -7,6 +7,51 @@ export type SafetyMode = 'safe' | 'yolo' | 'unsafe';
 export type TriState = 'default' | 'enabled' | 'disabled';
 export type TransportMode = 'stdio' | 'http' | 'sse';
 
+/** Shell names that can be configured individually (matches the server's ShellType). */
+export const SHELL_NAMES = ['powershell', 'cmd', 'gitbash', 'wsl', 'bash'] as const;
+export type ShellName = (typeof SHELL_NAMES)[number];
+
+/**
+ * Per-shell configuration mirroring the server's BaseShellConfig /
+ * WslShellConfig (see src/types/config.ts). All fields are optional: only the
+ * ones the user actually sets are stored and emitted into the generated config.
+ */
+export interface PerShellConfig {
+  /** Whether this shell is enabled. Omitted means "leave at the default (on)". */
+  enabled?: boolean;
+  /** Override the shell executable. */
+  executable?: {
+    command?: string;
+    args?: string[];
+  };
+  /** Shell-specific overrides for global configuration. */
+  overrides?: {
+    security?: {
+      maxCommandLength?: number | null;
+      commandTimeout?: number | null;
+      enableInjectionProtection?: boolean;
+      restrictWorkingDirectory?: boolean;
+    };
+    restrictions?: {
+      blockedCommands?: string[];
+      blockedArguments?: string[];
+      blockedOperators?: string[];
+    };
+    paths?: {
+      allowedPaths?: string[];
+      initialDir?: string;
+    };
+  };
+  /** WSL-specific options (only meaningful for the wsl/bash shells). */
+  wslConfig?: {
+    mountPoint?: string;
+    inheritGlobalPaths?: boolean;
+  };
+}
+
+/** Map of shell name -> per-shell configuration. */
+export type ShellsConfig = Partial<Record<ShellName, PerShellConfig>>;
+
 /**
  * Normalized view of the `wcli0.*` settings for a given scope/resource.
  * Mirrors the CLI options accepted by the wcli0 server (see src/index.ts).
@@ -22,6 +67,7 @@ export interface Wcli0Settings {
 
   configFile: string;
   shell: string;
+  shells: ShellsConfig;
   allowedDirectories: string[];
   initialDir: string;
   commandTimeout: number | null;
@@ -104,6 +150,7 @@ function buildSettings(g: Getter): Wcli0Settings {
 
     configFile: g<string>('configFile', ''),
     shell: g<string>('shell', 'all'),
+    shells: g<ShellsConfig>('shells', {}),
     allowedDirectories: g<string[]>('allowedDirectories', []),
     initialDir: g<string>('initialDir', ''),
     commandTimeout: num(g<number | null>('commandTimeout', null)),
@@ -128,6 +175,61 @@ function buildSettings(g: Getter): Wcli0Settings {
 
     extraArgs: g<string[]>('extraArgs', []),
   };
+}
+
+/** Whether a single per-shell entry carries any user-set, non-empty field. */
+function isMeaningfulShellConfig(c: PerShellConfig | undefined): boolean {
+  if (!c) {
+    return false;
+  }
+  if (c.enabled !== undefined) {
+    return true;
+  }
+  if (c.executable && (c.executable.command?.trim() || (c.executable.args?.length ?? 0) > 0)) {
+    return true;
+  }
+  const o = c.overrides;
+  if (o) {
+    const sec = o.security;
+    if (
+      sec &&
+      (sec.maxCommandLength != null ||
+        sec.commandTimeout != null ||
+        sec.enableInjectionProtection !== undefined ||
+        sec.restrictWorkingDirectory !== undefined)
+    ) {
+      return true;
+    }
+    const r = o.restrictions;
+    if (
+      r &&
+      ((r.blockedCommands?.length ?? 0) > 0 ||
+        (r.blockedArguments?.length ?? 0) > 0 ||
+        (r.blockedOperators?.length ?? 0) > 0)
+    ) {
+      return true;
+    }
+    const p = o.paths;
+    if (p && ((p.allowedPaths?.length ?? 0) > 0 || p.initialDir?.trim())) {
+      return true;
+    }
+  }
+  const w = c.wslConfig;
+  if (w && (w.mountPoint?.trim() || w.inheritGlobalPaths !== undefined)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the user has configured any shell individually. When true, the
+ * extension launches the server with an auto-managed `--config` file rather than
+ * the global CLI flags, because per-shell configuration cannot be expressed via
+ * CLI options (see src/index.ts — every flag is global or selects a single shell).
+ */
+export function hasPerShellConfig(s: Wcli0Settings): boolean {
+  const shells = s.shells ?? {};
+  return SHELL_NAMES.some((name) => isMeaningfulShellConfig(shells[name]));
 }
 
 /**
