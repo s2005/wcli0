@@ -44,13 +44,39 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     private readonly managedConfigDir?: string,
   ) {}
 
+  /** Cached unique private dir, created lazily when no safe cwd was injected. */
+  private fallbackDir?: string;
+
+  /**
+   * A private directory to use when no cwd is configured and no safe cwd was
+   * injected. Never the shared `os.tmpdir()` root: the server reads `config.json`
+   * from its process cwd, so a world-writable directory would let another user
+   * plant one and control safety settings/shell executables. Create a unique
+   * subdirectory once (mkdtemp) and reuse it; fall back to the shared root only
+   * if even that fails.
+   */
+  private privateDir(): string {
+    if (this.safeCwd) {
+      return this.safeCwd;
+    }
+    if (!this.fallbackDir) {
+      try {
+        this.fallbackDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wcli0-'));
+      } catch (err) {
+        this.log(`could not create a private temp dir: ${(err as Error).message}`);
+        this.fallbackDir = os.tmpdir();
+      }
+    }
+    return this.fallbackDir;
+  }
+
   /**
    * Write the auto-managed config file from settings and return its absolute
    * path, or undefined if it cannot be written (caller then registers no server
    * rather than launching with no per-shell config silently in effect).
    */
   private writeManagedConfig(settings: Wcli0Settings): string | undefined {
-    const dir = this.managedConfigDir ?? this.safeCwd ?? os.tmpdir();
+    const dir = this.managedConfigDir ?? this.privateDir();
     const target = path.join(dir, MANAGED_CONFIG_FILE);
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -149,7 +175,7 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     // safe settings. A world-writable temp dir is also unsafe (another user could
     // plant /tmp/config.json), so prefer the injected private dir. All path args
     // are already resolved to absolute values, so a non-workspace cwd is fine.
-    def.cwd = vscode.Uri.file(spec.cwd ?? this.safeCwd ?? os.tmpdir());
+    def.cwd = vscode.Uri.file(spec.cwd ?? this.privateDir());
     return [def];
   }
 }

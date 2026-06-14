@@ -20,9 +20,15 @@ test('uses the injected private cwd, not the workspace, by default', () => {
   assert.equal(defs[0].cwd.fsPath, '/priv/storage');
 });
 
-test('falls back to a temp dir when no private cwd is injected', () => {
+test('P9: falls back to a uniquely-created private temp dir, not the shared root', () => {
+  const path = require('path');
   const defs = new Wcli0McpProvider().provideMcpServerDefinitions();
-  assert.equal(defs[0].cwd.fsPath, os.tmpdir());
+  const cwd = defs[0].cwd.fsPath;
+  // Not the shared os.tmpdir() root (the server reads config.json from its cwd,
+  // so a world-writable dir would let another user plant one) — a unique subdir.
+  assert.notEqual(cwd, os.tmpdir());
+  assert.equal(path.dirname(cwd), os.tmpdir());
+  assert.ok(path.basename(cwd).startsWith('wcli0-'));
 });
 
 test('sets cwd only when launch.cwd is configured', () => {

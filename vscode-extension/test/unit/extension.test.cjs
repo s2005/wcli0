@@ -122,10 +122,13 @@ test('P2: a failed private-cwd mkdir falls back to a temp dir, not the unusable 
     const { provider } = vscode.__state.registeredMcpProviders[0];
     const defs = provider.provideMcpServerDefinitions();
     assert.equal(defs.length, 1);
-    // safeCwd was dropped, so the cwd falls back to the OS temp dir rather than the
-    // unusable directory that would have failed every launch.
-    assert.notEqual(defs[0].cwd.fsPath, badDir);
-    assert.equal(defs[0].cwd.fsPath, os.tmpdir());
+    // safeCwd was dropped, so the cwd falls back to a uniquely-created private
+    // temp dir rather than the unusable directory that would fail every launch
+    // (and not the shared temp root — see P9).
+    const cwd = defs[0].cwd.fsPath;
+    assert.notEqual(cwd, badDir);
+    assert.notEqual(cwd, os.tmpdir());
+    assert.equal(require('node:path').dirname(cwd), os.tmpdir());
   } finally {
     fs.mkdirSync = realMkdir;
   }

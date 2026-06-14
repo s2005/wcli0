@@ -479,6 +479,69 @@ test('managedConfigPath produces a minimal config-only arg list', () => {
   ]);
 });
 
+test('P15: a relative allowed dir with no workspace to anchor it is blocking and dropped', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ allowedDirectories: ['src'] });
+  // Not emitted: the server would C-root "src" to C:\src (an unrelated directory).
+  assert.deepEqual(buildServerArgs(s), []);
+  assert.ok(validateLaunchSpec(s).some((p) => /allowedDirectories/.test(p.message) && p.blocking));
+  // With a workspace open it anchors cleanly and is not blocking.
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  assert.equal(
+    validateLaunchSpec(defaults({ allowedDirectories: ['src'] })).filter((p) => p.blocking).length,
+    0,
+  );
+});
+
+test('P16: an unresolved log directory is blocking and omitted', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ logDirectory: '${workspaceFolder}/logs' });
+  assert.equal(buildServerArgs(s).includes('--logDirectory'), false);
+  assert.ok(validateLaunchSpec(s).some((p) => /logDirectory/.test(p.message) && p.blocking));
+});
+
+test('P17: custom args may carry literal shell variables but not unresolved VS Code variables', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({ launchMethod: 'custom', customCommand: 'sh', customArgs: ['-c', 'echo ${FOO}'] });
+  // ${FOO} is a shell template, not an extension variable -> allowed.
+  assert.equal(validateLaunchSpec(s).filter((p) => p.blocking).length, 0);
+  assert.ok(buildLaunchSpec(s).args.includes('echo ${FOO}')); // passed through verbatim
+  // An unresolved extension variable still blocks.
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const bad = defaults({ launchMethod: 'custom', customCommand: 'node', customArgs: ['${workspaceFolder}/s.js'] });
+  assert.ok(validateLaunchSpec(bad).some((p) => /customArgs/.test(p.message) && p.blocking));
+});
+
+test('P10: unresolved per-shell paths are blocking only in managed mode', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({
+    shells: {
+      cmd: {
+        overrides: {
+          paths: { allowedPaths: ['${workspaceFolder:nope}/b'], initialDir: '${workspaceFolder:nope}/c' },
+        },
+      },
+    },
+  });
+  const problems = validateLaunchSpec(s, true);
+  assert.ok(problems.some((p) => /shells\.cmd.*allowedPaths/.test(p.message) && p.blocking));
+  assert.ok(problems.some((p) => /shells\.cmd.*initialDir/.test(p.message) && p.blocking));
+  // Per-shell config only applies in managed mode, so non-managed skips the check.
+  assert.equal(validateLaunchSpec(s, false).some((p) => /shells\.cmd/.test(p.message)), false);
+});
+
+test('P14: invalid per-shell security limits are blocking in managed mode', () => {
+  const s = defaults({
+    shells: { powershell: { overrides: { security: { commandTimeout: 0, maxCommandLength: 0.5 } } } },
+  });
+  const problems = validateLaunchSpec(s, true);
+  assert.ok(problems.some((p) => /shells\.powershell.*commandTimeout/.test(p.message) && p.blocking));
+  assert.ok(problems.some((p) => /shells\.powershell.*maxCommandLength/.test(p.message) && p.blocking));
+  // A valid fractional timeout >= 1 is accepted (the server only rejects < 1).
+  const ok = defaults({ shells: { powershell: { overrides: { security: { commandTimeout: 1.5 } } } } });
+  assert.equal(validateLaunchSpec(ok, true).filter((p) => p.blocking).length, 0);
+});
+
 test('managed validateLaunchSpec suppresses CLI-flag-only safe-mode notes', () => {
   const s = defaults({ safetyMode: 'safe', allowedDirectories: ['/ws'], configFile: '/ws/x.json' });
   const normal = validateLaunchSpec(s).map((p) => p.message);

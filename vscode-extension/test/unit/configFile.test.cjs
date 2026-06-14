@@ -357,3 +357,35 @@ test('yolo clears per-shell restrictions too', () => {
   );
   assert.deepEqual(cfg.shells.cmd.overrides.restrictions.blockedCommands, []);
 });
+
+test('P7: a fractional maxOutputLines is preserved in the generated config', () => {
+  // The server's validateLoggingConfig only range-checks maxOutputLines (no
+  // integer requirement), so 1.5 must be carried into the config (and managed mode).
+  const cfg = buildConfigFile(defaults({ maxOutputLines: 1.5 }));
+  assert.equal(cfg.global.logging.maxOutputLines, 1.5);
+  // maxReturnLines still requires an integer, so a fractional value is dropped.
+  const r = buildConfigFile(defaults({ maxReturnLines: 1.5 }));
+  assert.equal(r.global.logging?.maxReturnLines, undefined);
+});
+
+test('P11: an explicit empty per-shell executable args list replaces the default', () => {
+  const cfg = buildConfigFile(
+    defaults({ shells: { cmd: { executable: { command: 'cmd.exe', args: [] } } } }),
+  );
+  // [] must replace cmd's default ['/c'], not be treated as "unset".
+  assert.deepEqual(cfg.shells.cmd.executable.args, []);
+});
+
+test('P13: yolo/unsafe force per-shell injection protection off', () => {
+  for (const mode of ['yolo', 'unsafe']) {
+    const cfg = buildConfigFile(
+      defaults({
+        safetyMode: mode,
+        shells: { cmd: { overrides: { security: { enableInjectionProtection: true } } } },
+      }),
+    );
+    // Matches applyCliUnsafeMode, which clears shell-specific injection overrides;
+    // otherwise the server deep-merges true over the global false.
+    assert.equal(cfg.shells.cmd.overrides.security.enableInjectionProtection, false);
+  }
+});

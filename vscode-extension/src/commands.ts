@@ -64,6 +64,19 @@ export async function writeWorkspaceMcpJson(): Promise<void> {
   // launch settings (method, allowed dirs) are irrelevant and only the port
   // matters — otherwise a valid external endpoint couldn't be written.
   if (settings.transportMode === 'stdio') {
+    // Per-shell settings (wcli0.shells) cannot be expressed as the CLI flags a
+    // committed mcp.json carries; the auto-provider launches them via a managed
+    // --config file instead. Writing a stdio entry here would silently ignore
+    // every per-shell setting (different enabled shells / weaker restrictions),
+    // so refuse rather than emit a mismatched entry.
+    if (hasPerShellConfig(settings)) {
+      void vscode.window.showErrorMessage(
+        'wcli0: per-shell settings (wcli0.shells) cannot be represented in .vscode/mcp.json. ' +
+          'Generate a config file (wcli0: Generate Config File) and reference it via wcli0.configFile, ' +
+          'or clear wcli0.shells before exporting.',
+      );
+      return;
+    }
     const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
     if (blocking.length > 0) {
       void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);

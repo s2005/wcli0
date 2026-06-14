@@ -3,6 +3,7 @@ import {
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
   resolveVariables,
+  SHELL_NAMES,
   Wcli0Settings,
 } from './settings';
 
@@ -34,9 +35,13 @@ function resolvedPath(value: string): string | undefined {
   // the server resolves --config and other paths against process.cwd()).
   if (!path.isAbsolute(resolved)) {
     const base = primaryWorkspaceFolder()?.uri.fsPath;
-    if (base) {
-      return path.resolve(base, resolved);
+    if (!base) {
+      // No workspace folder to anchor a relative path. The server would C-root
+      // it (normalizeWindowsPath turns "src" into C:\src), which is an ambiguous,
+      // possibly-unrelated directory, so drop it; validateLaunchSpec reports it.
+      return undefined;
     }
+    return path.resolve(base, resolved);
   }
   return resolved;
 }
@@ -318,6 +323,29 @@ function isUnresolvable(raw: string): boolean {
 }
 
 /**
+ * Whether a non-empty path-like value cannot be turned into a usable absolute
+ * path: it still has an unresolved variable, or it is relative and no workspace
+ * folder is open to anchor it. Mirrors exactly what `resolvedPath` drops, so
+ * validation refuses what would otherwise be silently omitted or C-rooted.
+ */
+function isUnanchorablePath(raw: string): boolean {
+  return raw.trim().length > 0 && resolvedPath(raw) === undefined;
+}
+
+/** The variable tokens this extension is responsible for resolving. */
+const EXTENSION_VARIABLE = /\$\{(?:workspaceFolder(?::[^}]+)?|userHome)\}/;
+
+/**
+ * Whether a value still contains an extension-owned variable token after
+ * resolution (i.e. one that could not be resolved). Unlike
+ * `hasUnresolvedVariables`, arbitrary `${...}` shell templates are NOT flagged —
+ * custom command arguments may legitimately pass e.g. `echo ${FOO}` to a shell.
+ */
+function hasUnresolvedExtensionVariable(raw: string): boolean {
+  return EXTENSION_VARIABLE.test(resolveVariables(raw.trim()));
+}
+
+/**
  * Validate a launch spec, returning problems (empty = OK). When `managed` is
  * true the server is launched against an auto-managed config file (per-shell
  * mode), so CLI-flag-specific notes (the `--allowedDir` injection-protection
@@ -355,56 +383,98 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
     }
     // Custom args are variable-resolved like the command; an arg such as
     // ${workspaceFolder}/server.js with no workspace open would be passed
-    // literally, so refuse rather than launch with a broken/unintended argument.
+    // literally. Flag only extension-owned variables that fail to resolve — a
+    // custom arg may legitimately contain a ${FOO} shell template for the target.
     for (const arg of s.customArgs) {
-      if (isUnresolvable(arg)) {
+      if (hasUnresolvedExtensionVariable(arg)) {
         problems.push({
-          message: `wcli0.launch.customArgs entry "${arg}" contains an unresolved variable (no matching workspace folder is open).`,
+          message: `wcli0.launch.customArgs entry "${arg}" contains an unresolved \${workspaceFolder}/\${userHome} variable (no matching workspace folder is open).`,
           blocking: true,
         });
       }
     }
   }
-  // A configured cwd or initialDir that doesn't resolve would silently fall back
-  // to a different directory than the user chose; refuse rather than mislead.
-  if (isUnresolvable(s.cwd)) {
+  // A configured cwd or initialDir that doesn't resolve to an absolute path would
+  // silently fall back to a different directory than the user chose; refuse
+  // rather than mislead. (Covers unresolved tokens and unanchorable relatives.)
+  if (isUnanchorablePath(s.cwd)) {
     problems.push({
-      message: `wcli0.launch.cwd "${s.cwd}" contains an unresolved variable (no matching workspace folder is open).`,
+      message: `wcli0.launch.cwd "${s.cwd}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
       blocking: true,
     });
   }
-  if (isUnresolvable(s.initialDir)) {
+  if (isUnanchorablePath(s.initialDir)) {
     problems.push({
-      message: `wcli0.initialDir "${s.initialDir}" contains an unresolved variable (no matching workspace folder is open).`,
+      message: `wcli0.initialDir "${s.initialDir}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
       blocking: true,
     });
   }
-  // A workspace-relative allowed directory that doesn't fully resolve (no
-  // workspace open) would launch an effectively unrestricted server — refuse
-  // rather than silently allow all.
+  // A workspace-relative allowed directory that doesn't resolve to an absolute
+  // path (no workspace open) would launch an effectively unrestricted server, and
+  // a bare relative entry would be C-rooted to an unrelated directory — refuse
+  // rather than silently allow all or allow the wrong path.
   for (const dir of s.allowedDirectories) {
-    const trimmed = dir.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const resolved = resolveVariables(trimmed);
-    if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
+    if (isUnanchorablePath(dir)) {
       problems.push({
-        message: `wcli0.allowedDirectories entry "${dir}" cannot be resolved (no matching workspace folder is open); refusing to launch an unrestricted server.`,
+        message: `wcli0.allowedDirectories entry "${dir}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open); refusing to launch an unrestricted/misdirected server.`,
         blocking: true,
       });
     }
+  }
+  // An unresolved log directory would be silently dropped, leaving logs in memory
+  // instead of the configured persistent location; refuse like the other paths.
+  if (isUnanchorablePath(s.logDirectory)) {
+    problems.push({
+      message: `wcli0.logDirectory "${s.logDirectory}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
+      blocking: true,
+    });
   }
   // A config file path that doesn't fully resolve would be silently dropped,
   // leaving the server on pathless defaults instead of the intended config. In
   // managed mode the user configFile is bypassed entirely, so don't block on it.
-  if (!managed && s.configFile.trim()) {
-    const resolved = resolveVariables(s.configFile.trim());
-    if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
-      problems.push({
-        message: `wcli0.configFile "${s.configFile}" cannot be resolved (no matching workspace folder is open).`,
-        blocking: true,
-      });
+  if (!managed && isUnanchorablePath(s.configFile)) {
+    problems.push({
+      message: `wcli0.configFile "${s.configFile}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
+      blocking: true,
+    });
+  }
+  // In managed (per-shell) mode the generated config carries per-shell paths and
+  // security limits. Apply the same blocking checks as the global equivalents so
+  // an unresolved path or an out-of-range limit is reported rather than silently
+  // dropped from the config (and the shell launched with the wrong restriction).
+  if (managed) {
+    for (const name of SHELL_NAMES) {
+      const sh = s.shells?.[name];
+      if (!sh) {
+        continue;
+      }
+      for (const p of sh.overrides?.paths?.allowedPaths ?? []) {
+        if (isUnanchorablePath(p)) {
+          problems.push({
+            message: `wcli0.shells.${name}.overrides.paths.allowedPaths entry "${p}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
+            blocking: true,
+          });
+        }
+      }
+      const initial = sh.overrides?.paths?.initialDir;
+      if (initial && isUnanchorablePath(initial)) {
+        problems.push({
+          message: `wcli0.shells.${name}.overrides.paths.initialDir "${initial}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
+          blocking: true,
+        });
+      }
+      const sec = sh.overrides?.security;
+      for (const [field, value] of [
+        ['commandTimeout', sec?.commandTimeout],
+        ['maxCommandLength', sec?.maxCommandLength],
+      ] as const) {
+        if (value != null && !(Number.isFinite(value) && value >= 1)) {
+          problems.push({
+            message: `wcli0.shells.${name}.overrides.security.${field} (${value}) must be a number >= 1; the server rejects smaller values at startup.`,
+            blocking: true,
+          });
+        }
+      }
     }
   }
   // Transport port must be an integer in 1..65535 or the server ignores it and

@@ -51,6 +51,17 @@ test('writeWorkspaceMcpJson creates a stdio server entry', async () => {
   assert.equal(parsed.servers.wcli0.command, 'npx');
 });
 
+test('P6: writeWorkspaceMcpJson refuses to export when shells are configured individually', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { executable: { command: 'cmd.exe', args: ['/k'] } },
+  });
+  await writeWorkspaceMcpJson();
+  // No file written, and an explanatory error was shown (a stdio entry with only
+  // CLI flags would silently drop the per-shell settings).
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+  assert.ok(vscode.__state.calls.error.some((m) => /per-shell settings/i.test(m)));
+});
+
 test('writeWorkspaceMcpJson merges into an existing file', async () => {
   vscode.__state.files.set(
     '/ws/.vscode/mcp.json',

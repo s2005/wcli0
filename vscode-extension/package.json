@@ -171,6 +171,15 @@
           "default": {},
           "markdownDescription": "Per-shell configuration, keyed by shell name (`powershell`, `cmd`, `gitbash`, `wsl`, `bash`). When any shell is configured here, the extension writes an auto-managed config file and launches the server with `--config` (per-shell settings cannot be passed as CLI flags, so `#wcli0.shell#` and the global limit/restriction flags are bypassed). Edit this from the wcli0 Configuration view. Restart the MCP server to apply changes.",
           "scope": "resource",
+          "propertyNames": {
+            "enum": [
+              "powershell",
+              "cmd",
+              "gitbash",
+              "wsl",
+              "bash"
+            ]
+          },
           "additionalProperties": {
             "type": "object",
             "markdownDescription": "Configuration for a single shell.",

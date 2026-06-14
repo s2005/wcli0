@@ -109,14 +109,30 @@ test('hasPerShellConfig detects any meaningful per-shell field', () => {
     { cmd: { overrides: { paths: { initialDir: '/a' } } } },
     { wsl: { wslConfig: { mountPoint: '/mnt/' } } },
     { wsl: { wslConfig: { inheritGlobalPaths: false } } },
+    // P12: an explicit (even empty) array is meaningful — [] replaces inherited
+    // args / clears blocked operators / replaces inherited allowed paths.
+    { cmd: { executable: { args: [] } } },
+    { cmd: { overrides: { restrictions: { blockedOperators: [] } } } },
+    { cmd: { overrides: { paths: { allowedPaths: [] } } } },
   ];
   for (const shells of cases) {
     vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', shells);
     assert.equal(hasPerShellConfig(readSettings()), true, JSON.stringify(shells));
   }
-  // Empty/whitespace-only fields are not meaningful.
+  // A whitespace-only command with no other fields is not meaningful.
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
-    cmd: { executable: { command: '   ', args: [] }, overrides: { restrictions: { blockedCommands: [] } } },
+    cmd: { executable: { command: '   ' } },
   });
   assert.equal(hasPerShellConfig(readSettings()), false);
+});
+
+test('P18: the wcli0.shells schema restricts keys to the known shell names', () => {
+  const manifest = require('../../package.json');
+  const schema = manifest.contributes.configuration.properties['wcli0.shells'];
+  // propertyNames.enum makes VS Code flag typos like "powerhsell" instead of
+  // silently accepting (and then ignoring) an unknown shell key.
+  assert.deepEqual(
+    [...schema.propertyNames.enum].sort(),
+    ['bash', 'cmd', 'gitbash', 'powershell', 'wsl'],
+  );
 });

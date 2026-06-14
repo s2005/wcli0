@@ -185,7 +185,9 @@ function isMeaningfulShellConfig(c: PerShellConfig | undefined): boolean {
   if (c.enabled !== undefined) {
     return true;
   }
-  if (c.executable && (c.executable.command?.trim() || (c.executable.args?.length ?? 0) > 0)) {
+  // An explicit (even empty) args list is meaningful: `args: []` replaces the
+  // shell's default arguments.
+  if (c.executable && (c.executable.command?.trim() || c.executable.args !== undefined)) {
     return true;
   }
   const o = c.overrides;
@@ -200,17 +202,21 @@ function isMeaningfulShellConfig(c: PerShellConfig | undefined): boolean {
     ) {
       return true;
     }
+    // An explicit (even empty) restriction array is meaningful: the server uses
+    // [] to clear inherited blocked commands/arguments/operators for the shell.
     const r = o.restrictions;
     if (
       r &&
-      ((r.blockedCommands?.length ?? 0) > 0 ||
-        (r.blockedArguments?.length ?? 0) > 0 ||
-        (r.blockedOperators?.length ?? 0) > 0)
+      (r.blockedCommands !== undefined ||
+        r.blockedArguments !== undefined ||
+        r.blockedOperators !== undefined)
     ) {
       return true;
     }
+    // An explicit (even empty) allowedPaths is meaningful: [] replaces the
+    // inherited allowed paths for the shell.
     const p = o.paths;
-    if (p && ((p.allowedPaths?.length ?? 0) > 0 || p.initialDir?.trim())) {
+    if (p && (p.allowedPaths !== undefined || p.initialDir?.trim())) {
       return true;
     }
   }

@@ -27,6 +27,15 @@ function posNum(n: number | null): number | undefined {
 }
 
 /**
+ * `maxOutputLines` value the server accepts: the server's validateLoggingConfig
+ * only enforces the 1..10000 range (no integer requirement), so a fractional
+ * value such as 1.5 is valid and must be preserved in the generated config.
+ */
+function maxOutputLinesValue(n: number | null): number | undefined {
+  return typeof n === 'number' && Number.isFinite(n) && n >= 1 && n <= 10000 ? n : undefined;
+}
+
+/**
  * Resolve a path-like value to an absolute path: resolve variables, drop values
  * that don't fully resolve, and anchor a relative result to the workspace folder
  * (the server resolves relative config paths against C:\, not the workspace).
@@ -118,8 +127,11 @@ function applyPerShellOverrides(
   if (perShell.executable?.command?.trim()) {
     exec.command = perShell.executable.command.trim();
   }
-  if ((perShell.executable?.args?.length ?? 0) > 0) {
-    exec.args = [...(perShell.executable!.args as string[])];
+  // Honor an explicit args list, including an empty one: `args: []` is valid
+  // server config (run the executable with no prefix args) and must replace the
+  // shell's default arguments rather than being treated as "not set".
+  if (perShell.executable?.args !== undefined) {
+    exec.args = [...perShell.executable.args];
   }
 
   const ov = perShell.overrides;
@@ -275,7 +287,7 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
   const logging: Record<string, unknown> = {};
   // The server's validateLoggingConfig rejects maxOutputLines/maxReturnLines
   // above 10000, so don't emit out-of-range values the settings schema allows.
-  if (posInt(s.maxOutputLines, 10000) != null) {
+  if (maxOutputLinesValue(s.maxOutputLines) != null) {
     logging.maxOutputLines = s.maxOutputLines;
   }
   if (s.enableTruncation !== 'default') {
@@ -326,17 +338,25 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
       }
     }
     applyPerShellOverrides(entry, s.shells?.[name], name);
-    if (clearShellRestrictions) {
-      // --yolo/--unsafe also clear shell-specific blocked lists, overriding any
-      // per-shell restrictions (matching how the server's flags behave at runtime).
-      const overrides = (entry.overrides as { restrictions?: Record<string, unknown> }) ?? {};
+    if (clearShellRestrictions && entry.overrides) {
+      // --yolo/--unsafe clear shell-specific blocked lists AND force per-shell
+      // injection protection off (matching applyCliUnsafeMode, which sets
+      // shell.overrides.security.enableInjectionProtection = false). Otherwise the
+      // server deep-merges a lingering enableInjectionProtection: true over the
+      // global false and keeps protection on for that shell.
+      const overrides = entry.overrides as {
+        restrictions?: Record<string, unknown>;
+        security?: Record<string, unknown>;
+      };
       if (overrides.restrictions) {
         overrides.restrictions = {
           blockedCommands: [],
           blockedArguments: [],
           blockedOperators: [],
         };
-        entry.overrides = overrides;
+      }
+      if (overrides.security && overrides.security.enableInjectionProtection !== undefined) {
+        overrides.security.enableInjectionProtection = false;
       }
     }
     shells[name] = entry;

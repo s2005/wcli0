@@ -29,11 +29,15 @@ export function activate(context: vscode.ExtensionContext): void {
   // Workspace-scoped storage for the auto-managed per-shell config, so separate
   // windows (each with their own workspace settings) don't clobber each other's
   // file. Falls back to global storage when no workspace is open.
-  const managedConfigDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
+  let managedConfigDir: string | undefined =
+    context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
   try {
     fs.mkdirSync(managedConfigDir, { recursive: true });
   } catch {
-    // best effort — provider has its own fallback
+    // Could not create the managed-config dir; drop it so the provider falls back
+    // to its private dir rather than always selecting this unusable path (which
+    // would make every wcli0.shells configuration register no server).
+    managedConfigDir = undefined;
   }
   const provider = new Wcli0McpProvider(
     (message) => output.appendLine(`[provider] ${message}`),
