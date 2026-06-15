@@ -47,3 +47,11 @@
 - [x] P34: Do not show a global launch when managed storage is unavailable (fixed - `showLaunchCommand` reports no launch instead of a mismatched command)
 - [x] P35: Preserve unsaved form edits on external configuration changes (fixed - external reload deferred while the form is dirty)
 - [x] P36: Resolve per-shell executable command variables (fixed - `applyPerShellOverrides` resolves vars; validation rejects unresolved)
+
+## Review Feedback (PR #86) - round 5
+
+- [x] P37: Preserve inheritance when users clear per-shell lists (fixed - `arr()` keeps `[]` only when loaded was already empty; a cleared non-empty list removes the override so the server doesn't replace global `blockedOperators`/`allowedPaths` with nothing)
+- [x] P38: Honor the selected scope when setting configFile (fixed - `generateConfigFile` uses `formScopeArg` to pick the write target, falling back to the folder-based heuristic for palette invocations)
+- [x] P39: Refresh the configuration form when workspace folders change (fixed - subscribed to `onDidChangeWorkspaceFolders`; normalizes `currentScope` to Global when no folder remains and re-posts the form state)
+- [x] P40: Allow the form to configure an empty executable argument list (fixed - `argLines()` returns `[]` when a custom command is set and the args textarea is blank, so the server doesn't fill in default args like `/c` or `-c`)
+- [x] P41: Provide a way to remove non-empty scope overrides (fixed - enum selects gained an `Inherit` option and `allowAllDirs`/`debug` became tri-state selects; Inherit submits `''`/`null` which `applySettings` maps to undefined, clearing the override)

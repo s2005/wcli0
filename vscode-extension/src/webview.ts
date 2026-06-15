@@ -136,10 +136,22 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
     }
   });
 
+  // Adding/removing the first workspace folder changes which scopes are
+  // selectable and whether ${workspaceFolder} resolves. Re-post so the webview
+  // re-renders its scope controls, normalizing currentScope to Global when no
+  // folder remains (Workspace would otherwise point at a non-existent target).
+  const wsSub = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    if (!primaryWorkspaceFolder() && currentScope === 'Workspace') {
+      currentScope = 'Global';
+    }
+    post(true);
+  });
+
   return {
     dispose: () => {
       msgSub.dispose();
       cfgSub.dispose();
+      wsSub.dispose();
     },
   };
 }
@@ -335,6 +347,7 @@ function renderHtml(webview: vscode.Webview): string {
   <h2>Launch</h2>
   <label>Launch method <span class="hint">how the server process starts</span></label>
   <select id="launch.method">
+    <option value="">Inherit</option>
     <option value="npx">npx (published package)</option>
     <option value="node">node (local build)</option>
     <option value="custom">custom command</option>
@@ -354,6 +367,7 @@ function renderHtml(webview: vscode.Webview): string {
     <div>
       <label>Shell</label>
       <select id="shell">
+        <option value="">Inherit</option>
         <option value="all">all</option>
         <option value="cmd">cmd</option>
         <option value="powershell">powershell</option>
@@ -395,6 +409,7 @@ function renderHtml(webview: vscode.Webview): string {
     <div>
       <label>Safety mode</label>
       <select id="safetyMode">
+        <option value="">Inherit</option>
         <option value="safe">safe (recommended)</option>
         <option value="yolo">yolo (keep dir restrictions)</option>
         <option value="unsafe">unsafe (no restrictions)</option>
@@ -411,8 +426,10 @@ function renderHtml(webview: vscode.Webview): string {
   </div>
   <label>Log directory</label>
   <input type="text" id="logDirectory" />
-  <div class="checkbox"><input type="checkbox" id="allowAllDirs" /><label>Allow all directories when none configured</label></div>
-  <div class="checkbox"><input type="checkbox" id="debug" /><label>Enable debug logging</label></div>
+  <div class="row">
+    <div><label>Allow all directories</label>${triSelect('allowAllDirs')}</div>
+    <div><label>Debug logging</label>${triSelect('debug')}</div>
+  </div>
   </section>
 
   <section>
@@ -420,7 +437,7 @@ function renderHtml(webview: vscode.Webview): string {
   <div class="row">
     <div>
       <label>Mode</label>
-      <select id="transport.mode"><option value="stdio">stdio</option><option value="http">http</option><option value="sse">sse</option></select>
+      <select id="transport.mode"><option value="">Inherit</option><option value="stdio">stdio</option><option value="http">http</option><option value="sse">sse</option></select>
     </div>
     <div><label>Host</label><input type="text" id="transport.host" placeholder="127.0.0.1" /></div>
     <div><label>Port</label><input type="number" id="transport.port" placeholder="9444" min="1" max="65535" step="1" /></div>
@@ -442,7 +459,10 @@ function renderHtml(webview: vscode.Webview): string {
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
   const numberFields = ['commandTimeout','maxCommandLength','maxOutputLines','transport.port'];
-  const boolFields = ['allowAllDirs','debug'];
+  // Booleans rendered as tri-state selects (Inherit / enabled / disabled). Selecting
+  // Inherit submits null, which applySettings maps to undefined -> clears the value
+  // at the target scope so a previous override can be removed from the form.
+  const triBoolFields = ['allowAllDirs','debug'];
   const arrayFields = ['allowedDirectories'];
   const stringFields = ['launch.packageSpec','launch.nodeScriptPath','launch.customCommand','launch.cwd','configFile','shell','wslMountPoint','initialDir','logDirectory','enableTruncation','enableLogResources','safetyMode','launch.method','transport.host','transport.mode'];
 
@@ -467,27 +487,35 @@ function renderHtml(webview: vscode.Webview): string {
       const lOv = loaded.overrides || {};
       const lRest = lOv.restrictions || {};
       const lPaths = lOv.paths || {};
-      // A textarea can't distinguish "unset" from an explicit empty array, so when
-      // it is empty keep [] only if the loaded config had [] there; otherwise omit.
+      // A textarea can't distinguish "unset" from an explicit empty array, so
+      // when it is empty keep [] only if the loaded config already had [];
+      // a previously non-empty list the user cleared is treated as "remove the
+      // override" so we don't silently replace the global blocklist/allowedPaths
+      // with nothing (the server replaces those rather than appending).
       const arr = (id, loadedVal) => {
         const lines = linesOf(id);
         if (lines.length) return lines;
-        return Array.isArray(loadedVal) ? [] : undefined;
+        return Array.isArray(loadedVal) && loadedVal.length === 0 ? [] : undefined;
       };
       // Executable args must round-trip losslessly, including an empty positional
       // arg (e.g. ['--flag','']) which the server passes verbatim to spawn. Unlike
-      // path/restriction lists, do NOT drop empty lines; treat only a wholly blank
-      // textarea as "no list" (and keep [] vs unset via the loaded value).
-      const argLines = (id, loadedVal) => {
+      // path/restriction lists, do NOT drop empty lines. A custom command with a
+      // wholly blank args textarea means "no args" (don't inherit defaults like
+      // /c or -c which only make sense for the bundled shell binaries); without a
+      // command, keep [] vs unset via the loaded value as before.
+      const argLines = (id, loadedVal, hasCmd) => {
         const el = $(id);
         const raw = el ? el.value : '';
-        if (raw.trim() === '') return Array.isArray(loadedVal) ? [] : undefined;
+        if (raw.trim() === '') {
+          if (hasCmd) return [];
+          return Array.isArray(loadedVal) && loadedVal.length === 0 ? [] : undefined;
+        }
         return raw.split('\\n').map((x) => x.trim());
       };
       const en = triToBool($('sh-' + n + '-enabled').value);
       if (en !== undefined) cfg.enabled = en;
       const cmd = $('sh-' + n + '-cmd').value.trim();
-      const args = argLines('sh-' + n + '-args', lEx.args);
+      const args = argLines('sh-' + n + '-args', lEx.args, !!cmd);
       if (cmd || args !== undefined) {
         cfg.executable = {};
         if (cmd) cfg.executable.command = cmd;
@@ -553,7 +581,7 @@ function renderHtml(webview: vscode.Webview): string {
   function setVal(s) {
     for (const f of stringFields) if ($(f)) $(f).value = s[mapKey(f)] ?? '';
     for (const f of numberFields) if ($(f)) $(f).value = s[mapKey(f)] == null ? '' : s[mapKey(f)];
-    for (const f of boolFields) if ($(f)) $(f).checked = !!s[mapKey(f)];
+    for (const f of triBoolFields) if ($(f)) $(f).value = boolToTri(s[mapKey(f)]);
     for (const f of arrayFields) if ($(f)) $(f).value = (s[mapKey(f)] || []).join('\\n');
     setShellsVal(s.shells);
     updateLaunchRows();
@@ -577,7 +605,9 @@ function renderHtml(webview: vscode.Webview): string {
     const values = {};
     for (const f of stringFields) if ($(f)) values[f] = $(f).value.trim();
     for (const f of numberFields) if ($(f)) values[f] = $(f).value === '' ? null : Number($(f).value);
-    for (const f of boolFields) if ($(f)) values[f] = $(f).checked;
+    // Tri-state booleans: 'default' (Inherit) -> null so applySettings clears the
+    // override; otherwise emit a real boolean.
+    for (const f of triBoolFields) if ($(f)) values[f] = triToBool($(f).value) ?? null;
     for (const f of arrayFields) if ($(f)) values[f] = $(f).value.split('\\n').map(x=>x.trim()).filter(Boolean);
     values['shells'] = collectShells();
     return values;
@@ -606,6 +636,7 @@ function renderHtml(webview: vscode.Webview): string {
 
   function updateLaunchRows() {
     const m = $('launch.method').value;
+    // '' is Inherit (no method chosen): hide all method-specific rows.
     $('npxRow').style.display = m === 'npx' ? '' : 'none';
     $('nodeRow').style.display = m === 'node' ? '' : 'none';
     $('customRow').style.display = m === 'custom' ? '' : 'none';
@@ -613,9 +644,11 @@ function renderHtml(webview: vscode.Webview): string {
   $('launch.method').addEventListener('change', updateLaunchRows);
 
   // Host/Port are only meaningful for networked transports; disable them under
-  // stdio so the form reflects what the server actually uses.
+  // stdio AND under Inherit (no mode chosen) so the form reflects what the
+  // server actually uses.
   function updateTransportRows() {
-    const networked = $('transport.mode').value !== 'stdio';
+    const m = $('transport.mode').value;
+    const networked = m === 'http' || m === 'sse';
     $('transport.host').disabled = !networked;
     $('transport.port').disabled = !networked;
     $('transportHint').style.display = networked ? 'none' : '';

@@ -337,3 +337,40 @@ test('P34: showLaunchCommand reports no launch when managed storage is unavailab
   assert.ok(!/written to undefined/.test(text));
   assert.ok(!/--config/.test(text));
 });
+
+test('P38: form scope=Global writes configFile to Global even with a workspace open', async () => {
+  // Workspace is open (folder exists), but the form selected the User (Global) scope.
+  // The "Set wcli0.configFile" follow-up must honor the form scope, not the folder.
+  const target = vscode.Uri.file('/ws/wcli0.config.json');
+  vscode.__state.calls.saveDialog = target;
+  vscode.__state.calls.infoReturn = 'Set wcli0.configFile';
+  await generateConfigFile('Global');
+  assert.equal(
+    vscode.__state.configGlobal.get('wcli0.configFile'),
+    '/ws/wcli0.config.json',
+  );
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.configFile'), false);
+});
+
+test('P38: form scope=Workspace writes a portable configFile to Workspace', async () => {
+  const target = vscode.Uri.file('/ws/sub/cfg.json');
+  vscode.__state.calls.saveDialog = target;
+  vscode.__state.calls.infoReturn = 'Set wcli0.configFile';
+  await generateConfigFile('Workspace');
+  assert.equal(
+    vscode.__state.configWorkspace.get('wcli0.configFile'),
+    '${workspaceFolder}/sub/cfg.json',
+  );
+  assert.equal(vscode.__state.configGlobal.has('wcli0.configFile'), false);
+});
+
+test('P38: form scope=Workspace without a folder falls back to Global', async () => {
+  vscode.__state.workspaceFolders = undefined;
+  const target = vscode.Uri.file('/abs/cfg.json');
+  vscode.__state.calls.saveDialog = target;
+  vscode.__state.calls.infoReturn = 'Set wcli0.configFile';
+  await generateConfigFile('Workspace');
+  // No folder -> can't write Workspace; fall back to Global with the absolute path.
+  assert.equal(vscode.__state.configGlobal.get('wcli0.configFile'), '/abs/cfg.json');
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.configFile'), false);
+});

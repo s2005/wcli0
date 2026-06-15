@@ -234,3 +234,93 @@ test('P35: an external change applies when the form is clean', () => {
   });
   assert.equal(h.els.get('initialDir').value, '/other');
 });
+
+test('P37: clearing a previously non-empty blockedOperators removes the override (not [])', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { cmd: { overrides: { restrictions: { blockedOperators: ['&&', '||'] } } } } },
+  });
+  // User clears the operators textarea and toggles enabled (so a save still happens).
+  h.els.get('sh-cmd-block-op').value = '';
+  h.els.get('sh-cmd-enabled').value = 'disabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  // The override must be gone (undefined), not persisted as [] which would replace
+  // the safe global operator blocklist with nothing.
+  assert.equal(save.values.shells.cmd.overrides, undefined);
+  assert.equal(save.values.shells.cmd.enabled, false);
+});
+
+test('P37: a previously empty blockedOperators still round-trips as []', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { cmd: { overrides: { restrictions: { blockedOperators: [] } } } } },
+  });
+  h.els.get('sh-cmd-enabled').value = 'disabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  // An originally-empty [] survives (P20); only cleared non-empty lists become "unset".
+  assert.deepEqual(save.values.shells.cmd.overrides.restrictions.blockedOperators, []);
+});
+
+test('P40: a new executable command with blank args saves args as []', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  // User enters a custom command and leaves args blank to request no prefix args.
+  h.els.get('sh-cmd-cmd').value = 'myshell.exe';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  // args must be [] (not undefined) so the server doesn't fill in default args
+  // like /c or -c that only make sense for the bundled shell binaries.
+  assert.deepEqual(save.values.shells.cmd.executable.args, []);
+  assert.equal(save.values.shells.cmd.executable.command, 'myshell.exe');
+});
+
+test('P40: an unset command with blank args leaves executable unset', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  // No command, args blank -> no executable override at all.
+  h.els.get('sh-cmd-enabled').value = 'disabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.equal(save.values.shells.cmd.executable, undefined);
+});
+
+test('P41: triBool Inherit submits null so the host clears the override', () => {
+  const h = makeHarness();
+  // Start from a non-Inherit state so the Inherit selection counts as a change.
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { debug: true } });
+  // Form-side collect(): selecting 'default' (Inherit) must produce null, not a
+  // boolean. The host's applySettings turns null into undefined -> clears.
+  h.els.get('debug').value = 'default';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.equal(save.values.debug, null);
+});
+
+test('P41: enum Inherit submits empty string so the host clears the override', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { safetyMode: 'unsafe' },
+  });
+  // Form-side collect(): selecting '' (Inherit) on safetyMode must produce ''.
+  h.els.get('safetyMode').value = '';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.equal(save.values.safetyMode, '');
+});

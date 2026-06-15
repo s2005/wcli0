@@ -116,3 +116,79 @@ test('config changes re-post settings, and dispose clears the panel', async () =
   openConfigPanel(makeContext());
   assert.notEqual(vscode.__state.lastWebviewPanel, panel);
 });
+
+test('P39: workspace folder removal normalizes currentScope to Global and re-posts', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  let init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.equal(init.scope, 'Workspace');
+  assert.equal(init.hasWorkspace, true);
+
+  panel.webview.posted = [];
+  // Simulate removal of the only workspace folder while the form is open.
+  vscode.__state.workspaceFolders = undefined;
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) {
+    cb();
+  }
+  init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 're-posted on workspace folder change');
+  assert.equal(init.scope, 'Global', 'scope normalized to Global');
+  assert.equal(init.hasWorkspace, false);
+});
+
+test('P39: workspace folder addition re-posts with hasWorkspace=true', async () => {
+  // Start with no workspace: scope is Global.
+  vscode.__state.workspaceFolders = undefined;
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  let init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.equal(init.hasWorkspace, false);
+
+  panel.webview.posted = [];
+  vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) {
+    cb();
+  }
+  init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 're-posted on workspace folder addition');
+  assert.equal(init.hasWorkspace, true);
+});
+
+test('P41: selecting Inherit (empty string) for an enum clears the scope override', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.safetyMode', 'unsafe');
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { safetyMode: '' }, // Inherit
+  });
+  // The previous Workspace override must be cleared, not overwritten with ''.
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.safetyMode'), false);
+});
+
+test('P41: selecting Inherit (null) for a boolean clears the scope override', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.debug', true);
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { debug: null }, // Inherit
+  });
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.debug'), false);
+});
+
+test('P41: selecting Inherit for launch.method clears the scope override', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.method', 'node');
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { 'launch.method': '' },
+  });
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.launch.method'), false);
+});

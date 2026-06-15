@@ -58,7 +58,12 @@ export async function generateConfigFile(formScopeArg?: unknown): Promise<void> 
     'Not now',
   );
   if (useIt === 'Set wcli0.configFile') {
-    const cfgTarget = folder
+    // Honor the form's selected scope when present: a User-scope form save must
+    // write to User even when a workspace folder exists. Fall back to the
+    // folder-based heuristic only for command-palette invocations (no scope).
+    const formScope = asScope(formScopeArg);
+    const useWorkspace = formScope ? formScope === 'Workspace' && !!folder : !!folder;
+    const cfgTarget = useWorkspace
       ? vscode.ConfigurationTarget.Workspace
       : vscode.ConfigurationTarget.Global;
     // For a workspace target, store a ${workspaceFolder}-relative path so the
