@@ -1,14 +1,22 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { buildLaunchSpec, isValidPort, renderCommandLine, validateLaunchSpec } from './argsBuilder';
+import {
+  buildLaunchSpec,
+  isAbsolutePath,
+  isValidPort,
+  renderCommandLine,
+  validateLaunchSpec,
+} from './argsBuilder';
 import { buildConfigFile } from './configFile';
 import {
   ConfigScope,
   hasPerShellConfig,
+  hasUnresolvedVariables,
   primaryWorkspaceFolder,
   readSettings,
   readSettingsForScope,
   resolveVariables,
+  SHELL_NAMES,
   Wcli0Settings,
 } from './settings';
 import { clientHost, cwdConfigExists, homeConfigExists, Wcli0McpProvider } from './mcpProvider';
@@ -38,6 +46,30 @@ function asScope(arg: unknown): ConfigScope | undefined {
 const LAUNCH_METHOD_PROBLEM =
   /^(Launch method is|wcli0\.launch\.(nodeScriptPath|customCommand|customArgs))/;
 
+/**
+ * Whether `wcli0.launch.cwd` can affect the generated config file: it does ONLY when
+ * an enabled shell has a path-like RELATIVE executable command, which `buildConfigFile`
+ * anchors against the launch cwd. Otherwise the cwd is a launch-only setting that does
+ * not appear in the file, so an unresolved cwd must not block config generation (P81).
+ */
+function launchCwdAffectsConfig(s: Wcli0Settings): boolean {
+  return SHELL_NAMES.some((name) => {
+    const sh = s.shells?.[name];
+    const cmd = sh?.executable?.command?.trim();
+    if (!cmd) {
+      return false;
+    }
+    // Mirror configFile.isShellEnabled: an explicit per-shell enabled wins, else the
+    // legacy single-shell selector. A disabled shell emits no command to anchor.
+    const enabled = sh?.enabled ?? (s.shell === 'all' || name === s.shell);
+    if (!enabled) {
+      return false;
+    }
+    const resolved = resolveVariables(cmd);
+    return /[\\/]/.test(resolved) && !isAbsolutePath(resolved);
+  });
+}
+
 /** Generate a wcli0 config.json from settings and offer to save it. */
 export async function generateConfigFile(formScopeArg?: unknown): Promise<void> {
   const scope = primaryWorkspaceFolder()?.uri;
@@ -46,10 +78,21 @@ export async function generateConfigFile(formScopeArg?: unknown): Promise<void> 
   // writing its auto-managed file. Without this, buildConfigFile silently drops
   // values the server would reject (commandTimeout 0.5, an out-of-range per-shell
   // limit, an unresolved per-shell path) and writes a file that does not match the
-  // requested settings (see P75). Launch-method problems are config-irrelevant.
-  const blocking = validateLaunchSpec(settings, true).filter(
-    (p) => p.blocking && !LAUNCH_METHOD_PROBLEM.test(p.message),
-  );
+  // requested settings (see P75). Launch-method problems are config-irrelevant, and
+  // the launch cwd is irrelevant unless a per-shell relative command anchors to it.
+  const cwdMatters = launchCwdAffectsConfig(settings);
+  const blocking = validateLaunchSpec(settings, true).filter((p) => {
+    if (!p.blocking) {
+      return false;
+    }
+    if (LAUNCH_METHOD_PROBLEM.test(p.message)) {
+      return false;
+    }
+    if (!cwdMatters && /^wcli0\.launch\.cwd /.test(p.message)) {
+      return false;
+    }
+    return true;
+  });
   if (blocking.length > 0) {
     void vscode.window.showErrorMessage(
       `wcli0: cannot generate a config file that matches the current settings: ${blocking
@@ -137,14 +180,15 @@ export async function writeWorkspaceMcpJson(formScopeArg?: unknown): Promise<voi
       return;
     }
     // A stdio entry with no explicit wcli0.configFile carries plain CLI flags but no
-    // --config, so the server's loadConfig still discovers <workspace>/config.json
-    // (VS Code defaults the entry's cwd to the workspace), which can silently replace
+    // --config, so the server's loadConfig still discovers <cwd>/config.json — where
+    // <cwd> is the configured wcli0.launch.cwd if set, otherwise the workspace folder
+    // (VS Code defaults an entry's omitted cwd to it). Either can silently replace
     // shell executables or disable protections the entry appears to set. Unlike the
     // provider, a portable committed mcp.json cannot pin an absolute generated config
     // (buildConfigFile bakes machine-specific absolute paths), so surface the risk and
-    // let the user decide rather than emit a silently-overridable entry (see P72).
+    // let the user decide rather than emit a silently-overridable entry (see P72/P77).
     if (!settings.configFile.trim()) {
-      const implicit = await workspaceImplicitConfig(folder);
+      const implicit = await implicitConfigIn(launchCwdUri(folder, settings));
       if (implicit) {
         const pick = await vscode.window.showWarningMessage(
           `wcli0: the exported stdio entry sets no wcli0.configFile, so the server will still load ` +
@@ -530,23 +574,41 @@ function toPortablePath(folder: vscode.Uri, target: vscode.Uri): string {
 }
 
 /**
- * The path of the committed `config.json` the server would discover for a stdio entry
- * with no `--config`: `<workspace>/config.json` (VS Code defaults the entry's cwd to
- * the workspace folder). Returns undefined when it is absent, so the export stays
- * frictionless in the common case. Only the workspace file is checked — it is the
- * override vector that travels with the committed mcp.json; the machine-local
- * `~/.win-cli-mcp/config.json` is surfaced separately at launch (P63) and pinned away
- * by the provider (P66). Used to gate the P72 override warning.
+ * The directory the exported stdio entry would launch from: the configured
+ * `wcli0.launch.cwd` resolved against the workspace when set, otherwise the workspace
+ * folder (VS Code defaults an entry's omitted cwd to it). A token that cannot be
+ * resolved falls back to the workspace folder for the best-effort local check.
  */
-async function workspaceImplicitConfig(
-  folder: vscode.WorkspaceFolder,
-): Promise<string | undefined> {
-  const wsConfig = vscode.Uri.joinPath(folder.uri, 'config.json');
+function launchCwdUri(folder: vscode.WorkspaceFolder, settings: Wcli0Settings): vscode.Uri {
+  const raw = settings.cwd.trim();
+  if (!raw) {
+    return folder.uri;
+  }
+  const resolved = resolveVariables(raw);
+  if (hasUnresolvedVariables(resolved)) {
+    return folder.uri;
+  }
+  if (isAbsolutePath(resolved)) {
+    return vscode.Uri.file(resolved);
+  }
+  return vscode.Uri.joinPath(folder.uri, ...resolved.split(/[\\/]/).filter(Boolean));
+}
+
+/**
+ * The path of a `config.json` the server would discover in `dir` for a stdio entry
+ * with no `--config`. Returns undefined when absent, so the export stays frictionless
+ * in the common case. Only this committed-and-launched directory is checked — it is
+ * the override vector that travels with the mcp.json; the machine-local
+ * `~/.win-cli-mcp/config.json` is surfaced separately at launch (P63) and pinned away
+ * by the provider (P66). Used to gate the P72/P77 override warning.
+ */
+async function implicitConfigIn(dir: vscode.Uri): Promise<string | undefined> {
+  const cfg = vscode.Uri.joinPath(dir, 'config.json');
   try {
-    await vscode.workspace.fs.stat(wsConfig);
-    return wsConfig.fsPath;
+    await vscode.workspace.fs.stat(cfg);
+    return cfg.fsPath;
   } catch {
-    // Not present in the workspace — no committed override vector.
+    // Not present — no committed override vector.
     return undefined;
   }
 }

@@ -62,6 +62,31 @@ test('P75: generateConfigFile ignores launch-method problems (the file carries n
   assert.equal(vscode.__state.calls.error.length, 0);
 });
 
+test('P81: generateConfigFile is not blocked by a launch-only unresolved cwd', async () => {
+  // No workspace open + an unresolved ${workspaceFolder} cwd and no per-shell relative
+  // command that anchors to it: the cwd never reaches the file, so generation proceeds.
+  vscode.__state.workspaceFolders = undefined;
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}/server');
+  vscode.__state.calls.saveDialog = vscode.Uri.file('/tmp/wcli0.config.json');
+  await generateConfigFile();
+  assert.ok(vscode.__state.files.has('/tmp/wcli0.config.json'), 'config written despite launch-only cwd');
+  assert.equal(vscode.__state.calls.error.length, 0);
+});
+
+test('P81: generateConfigFile still blocks when a per-shell relative command needs the cwd', async () => {
+  // The relative per-shell command anchors to launch.cwd, so an unresolved cwd would
+  // mis-anchor the emitted executable path — generation must refuse.
+  vscode.__state.workspaceFolders = undefined;
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}/server');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { enabled: true, executable: { command: 'tools/sh' } },
+  });
+  vscode.__state.calls.saveDialog = vscode.Uri.file('/tmp/wcli0.config.json');
+  await generateConfigFile();
+  assert.equal(vscode.__state.files.has('/tmp/wcli0.config.json'), false);
+  assert.ok(vscode.__state.calls.error.some((m) => /launch\.cwd/.test(m)));
+});
+
 test('writeWorkspaceMcpJson creates a stdio server entry', async () => {
   await writeWorkspaceMcpJson();
   const raw = vscode.__state.files.get('/ws/.vscode/mcp.json');
@@ -121,6 +146,25 @@ test('P72: writeWorkspaceMcpJson writes the entry when the override warning is a
   vscode.__state.calls.warnReturn = 'Write anyway';
   await writeWorkspaceMcpJson();
   assert.ok(vscode.__state.files.has('/ws/.vscode/mcp.json'), 'entry written after confirmation');
+});
+
+test('P77: writeWorkspaceMcpJson warns when the configured launch.cwd has a config.json', async () => {
+  // The entry launches from launch.cwd, not the workspace root, so the discovery
+  // vector is <cwd>/config.json — the warning must check there, not only /ws.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}/sub');
+  vscode.__state.files.set('/ws/sub/config.json', Buffer.from('{}'));
+  vscode.__state.calls.warnReturn = undefined; // cancel
+  await writeWorkspaceMcpJson();
+  assert.ok(vscode.__state.calls.warn.some((w) => /\/ws\/sub\/config\.json/.test(w.message)));
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
+test('P77: a config.json only at the workspace root does not warn when launch.cwd points elsewhere', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}/sub');
+  vscode.__state.files.set('/ws/config.json', Buffer.from('{}')); // not the launch cwd
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.warn.length, 0);
+  assert.ok(vscode.__state.files.has('/ws/.vscode/mcp.json'));
 });
 
 test('P72: writeWorkspaceMcpJson does not warn when wcli0.configFile pins the launch', async () => {

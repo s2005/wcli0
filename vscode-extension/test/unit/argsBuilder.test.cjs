@@ -891,6 +891,44 @@ test('P71: a referenced config strips the alias forms but keeps a -c-prefixed no
   assert.ok(args.includes('--keep'));
 });
 
+test('P78: a forced-stdio launch strips --no-transport from extraArgs', () => {
+  // yargs parses --no-transport as transport=false, which fails the server's string
+  // choice validation and exits; it must be dropped from every stdio launch.
+  const args = buildServerArgs(defaults({ transportMode: 'stdio', extraArgs: ['--no-transport', '--keep'] }));
+  assert.ok(!args.includes('--no-transport'));
+  assert.ok(args.includes('--keep'));
+});
+
+test('P79: a managed launch strips the negated config alias --no-c from extraArgs', () => {
+  const args = buildServerArgs(
+    defaults({ extraArgs: ['--no-c', '--no-config', '--keep'] }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  // Both negated forms are dropped; only the mandatory managed --config remains.
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.ok(!args.includes('--no-c') && !args.includes('--no-config'));
+  assert.ok(args.includes('--keep'));
+});
+
+test('P80: a per-shell executable command with an arbitrary ${...} token is rejected', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // ${SHELL_BIN} is not an extension token; the server spawns the command without
+  // shell expansion, so the literal token would fail every spawn.
+  const problems = validateLaunchSpec(
+    defaults({ shells: { cmd: { enabled: true, executable: { command: '${SHELL_BIN}/sh' } } } }),
+    true,
+  );
+  assert.ok(
+    problems.some((p) => p.blocking && /executable\.command/.test(p.message) && /unresolved variable/.test(p.message)),
+  );
+  // A fully resolvable command (extension token + workspace open) is accepted.
+  const ok = validateLaunchSpec(
+    defaults({ shells: { cmd: { enabled: true, executable: { command: '${workspaceFolder}/bin/sh' } } } }),
+    true,
+  );
+  assert.ok(!ok.some((p) => /executable\.command/.test(p.message)));
+});
+
 test('P59: a referenced config strips a conflicting --config from extraArgs', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
   const args = buildServerArgs(

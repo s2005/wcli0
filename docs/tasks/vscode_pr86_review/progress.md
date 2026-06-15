@@ -105,3 +105,13 @@
 - [x] P74: Pin launches that use a configured cwd (fixed - the provider also pins, via an injectable `cwdConfigExists`, when a configured `launch.cwd` contains a `config.json` that `loadConfig` would load before the home config; `showLaunchCommand` mirrors it)
 - [x] P75: Validate settings before generating config.json (fixed - `generateConfigFile` runs `validateLaunchSpec(settings, true)` and refuses to write when a config-relevant blocking problem remains, filtering out launch-method-only problems)
 - [x] P76: Resolve userHome with the platform home directory (fixed - `resolveVariables` uses `os.homedir()` instead of preferring `process.env.HOME`, so `${userHome}` no longer resolves to a Unix-style path on Windows)
+
+## Review Feedback (PR #86) - round 11
+
+- [x] P77: Check the exported entry's configured cwd for config.json (fixed - `writeWorkspaceMcpJson` resolves the entry's launch cwd via `launchCwdUri` and checks `<cwd>/config.json` there, not only the workspace root)
+- [x] P78: Strip the negated transport option from extraArgs (fixed - `stripTransportArgs` drops `--no-transport`, which yargs would parse as `transport=false` and crash the server)
+- [x] P79: Strip the negated config alias from extraArgs (fixed - `stripConfigArgs` drops `--no-c` alongside `--no-config`)
+- [x] P80: Reject unresolved variables in per-shell executable commands (fixed - the command check flags any `${...}` left after resolving extension tokens, since the server spawns it without shell expansion)
+- [x] P81: Ignore launch cwd when it cannot affect generated config (fixed - `generateConfigFile` filters the `launch.cwd` problem unless a per-shell relative command anchors to it via `launchCwdAffectsConfig`)
+- [x] P82: Ignore paths on shells with directory restriction disabled (fixed - `hasPerShellPaths` skips shells whose `restrictWorkingDirectory` is explicitly false so they do not block the `allowAllDirs` lift)
+- [x] P83: Apply the global WSL mount point to bash inheritance (fixed - `buildConfigFile` seeds the global mount on both `wsl` and `bash`, matching `applyCliWslMountPoint`)

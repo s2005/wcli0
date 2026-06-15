@@ -351,6 +351,14 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     if (!isShellEnabled(s, name)) {
       return false;
     }
+    // A shell that explicitly disables its own working-directory restriction never
+    // enforces its allowlist either, so its paths must not block the allAllDirs lift.
+    // Counting them would keep the global restriction on with an empty global
+    // allowlist, and every OTHER enabled shell (inheriting the global restriction)
+    // would reject commands with "No allowed paths configured".
+    if (s.shells?.[name]?.overrides?.security?.restrictWorkingDirectory === false) {
+      return false;
+    }
     const p = s.shells?.[name]?.overrides?.paths;
     if (!p) {
       return false;
@@ -467,10 +475,13 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     // Default enabled honors the legacy single-shell selector; a per-shell
     // `enabled` set in wcli0.shells (applied below) overrides it.
     entry.enabled = s.shell === 'all' ? true : name === s.shell;
-    // Seed the wsl mount point from the global --wslMountPoint; a per-shell
-    // wslConfig.mountPoint (applied next) overrides it. The server expects a
-    // trailing slash (e.g. /mnt/), matching applyCliWslMountPoint.
-    if (name === 'wsl' && s.wslMountPoint.trim()) {
+    // Seed the wsl mount point from the global --wslMountPoint on BOTH WSL-family
+    // shells; a per-shell wslConfig.mountPoint (applied next) overrides it. The
+    // server expects a trailing slash (e.g. /mnt/), matching applyCliWslMountPoint,
+    // which seeds wsl AND bash — without bash here, a bash shell inheriting global
+    // paths would convert them with the /mnt/ default instead of the configured
+    // mount, so commands under a custom mount are rejected.
+    if ((name === 'wsl' || name === 'bash') && s.wslMountPoint.trim()) {
       const wsl = entry.wslConfig as Record<string, unknown> | undefined;
       if (wsl) {
         wsl.mountPoint = normalizeMount(s.wslMountPoint);

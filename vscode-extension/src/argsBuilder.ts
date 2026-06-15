@@ -157,6 +157,12 @@ function stripTransportArgs(extraArgs: string[]): string[] {
       i++;
       continue;
     }
+    if (a === '--no-transport') {
+      // Boolean negation: yargs parses `--no-transport` as transport=false, which
+      // fails the server's string-choice validation and exits the process instead
+      // of starting. Drop the flag alone (it carries no value), like --no-config.
+      continue;
+    }
     if (a.startsWith('--transport=')) {
       continue;
     }
@@ -181,7 +187,7 @@ function stripTransportArgs(extraArgs: string[]): string[] {
  *   - space-separated: `--config X`, `-c X`, and the single-char alias's long form `--c X`
  *   - attached: `--config=X`, `-c=X`, `--c=X`
  *   - short-option bundling: `-cX` (e.g. `-c/other.json`)
- *   - boolean negation: `--no-config` (sets `config` to `false`, defeating the file)
+ *   - boolean negation: `--no-config` / `--no-c` (sets `config` to `false`, defeating the file)
  * Leaving any one in place re-introduces the silent-fallback bug above.
  */
 function stripConfigArgs(extraArgs: string[]): string[] {
@@ -198,9 +204,10 @@ function stripConfigArgs(extraArgs: string[]): string[] {
     if (a.startsWith('--config=') || a.startsWith('-c=') || a.startsWith('--c=')) {
       continue;
     }
-    // Boolean negation: `--no-config` carries no value and would make loadConfig skip
-    // the file entirely (config === false), so drop the flag alone.
-    if (a === '--no-config') {
+    // Boolean negation: `--no-config` / `--no-c` (the alias also negates) carry no
+    // value and would make yargs set config === false, so loadConfig skips the file
+    // and falls back to implicit cwd/home discovery. Drop the flag alone.
+    if (a === '--no-config' || a === '--no-c') {
       continue;
     }
     // Short-option bundling: `-cVALUE` packs the value onto the `c` alias (the only
@@ -792,9 +799,15 @@ export function validateLaunchSpec(
       // refuse rather than register a server whose shell never starts. Arbitrary
       // ${FOO} shell templates are not flagged (handled like custom args).
       const cmd = sh.executable?.command;
-      if (cmd && cmd.trim() && hasUnresolvedExtensionVariable(cmd)) {
+      if (cmd && cmd.trim() && hasUnresolvedVariables(resolveVariables(cmd.trim()))) {
+        // Any leftover ${...} after resolving the extension's own tokens — an
+        // unresolved ${workspaceFolder}/${userHome} (no workspace open) OR an
+        // arbitrary template such as ${SHELL_BIN}. The server passes
+        // executable.command straight to spawn WITHOUT shell expansion, so any token
+        // makes that shell fail every spawn. (Unlike executable ARGS, which a shell
+        // may legitimately expand, the command itself cannot contain ${...} tokens.)
         problems.push({
-          message: `wcli0.shells.${name}.executable.command "${cmd}" contains an unresolved \${workspaceFolder}/\${userHome} variable (no matching workspace folder is open).`,
+          message: `wcli0.shells.${name}.executable.command "${cmd}" contains an unresolved variable; the server spawns the command without shell expansion, so it cannot contain \${...} tokens.`,
           blocking: true,
         });
       } else if (cmd && cmd.trim() && isUnanchorablePerShellCommand(cmd, s)) {

@@ -299,12 +299,14 @@ test('allowAllDirs is honored when configured paths all fail to resolve', () => 
   assert.equal(cfg.global.security.restrictWorkingDirectory, false);
 });
 
-test('native bash disables WSL path inheritance and ignores the wsl mount point', () => {
+test('P83: the global wsl mount point seeds both wsl and bash (bash still disables inheritance by default)', () => {
   const cfg = buildConfigFile(defaults({ wslMountPoint: '/windows' }));
-  // bash must explicitly disable inheritance (the server's merge forces it on
-  // when the field is absent), and the mount point applies only to the wsl shell.
+  // bash defaults to inheritGlobalPaths: false (the server's merge forces it on when
+  // the field is absent), but the mount point is seeded on BOTH wsl-family shells to
+  // match the server's applyCliWslMountPoint — so if bash inheritance is later enabled
+  // it converts inherited paths with the configured mount, not the /mnt/ default.
   assert.equal(cfg.shells.bash.wslConfig.inheritGlobalPaths, false);
-  assert.equal(cfg.shells.bash.wslConfig.mountPoint, undefined);
+  assert.equal(cfg.shells.bash.wslConfig.mountPoint, '/windows/');
   assert.equal(cfg.shells.wsl.wslConfig.mountPoint, '/windows/');
 });
 
@@ -499,6 +501,37 @@ test('P27: an enabled shell\'s allowed paths still keep the restriction under al
     }),
   );
   assert.equal(cfg.global.security.restrictWorkingDirectory, true);
+});
+
+test('P82: paths on a shell with restrictWorkingDirectory disabled do not block the allowAllDirs lift', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // cmd is enabled and has an allowlist, but explicitly disables its own working-dir
+  // restriction, so those paths can never constrain it. They must not keep the global
+  // restriction on (which would leave every OTHER enabled shell with an empty global
+  // allowlist and reject commands with "No allowed paths configured").
+  const cfg = buildConfigFile(
+    defaults({
+      allowAllDirs: true,
+      shells: {
+        cmd: {
+          enabled: true,
+          overrides: {
+            security: { restrictWorkingDirectory: false },
+            paths: { allowedPaths: ['/srv'] },
+          },
+        },
+      },
+    }),
+  );
+  assert.equal(cfg.global.security.restrictWorkingDirectory, false);
+  // A shell that keeps the restriction (no override) still blocks the lift.
+  const kept = buildConfigFile(
+    defaults({
+      allowAllDirs: true,
+      shells: { cmd: { enabled: true, overrides: { paths: { allowedPaths: ['/srv'] } } } },
+    }),
+  );
+  assert.equal(kept.global.security.restrictWorkingDirectory, true);
 });
 
 test('P28: a server-invalid log directory is dropped from the generated config', () => {
