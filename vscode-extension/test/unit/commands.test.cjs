@@ -172,7 +172,9 @@ test('P72: writeWorkspaceMcpJson does not warn when wcli0.configFile pins the la
   // override warning is needed even with a workspace config.json present.
   vscode.__state.files.set('/ws/config.json', Buffer.from('{}'));
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '${workspaceFolder}/wcli0.json');
-  await writeWorkspaceMcpJson();
+  // The referenced file loads (this test is about the pin suppressing the warning,
+  // not about P85 loadability); inject a loadable check so the in-memory FS suffices.
+  await writeWorkspaceMcpJson(undefined, () => true);
   assert.equal(vscode.__state.calls.warn.length, 0);
   assert.ok(vscode.__state.files.has('/ws/.vscode/mcp.json'));
 });

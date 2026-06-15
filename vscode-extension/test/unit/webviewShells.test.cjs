@@ -350,7 +350,7 @@ test('P43: adding a workspace folder re-enables the Workspace controls', () => {
   assert.equal(h.els.get('noWorkspace').style.display, 'none');
 });
 
-test('P44: removing the folder while dirty switches scope to Global but keeps edits', () => {
+test('P44/P89: removing the folder while dirty keeps edits AND keeps the loaded scope', () => {
   const h = makeHarness();
   h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
   // Unsaved edit on a non-optional field so the form is dirty.
@@ -365,8 +365,44 @@ test('P44: removing the folder while dirty switches scope to Global but keeps ed
   });
   // Field values are preserved (external reload skipped while dirty)...
   assert.equal(h.els.get('commandTimeout').value, '99');
-  // ...but the Workspace scope is disabled and Global is selected, so a Save now
-  // targets a valid scope instead of a non-existent Workspace.
+  // ...the Workspace radio is disabled (no folder) but stays SELECTED, and Global is
+  // NOT auto-checked: a dirty form must keep its loaded scope so Save does not silently
+  // persist Workspace values into User scope (P89). The host refuses a Workspace save
+  // with no folder open.
+  assert.equal(h.scope('Workspace').disabled, true);
+  assert.equal(h.scope('Workspace').checked, true, 'loaded scope stays selected while dirty');
+  assert.equal(h.scope('Global').checked, false, 'Global is not auto-targeted');
+});
+
+test('P89: a dirty Workspace form whose folder is removed still Saves to Workspace', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('safetyMode').value = 'unsafe'; // project-specific edit -> dirty
+  h.dispatch({
+    type: 'init',
+    external: true,
+    hasWorkspace: false,
+    scope: 'Global',
+    settings: { shells: {} },
+  });
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.equal(save.target, 'Workspace', 'save targets the loaded scope, not User');
+});
+
+test('P44: removing the folder while CLEAN switches scope to Global', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  // No edits: the form is clean, so there is nothing to mis-save and the only valid
+  // scope (Global) is selected.
+  h.dispatch({
+    type: 'init',
+    external: true,
+    hasWorkspace: false,
+    scope: 'Global',
+    settings: { shells: {} },
+  });
   assert.equal(h.scope('Workspace').disabled, true);
   assert.equal(h.scope('Global').checked, true);
 });
@@ -506,5 +542,35 @@ test('Design 5: segmented enable buttons drive the hidden select, summary chip a
 test('Design 5: a referenced config file marks the launch isolated', () => {
   const h = makeHarness();
   h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {}, configFile: '${workspaceFolder}/wcli0.json' } });
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
+
+test('P84: an override-only per-shell setting marks the launch isolated and refreshes on input', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+  // A security override alone (no enabled/command change) still switches the provider
+  // to an isolated managed-config launch, and typing it must refresh the chip.
+  const el = h.els.get('sh-cmd-sec-timeout');
+  el.value = '30';
+  el._l.input.forEach((cb) => cb());
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
+
+test('P84: typing an executable command refreshes the isolation status', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  const el = h.els.get('sh-gitbash-cmd');
+  el.value = 'C:/git/bash.exe';
+  el._l.input.forEach((cb) => cb());
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
+
+test('P84: an allowed-paths override alone marks the launch isolated', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  const el = h.els.get('sh-cmd-paths');
+  el.value = 'C:/work';
+  el._l.input.forEach((cb) => cb());
   assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
 });

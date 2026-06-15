@@ -2,7 +2,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { buildLaunchSpec, isValidPort, validateLaunchSpec } from './argsBuilder';
+import {
+  buildLaunchSpec,
+  isValidPort,
+  resolvedConfigFilePath,
+  validateLaunchSpec,
+} from './argsBuilder';
 import { buildConfigFile } from './configFile';
 import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, Wcli0Settings } from './settings';
 
@@ -35,6 +40,29 @@ export function homeConfigExists(): boolean {
 export function cwdConfigExists(cwd: string): boolean {
   try {
     return fs.existsSync(path.join(cwd, 'config.json'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether the file at the given (already resolved, absolute) path can actually be
+ * loaded as the server's JSON config. Mirrors the server's `loadConfig`, which
+ * `fs.readFileSync` + `JSON.parse`es the path and, on ANY failure (missing,
+ * unreadable, a directory, or malformed JSON), silently falls through to
+ * `<cwd>/config.json` and `~/.win-cli-mcp/config.json`. The provider passes an
+ * explicit `--config` only when this returns true, so a broken `wcli0.configFile`
+ * does not masquerade as a pin while the server loads an implicit config (see P85).
+ * Injected into the provider (defaulting here) so the decision is deterministic in
+ * tests regardless of the host filesystem.
+ */
+export function configFileIsLoadable(resolvedPath: string): boolean {
+  try {
+    if (!fs.statSync(resolvedPath).isFile()) {
+      return false;
+    }
+    JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+    return true;
   } catch {
     return false;
   }
@@ -82,6 +110,7 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     private readonly managedConfigDir?: string,
     private readonly homeConfigPresent: () => boolean = homeConfigExists,
     private readonly cwdConfigPresent: (cwd: string) => boolean = cwdConfigExists,
+    private readonly configFileLoadable: (resolvedPath: string) => boolean = configFileIsLoadable,
   ) {}
 
   /** Cached unique private dir, created lazily when no safe cwd was injected. */
@@ -245,7 +274,13 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       }
     }
 
-    const problems = validateLaunchSpec(settings, managed, homeConfigPresent);
+    // Whether a referenced wcli0.configFile actually exists and parses as JSON. When
+    // it does not, the server would ignore the broken pin and load an implicit config
+    // instead, so validateLaunchSpec blocks the non-managed launch (P85). Skipped when
+    // managed (the user configFile is bypassed by the auto-managed --config).
+    const cfgPath = managed ? undefined : resolvedConfigFilePath(settings);
+    const configFileLoadable = !cfgPath || this.configFileLoadable(cfgPath);
+    const problems = validateLaunchSpec(settings, managed, homeConfigPresent, configFileLoadable);
     const blocking = problems.filter((p) => p.blocking);
     if (blocking.length > 0) {
       // Misconfigured launch: log rather than register a broken server.

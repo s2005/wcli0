@@ -5,6 +5,7 @@ import {
   isAbsolutePath,
   isValidPort,
   renderCommandLine,
+  resolvedConfigFilePath,
   validateLaunchSpec,
 } from './argsBuilder';
 import { buildConfigFile } from './configFile';
@@ -19,7 +20,13 @@ import {
   SHELL_NAMES,
   Wcli0Settings,
 } from './settings';
-import { clientHost, cwdConfigExists, homeConfigExists, Wcli0McpProvider } from './mcpProvider';
+import {
+  clientHost,
+  configFileIsLoadable,
+  cwdConfigExists,
+  homeConfigExists,
+  Wcli0McpProvider,
+} from './mcpProvider';
 
 /**
  * Read settings for an export action. When the config form supplies its selected
@@ -147,8 +154,15 @@ export async function generateConfigFile(formScopeArg?: unknown): Promise<void> 
   }
 }
 
-/** Write a `.vscode/mcp.json` entry for the wcli0 server (for clients that read it). */
-export async function writeWorkspaceMcpJson(formScopeArg?: unknown): Promise<void> {
+/**
+ * Write a `.vscode/mcp.json` entry for the wcli0 server (for clients that read it).
+ * `configFileLoadable` checks whether a referenced `wcli0.configFile` actually loads
+ * (injected so tests can use the in-memory filesystem; defaults to the real check).
+ */
+export async function writeWorkspaceMcpJson(
+  formScopeArg?: unknown,
+  configFileLoadable: (resolvedPath: string) => boolean = configFileIsLoadable,
+): Promise<void> {
   const folder = primaryWorkspaceFolder();
   if (!folder) {
     void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
@@ -174,7 +188,14 @@ export async function writeWorkspaceMcpJson(formScopeArg?: unknown): Promise<voi
       );
       return;
     }
-    const blocking = validateLaunchSpec(settings).filter((p) => p.blocking);
+    // A referenced wcli0.configFile becomes the entry's `--config`; validate it can
+    // actually be loaded so the exported entry does not silently fall back to an
+    // implicit config the server discovers instead (P85).
+    const cfgPath = resolvedConfigFilePath(settings);
+    const cfgLoadable = !cfgPath || configFileLoadable(cfgPath);
+    const blocking = validateLaunchSpec(settings, false, false, cfgLoadable).filter(
+      (p) => p.blocking,
+    );
     if (blocking.length > 0) {
       void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
       return;
@@ -386,8 +407,17 @@ export async function showLaunchCommand(
   // as non-managed there to keep the P63 home-config warning.
   const launchedManaged = !!managedConfigPath;
   // Pass whether the implicit home config exists so a safe launch with no configFile
-  // surfaces the same reduced-protection note the provider logs (see P63).
-  const problems = validateLaunchSpec(settings, launchedManaged, homeConfigPresent);
+  // surfaces the same reduced-protection note the provider logs (see P63), and whether
+  // a referenced wcli0.configFile actually loads so a broken pin is reported rather
+  // than shown as a working launch the server would silently override (P85).
+  const cfgPath = launchedManaged ? undefined : resolvedConfigFilePath(settings);
+  const configFileLoadable = !cfgPath || configFileIsLoadable(cfgPath);
+  const problems = validateLaunchSpec(
+    settings,
+    launchedManaged,
+    homeConfigPresent,
+    configFileLoadable,
+  );
 
   output.appendLine('Resolved wcli0 launch command:');
   output.appendLine('');

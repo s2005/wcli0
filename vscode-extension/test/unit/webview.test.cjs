@@ -309,6 +309,26 @@ test('P61: saving re-posts settings so a deferred external change is reconciled'
   assert.ok(panel.webview.posted.some((m) => m.type === 'saved'), 'saved indicator still sent');
 });
 
+test('P89: a Workspace save with no workspace folder open is refused, not retargeted', async () => {
+  // No workspace folder: a Workspace-targeted save must error and write nothing,
+  // rather than silently persisting the values into User scope.
+  vscode.__state.workspaceFolders = undefined;
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  panel.webview.posted = [];
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { safetyMode: 'unsafe' },
+  });
+  // Nothing written to either scope, an error was surfaced, and no saved/info sent.
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.safetyMode'), false);
+  assert.equal(vscode.__state.configGlobal.has('wcli0.safetyMode'), false);
+  assert.equal(vscode.__state.calls.error.length, 1);
+  assert.equal(vscode.__state.calls.info.length, 0);
+  assert.equal(panel.webview.posted.some((m) => m.type === 'saved'), false);
+});
+
 test('P45: the logging tri-state selects offer an Inherit option', () => {
   openConfigPanel(makeContext());
   const html = vscode.__state.lastWebviewPanel.webview.html;

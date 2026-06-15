@@ -115,3 +115,13 @@
 - [x] P81: Ignore launch cwd when it cannot affect generated config (fixed - `generateConfigFile` filters the `launch.cwd` problem unless a per-shell relative command anchors to it via `launchCwdAffectsConfig`)
 - [x] P82: Ignore paths on shells with directory restriction disabled (fixed - `hasPerShellPaths` skips shells whose `restrictWorkingDirectory` is explicitly false so they do not block the `allowAllDirs` lift)
 - [x] P83: Apply the global WSL mount point to bash inheritance (fixed - `buildConfigFile` seeds the global mount on both `wsl` and `bash`, matching `applyCliWslMountPoint`)
+
+## Review Feedback (PR #86) - round 12
+
+- [x] P84: Include every per-shell setting in the isolation status (fixed - `updateIsolation` derives from `collectShells()` and listens on all per-shell fields, so executable args, overrides and WSL options mark the launch `Isolated` and the chip refreshes while typing)
+- [x] P85: Reject config files that cannot actually be loaded (fixed - `validateLaunchSpec` blocks a non-managed launch whose referenced `wcli0.configFile` is missing/unreadable/a directory/malformed, via a `configFileLoadable` flag computed by `configFileIsLoadable` in the provider and export commands)
+- [x] P86: Preserve options following stripped raw flags (fixed - `stripTransportArgs`/`stripConfigArgs` consume the token after a value-less `--config`/`--transport` only when it is a real value, so a following option like `--debug` survives)
+- [-] P87: Let workspaces mask inherited per-shell settings (deferred - VS Code deep-merges object settings so neither clearing nor `{}` can mask an inherited User `wcli0.shells`; a correct fix needs a dedicated UI affordance and a product decision, and the test stub cannot reproduce the real merge)
+- [x] P88: Strip config aliases inside short-option bundles (fixed - `stripConfigArgs` strips any single-dash bundle containing the `c` alias, e.g. `-dc /other.json` and `-xc/other.json`, consuming a trailing value token when `c` is last)
+- [x] P89: Do not retarget dirty workspace edits to User scope (fixed - a dirty Workspace form keeps its loaded scope on folder removal, the dirty guard runs before the scope-radio switch, and the host refuses a Workspace save with no folder open)
+- [x] P90: Correct the documented default working directory (fixed - the `wcli0.launch.cwd` description documents the private extension-owned default instead of claiming the first workspace folder)

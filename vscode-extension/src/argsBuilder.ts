@@ -69,6 +69,21 @@ function resolvedPath(value: string): string | undefined {
 }
 
 /**
+ * The absolute path the server would receive as `--config` for a referenced
+ * `wcli0.configFile`, or undefined when the setting is empty or cannot be anchored
+ * (an unresolved variable, or a relative path with no workspace folder). Mirrors the
+ * launch-time resolution (`pathValue` with default `resolvePaths`), so callers can
+ * check on disk whether the very file the server will load actually exists and parses
+ * (see `validateLaunchSpec`'s `configFileLoadable`).
+ */
+export function resolvedConfigFilePath(s: Wcli0Settings): string | undefined {
+  if (!s.configFile.trim()) {
+    return undefined;
+  }
+  return resolvedPath(s.configFile);
+}
+
+/**
  * A logging line limit the server requires as an integer in 1..10000. Used for
  * `maxReturnLines`, whose `validateLoggingConfig` check enforces `Number.isInteger`.
  */
@@ -153,8 +168,13 @@ function stripTransportArgs(extraArgs: string[]): string[] {
   for (let i = 0; i < extraArgs.length; i++) {
     const a = extraArgs[i];
     if (a === '--transport') {
-      // Drop the flag and its separate value token so neither reaches yargs.
-      i++;
+      // Drop the flag, and its separate value token ONLY when that token is an
+      // actual value rather than another option. yargs parses `--transport --unsafe`
+      // as transport="" plus the still-applied `--unsafe`, so blindly consuming the
+      // next token would also discard an unrelated following option (see P86).
+      if (i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+        i++;
+      }
       continue;
     }
     if (a === '--no-transport') {
@@ -186,7 +206,8 @@ function stripTransportArgs(extraArgs: string[]): string[] {
  * yargs accepts the config alias in several forms, so all must be stripped:
  *   - space-separated: `--config X`, `-c X`, and the single-char alias's long form `--c X`
  *   - attached: `--config=X`, `-c=X`, `--c=X`
- *   - short-option bundling: `-cX` (e.g. `-c/other.json`)
+ *   - short-option bundling: `-cX` (e.g. `-c/other.json`), and `c` bundled with other
+ *     letters anywhere yargs can parse it (e.g. `-dc /other.json`, `-xc/other.json`)
  *   - boolean negation: `--no-config` / `--no-c` (sets `config` to `false`, defeating the file)
  * Leaving any one in place re-introduces the silent-fallback bug above.
  */
@@ -194,10 +215,15 @@ function stripConfigArgs(extraArgs: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < extraArgs.length; i++) {
     const a = extraArgs[i];
-    // Space-separated forms (drop the flag and its separate value token). `--c` is
-    // the long form yargs also accepts for the single-character `c` alias.
+    // Space-separated forms (drop the flag and, when present, its separate value
+    // token). `--c` is the long form yargs also accepts for the single-character `c`
+    // alias. Consume the following token only when it is a real value, not another
+    // option: yargs parses `--config --debug` as config="" plus the still-applied
+    // `--debug`, so blindly consuming it would also discard an unrelated flag (P86).
     if (a === '--config' || a === '-c' || a === '--c') {
-      i++;
+      if (i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+        i++;
+      }
       continue;
     }
     // Attached forms with `=`.
@@ -210,10 +236,18 @@ function stripConfigArgs(extraArgs: string[]): string[] {
     if (a === '--no-config' || a === '--no-c') {
       continue;
     }
-    // Short-option bundling: `-cVALUE` packs the value onto the `c` alias (the only
-    // single-char option), e.g. `-c/other.json`. Match a single-dash `-c` token with
-    // an attached value (the `=` form is already handled above).
-    if (a.startsWith('-c') && !a.startsWith('--') && a !== '-c' && a[2] !== '=') {
+    // Short-option bundling: yargs recognizes the `c` alias (the server's ONLY
+    // single-char option) anywhere in a single-dash bundle, not just at the start, so
+    // `-c/other.json`, `-dc /other.json` and `-xc/other.json` all set config. Strip any
+    // single-dash bundle that contains `c` (the co-bundled letters are not server
+    // options). When `c` is the bundle's final character it carries no attached value,
+    // so yargs reads the NEXT token as its value — drop that too, but only when it is a
+    // real value rather than another option (P86/P88).
+    if (a.length > 1 && a[0] === '-' && a[1] !== '-' && a.includes('c')) {
+      const cIsLast = a[a.length - 1] === 'c';
+      if (cIsLast && i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+        i++;
+      }
       continue;
     }
     out.push(a);
@@ -640,11 +674,18 @@ function hasUnresolvedExtensionVariable(raw: string): boolean {
  * config (`~/.win-cli-mcp/config.json`) exists; callers compute it from the
  * filesystem so this function stays pure. When it does, a non-managed safe launch
  * with no `configFile` gets a non-blocking warning that the home config still loads.
+ * `configFileLoadable` tells the validator whether a referenced `wcli0.configFile`
+ * actually exists and parses as JSON; callers compute it from the filesystem (so this
+ * function stays pure) and pass `false` only when the resolved file is missing,
+ * unreadable, a directory, or malformed. A non-managed launch with such a file is
+ * blocked, because the server's `loadConfig` would silently fall back to an implicit
+ * `<cwd>/config.json` or `~/.win-cli-mcp/config.json` instead of the intended pin.
  */
 export function validateLaunchSpec(
   s: Wcli0Settings,
   managed = false,
   homeConfigPresent = false,
+  configFileLoadable = true,
 ): LaunchProblem[] {
   const problems: LaunchProblem[] = [];
   if (s.launchMethod === 'node') {
@@ -752,6 +793,18 @@ export function validateLaunchSpec(
   if (!managed && isUnanchorablePath(s.configFile)) {
     problems.push({
       message: `wcli0.configFile "${s.configFile}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
+      blocking: true,
+    });
+  } else if (!managed && s.configFile.trim() && !configFileLoadable) {
+    // The path resolves, but the file cannot actually be loaded (missing,
+    // unreadable, a directory, or malformed JSON). The provider would still pass it
+    // as an explicit `--config` pin and skip its implicit-config protection, while
+    // the server's loadConfig catches the failure and falls back to a
+    // <cwd>/config.json or ~/.win-cli-mcp/config.json that can replace shell
+    // executables or weaken restrictions. Refuse rather than launch the pin silently
+    // (P85).
+    problems.push({
+      message: `wcli0.configFile "${s.configFile}" cannot be read as a JSON config file (missing, unreadable, a directory, or malformed); the server would ignore it and silently load an implicit config instead.`,
       blocking: true,
     });
   }

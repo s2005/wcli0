@@ -279,12 +279,44 @@ test('P66: pinning is skipped when wcli0.configFile is set (its --config bypasse
     '/priv',
     managedDir(),
     () => true,
+    undefined,
+    () => true, // configFile loads (this test is about pinning, not P85 loadability)
   ).provideMcpServerDefinitions();
   // The user's own --config already overrides the implicit home config, so the
   // CLI-flag path is used with that referenced file (no generated managed config).
   const args = defs[0].args;
   assert.equal(args.filter((a) => a === '--config').length, 1);
   assert.equal(args[args.indexOf('--config') + 1], '/ws/wcli0.json');
+});
+
+test('P85: a referenced configFile that cannot be loaded registers no server', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '/ws/wcli0.json');
+  const logged = [];
+  const defs = new Wcli0McpProvider(
+    (m) => logged.push(m),
+    '/priv',
+    managedDir(),
+    () => false, // no home config
+    undefined,
+    () => false, // configFile is missing/unreadable/dir/malformed
+  ).provideMcpServerDefinitions();
+  // The broken pin would otherwise let the server load an implicit config; refuse.
+  assert.deepEqual(defs, []);
+  assert.ok(logged.some((m) => /cannot be read/.test(m)), 'logs the loadability problem');
+});
+
+test('P85: a referenced configFile that loads registers the server with --config', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '/ws/wcli0.json');
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => false,
+    undefined,
+    () => true, // configFile loads
+  ).provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  assert.equal(defs[0].args[defs[0].args.indexOf('--config') + 1], '/ws/wcli0.json');
 });
 
 test('P66: no pinning when the home config is absent (plain CLI flags)', () => {

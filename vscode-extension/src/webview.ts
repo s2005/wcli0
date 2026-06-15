@@ -132,7 +132,11 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
         post();
       }
     } else if (msg.type === 'save' && msg.values && msg.target) {
-      await applySettings(msg as SavePayload);
+      // A refused save (e.g. Workspace target with no folder open, P89) leaves the
+      // form untouched: skip the re-post, saved indicator and success toast.
+      if (!(await applySettings(msg as SavePayload))) {
+        return;
+      }
       // Re-post the now-persisted settings before the saved indicator re-baselines.
       // A background configuration change that arrived while the form was dirty was
       // skipped (to protect unsaved edits) and never reconciled; without this refresh
@@ -154,7 +158,11 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // otherwise unsaved changes (e.g. Limits & Safety) would be silently
       // dropped from the generated config.json / mcp.json / launch command.
       if (msg.values && msg.target) {
-        await applySettings(msg as SavePayload);
+        // A refused save (Workspace target with no folder open, P89) must abort the
+        // export too: it would otherwise operate on unsaved/stale persisted settings.
+        if (!(await applySettings(msg as SavePayload))) {
+          return;
+        }
         // Refresh from the persisted state (reconciling any deferred external change)
         // before re-baselining, matching the save path above.
         post();
@@ -200,12 +208,22 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   };
 }
 
-async function applySettings(payload: SavePayload): Promise<void> {
+async function applySettings(payload: SavePayload): Promise<boolean> {
   const target =
     payload.target === 'Workspace'
       ? vscode.ConfigurationTarget.Workspace
       : vscode.ConfigurationTarget.Global;
   const scope = payload.target === 'Workspace' ? primaryWorkspaceFolder()?.uri : undefined;
+  // Refuse a Workspace save when no workspace folder is open. This happens when the
+  // last folder is removed while a dirty Workspace-scoped form keeps targeting its
+  // loaded scope (P89): VS Code cannot write workspace settings without a folder, and
+  // the values must NOT be silently retargeted to User. Report and skip instead.
+  if (target === vscode.ConfigurationTarget.Workspace && !scope) {
+    void vscode.window.showErrorMessage(
+      'wcli0: cannot save Workspace settings because no workspace folder is open. Reopen the folder, or switch the form to User scope.',
+    );
+    return false;
+  }
   const config = vscode.workspace.getConfiguration(CONFIG_SECTION, scope ?? null);
 
   for (const key of FIELD_KEYS) {
@@ -232,6 +250,7 @@ async function applySettings(payload: SavePayload): Promise<void> {
     }
     await config.update(key, value, target);
   }
+  return true;
 }
 
 /** Shells that can be configured individually, with display label and WSL flag. */
@@ -941,20 +960,34 @@ function renderHtml(webview: vscode.Webview): string {
     const cfg = $('configFile');
     let isolated = !!(cfg && cfg.value && cfg.value.trim());
     if (!isolated) {
-      for (const d of SHELL_DEFS) {
-        const en = $('sh-' + d.name + '-enabled');
-        const cmd = $('sh-' + d.name + '-cmd');
-        if ((en && en.value && en.value !== 'default') || (cmd && cmd.value && cmd.value.trim())) {
-          isolated = true;
-          break;
-        }
-      }
+      // Any meaningful per-shell configuration isolates the launch, not just an
+      // enabled/command change. collectShells() builds exactly the wcli0.shells object
+      // the host reads, keeping a shell only when it carries a user-set field
+      // (executable args, security/restriction/path overrides, WSL options included),
+      // so it mirrors the host's hasPerShellConfig/isMeaningfulShellConfig (P84).
+      isolated = Object.keys(collectShells()).length > 0;
     }
     chip.className = 'statuschip ' + (isolated ? 'sc-ok' : 'sc-warn');
     chip.textContent = isolated ? 'Isolated' : 'Overridable';
   }
   const configFileEl = $('configFile');
   if (configFileEl) configFileEl.addEventListener('input', updateIsolation);
+  // Refresh the isolation status as the user types in ANY per-shell field, not only
+  // the segmented enable buttons and configFile. Without this the chip would lag when
+  // an executable command/args, an override or a WSL option is edited (P84). The
+  // enable <select> is driven by the segmented buttons, which call updateIsolation.
+  const PER_SHELL_ISOLATION_FIELDS = [
+    '-cmd', '-args', '-sec-maxlen', '-sec-timeout', '-sec-inject', '-sec-restrict',
+    '-block-cmd', '-block-arg', '-block-op', '-paths', '-wsl-mount', '-wsl-inherit',
+  ];
+  for (const d of SHELL_DEFS) {
+    for (const suffix of PER_SHELL_ISOLATION_FIELDS) {
+      const el = $('sh-' + d.name + suffix);
+      if (!el) continue;
+      el.addEventListener('input', updateIsolation);
+      el.addEventListener('change', updateIsolation);
+    }
+  }
 
   // Keep the Inherit checkbox and its text field consistent: checking Inherit
   // clears the field (so the inherited state is unambiguous), and typing a value
@@ -1042,7 +1075,17 @@ function renderHtml(webview: vscode.Webview): string {
       $('noWorkspace').style.display = 'block';
       if (ws) {
         ws.disabled = true;
-        if (ws.checked && gl) gl.checked = true;
+        // Switch the checked radio to Global only when doing so cannot silently move
+        // unsaved edits across scopes. The external init that removes the last folder
+        // skips the value/formScope reload while the form is dirty (the dirty guard
+        // below), so flipping a dirty Workspace form to Global would make Save persist
+        // project-specific values into User scope (P89). Keep Workspace selected there
+        // so Save still targets the loaded scope (the host refuses a Workspace save
+        // when no folder is open). A clean form has no edits to mis-save, so it
+        // switches to the only valid scope.
+        if (ws.checked && gl && !(isDirty() && formScope === 'Workspace')) {
+          gl.checked = true;
+        }
       }
       // .vscode/mcp.json is workspace-relative; nothing to write without a folder.
       $('writeMcp').disabled = true;
@@ -1056,22 +1099,25 @@ function renderHtml(webview: vscode.Webview): string {
       return;
     }
     if (msg.type === 'init') {
-      // Scope availability/selection must track reality even when the field-value
-      // refresh is skipped: a folder added later must re-enable the Workspace
-      // controls, and a folder removed while the form is dirty must not leave
-      // Workspace selected (Save would then target a non-existent scope). Apply
-      // these before the dirty guard.
+      // Workspace availability (enable/disable the Workspace radio and the mcp.json
+      // export, show the no-folder hint) must track reality even when the field-value
+      // refresh is skipped — e.g. a folder added later must re-enable the Workspace
+      // controls. It deliberately does NOT switch a dirty form's selected scope (see
+      // applyWorkspaceAvailability, P89), so apply it before the dirty guard.
       applyWorkspaceAvailability(msg.hasWorkspace);
+      // A background configuration change must not discard unsaved edits, nor silently
+      // retarget the save scope. While the form is dirty, skip BOTH the field refresh
+      // and the scope-radio switch on an external reload, so the loaded scope
+      // (formScope) stays selected and Save targets it instead of the externally forced
+      // scope — otherwise removing the last workspace folder would persist Workspace
+      // values into User scope (P35/P89). Explicit ready/scope-change reloads (external
+      // falsy) always apply. A later save re-baselines cleanly.
+      if (msg.external && isDirty()) {
+        return;
+      }
       if (msg.scope) {
         const r = document.querySelector('input[name=scope][value=' + msg.scope + ']');
         if (r && !r.disabled) r.checked = true;
-      }
-      // A background configuration change must not discard unsaved edits. Skip the
-      // field-value refresh on an external reload while the form is dirty; explicit
-      // ready/scope-change reloads (external falsy) always apply. A later save
-      // re-baselines cleanly.
-      if (msg.external && isDirty()) {
-        return;
       }
       setVal(msg.settings, msg.setKeys, msg.setSelectKeys, msg.setArrayKeys);
       initial = collect();

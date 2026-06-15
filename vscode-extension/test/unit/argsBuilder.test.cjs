@@ -910,6 +910,95 @@ test('P79: a managed launch strips the negated config alias --no-c from extraArg
   assert.ok(args.includes('--keep'));
 });
 
+test('P86: a managed launch keeps an option following a value-less --config in extraArgs', () => {
+  // yargs parses `--config --debug` as config="" plus the still-applied --debug, so
+  // stripping must not also discard the following option.
+  const args = buildServerArgs(
+    defaults({ extraArgs: ['--config', '--debug', '--keep'] }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  // The mandatory managed --config survives; the conflicting --config (no value) is
+  // dropped, but the following --debug and --keep are preserved.
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.equal(args[args.indexOf('--config') + 1], '/priv/managed-config.json');
+  assert.ok(args.includes('--debug'), 'a following option is not consumed as the flag value');
+  assert.ok(args.includes('--keep'));
+});
+
+test('P86: a forced-stdio launch keeps an option following a value-less --transport', () => {
+  // `--transport --unsafe` -> transport="" plus the applied --unsafe; only --transport
+  // is stripped, --unsafe must survive.
+  const args = buildServerArgs(
+    defaults({ transportMode: 'stdio', extraArgs: ['--transport', '--unsafe', '--keep'] }),
+  );
+  // stdio with no configFile emits no --transport itself, and the conflicting extraArgs
+  // --transport is stripped, so none remains; the following --unsafe/--keep survive.
+  assert.ok(!args.includes('--transport'), 'the conflicting --transport is stripped');
+  assert.ok(args.includes('--unsafe'), 'a following option is not consumed as the flag value');
+  assert.ok(args.includes('--keep'));
+});
+
+test('P88: a managed launch strips the c alias bundled with other short options', () => {
+  // yargs recognizes `c` anywhere in a single-dash bundle, e.g. `-dc /other.json`
+  // (c is the trailing option and consumes the next token) and `-xc/other.json`
+  // (value attached). Both must be stripped so they cannot set a second config.
+  const args = buildServerArgs(
+    defaults({ extraArgs: ['-dc', '/other.json', '-xc/another.json', '--keep'] }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.equal(args[args.indexOf('--config') + 1], '/priv/managed-config.json');
+  assert.ok(!args.some((a) => /other\.json|another\.json/.test(a)), 'bundled config values dropped');
+  assert.ok(!args.includes('-dc') && !args.some((a) => a.startsWith('-xc')));
+  assert.ok(args.includes('--keep'));
+});
+
+test('P88: a single-dash bundle without the c alias is preserved', () => {
+  // `-d` (and other non-c bundles) are unrelated to config and must survive.
+  const args = buildServerArgs(
+    defaults({ extraArgs: ['-d', '--keep'] }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  assert.ok(args.includes('-d'), 'a bundle without c is not stripped');
+  assert.ok(args.includes('--keep'));
+});
+
+test('P85: a referenced configFile that cannot be loaded is a blocking problem', () => {
+  // configFileLoadable=false models a missing/unreadable/dir/malformed file. The
+  // server would ignore the broken --config pin and load an implicit config instead.
+  const problems = validateLaunchSpec(
+    defaults({ configFile: '/ws/wcli0.json' }),
+    false, // not managed
+    false, // home config absent
+    false, // configFile NOT loadable
+  );
+  assert.ok(
+    problems.some((p) => p.blocking && /configFile .* cannot be read/.test(p.message)),
+    'an unloadable configFile blocks the launch',
+  );
+});
+
+test('P85: a loadable configFile produces no loadability problem', () => {
+  const problems = validateLaunchSpec(
+    defaults({ configFile: '/ws/wcli0.json' }),
+    false,
+    false,
+    true, // loadable
+  );
+  assert.ok(!problems.some((p) => /cannot be read/.test(p.message)));
+});
+
+test('P85: configFile loadability is not checked in managed mode (configFile bypassed)', () => {
+  // In managed mode the user configFile is ignored, so an unloadable one must not block.
+  const problems = validateLaunchSpec(
+    defaults({ configFile: '/ws/wcli0.json' }),
+    true, // managed
+    false,
+    false, // would be unloadable, but irrelevant when managed
+  );
+  assert.ok(!problems.some((p) => /cannot be read/.test(p.message)));
+});
+
 test('P80: a per-shell executable command with an arbitrary ${...} token is rejected', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
   // ${SHELL_BIN} is not an extension token; the server spawns the command without

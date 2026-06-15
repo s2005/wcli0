@@ -134,7 +134,7 @@
         "wcli0.launch.cwd": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Working directory for the server process. Defaults to the first workspace folder. Supports `${workspaceFolder}`.",
+          "markdownDescription": "Working directory for the server process. When unset, the extension launches from a private extension-owned directory (not the workspace folder), so the server does not auto-load an implicit workspace `config.json`. Supports `${workspaceFolder}`.",
           "scope": "resource"
         },
         "wcli0.launch.env": {
