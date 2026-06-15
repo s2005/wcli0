@@ -11,7 +11,7 @@ import {
   resolveVariables,
   Wcli0Settings,
 } from './settings';
-import { clientHost, homeConfigExists, MANAGED_CONFIG_FILE, Wcli0McpProvider } from './mcpProvider';
+import { clientHost, cwdConfigExists, homeConfigExists, Wcli0McpProvider } from './mcpProvider';
 
 /**
  * Read settings for an export action. When the config form supplies its selected
@@ -28,10 +28,36 @@ function asScope(arg: unknown): ConfigScope | undefined {
   return arg === 'Global' || arg === 'Workspace' ? arg : undefined;
 }
 
+/**
+ * Problems that concern only the launch method (node script / custom command /
+ * args), not the contents of a generated config file. `generateConfigFile`
+ * validates with the managed (config-file) ruleset but must ignore these, because
+ * the config.json carries no launch method — an empty nodeScriptPath, say, is
+ * irrelevant to the file and must not block its generation (see P75).
+ */
+const LAUNCH_METHOD_PROBLEM =
+  /^(Launch method is|wcli0\.launch\.(nodeScriptPath|customCommand|customArgs))/;
+
 /** Generate a wcli0 config.json from settings and offer to save it. */
 export async function generateConfigFile(formScopeArg?: unknown): Promise<void> {
   const scope = primaryWorkspaceFolder()?.uri;
   const settings = readExportSettings(asScope(formScopeArg), scope);
+  // Validate with the same managed-config ruleset the provider applies before
+  // writing its auto-managed file. Without this, buildConfigFile silently drops
+  // values the server would reject (commandTimeout 0.5, an out-of-range per-shell
+  // limit, an unresolved per-shell path) and writes a file that does not match the
+  // requested settings (see P75). Launch-method problems are config-irrelevant.
+  const blocking = validateLaunchSpec(settings, true).filter(
+    (p) => p.blocking && !LAUNCH_METHOD_PROBLEM.test(p.message),
+  );
+  if (blocking.length > 0) {
+    void vscode.window.showErrorMessage(
+      `wcli0: cannot generate a config file that matches the current settings: ${blocking
+        .map((p) => p.message)
+        .join(' ')}`,
+    );
+    return;
+  }
   const config = buildConfigFile(settings);
   const content = JSON.stringify(config, null, 2) + '\n';
 
@@ -109,6 +135,29 @@ export async function writeWorkspaceMcpJson(formScopeArg?: unknown): Promise<voi
     if (blocking.length > 0) {
       void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
       return;
+    }
+    // A stdio entry with no explicit wcli0.configFile carries plain CLI flags but no
+    // --config, so the server's loadConfig still discovers <workspace>/config.json
+    // (VS Code defaults the entry's cwd to the workspace), which can silently replace
+    // shell executables or disable protections the entry appears to set. Unlike the
+    // provider, a portable committed mcp.json cannot pin an absolute generated config
+    // (buildConfigFile bakes machine-specific absolute paths), so surface the risk and
+    // let the user decide rather than emit a silently-overridable entry (see P72).
+    if (!settings.configFile.trim()) {
+      const implicit = await workspaceImplicitConfig(folder);
+      if (implicit) {
+        const pick = await vscode.window.showWarningMessage(
+          `wcli0: the exported stdio entry sets no wcli0.configFile, so the server will still load ` +
+            `${implicit}, whose settings can override the exported ones (different enabled shells, ` +
+            `weaker restrictions, replaced shell executables). Reference a config file via ` +
+            `wcli0.configFile to control this.`,
+          { modal: true },
+          'Write anyway',
+        );
+        if (pick !== 'Write anyway') {
+          return;
+        }
+      }
     }
   } else if (!isValidPort(settings.transportPort)) {
     void vscode.window.showErrorMessage(
@@ -245,21 +294,21 @@ export async function showLaunchCommand(
   const perShell = hasPerShellConfig(settings) && settings.transportMode === 'stdio';
   // Also mirror the provider's pinning: a plain stdio launch with no per-shell
   // config and no wcli0.configFile is launched against a generated config when the
-  // server's implicit ~/.win-cli-mcp/config.json exists, so it cannot silently
-  // override the displayed settings (see P66).
+  // server would otherwise discover an implicit config that overrides the displayed
+  // settings — the home config (P66) or a config.json in a configured launch.cwd (P74).
   const homeConfigPresent = homeConfigExists();
-  const pinAgainstHomeConfig =
-    !perShell &&
-    settings.transportMode === 'stdio' &&
-    !settings.configFile.trim() &&
-    homeConfigPresent;
-  const managed = perShell || pinAgainstHomeConfig;
-  // Use the provider's resolved managed-config directory (which applies the same
-  // private-dir fallback used at launch) so the displayed command matches what is
-  // actually registered, instead of a bare relative "managed-config.json".
-  const managedConfigDir = provider?.managedConfigTargetDir();
-  const managedConfigPath =
-    managed && managedConfigDir ? path.join(managedConfigDir, MANAGED_CONFIG_FILE) : undefined;
+  const configuredCwd = buildLaunchSpec(settings, {}).cwd;
+  const pinnable =
+    !perShell && settings.transportMode === 'stdio' && !settings.configFile.trim();
+  const pinAgainstHomeConfig = pinnable && homeConfigPresent;
+  const pinAgainstCwdConfig = pinnable && !!configuredCwd && cwdConfigExists(configuredCwd);
+  const managed = perShell || pinAgainstHomeConfig || pinAgainstCwdConfig;
+  // Materialize the managed config now (not just its pathname) so a copied command
+  // actually resolves the file rather than falling back to an implicit config or a
+  // stale provider-generated one (see P73). The provider writes it to its private
+  // dir and returns the absolute path, applying the same fallbacks used at launch;
+  // undefined means it could not be written (handled below).
+  const managedConfigPath = managed && provider ? provider.writeManagedConfig(settings) : undefined;
 
   output.clear();
   // In per-shell mode the provider REQUIRES an auto-managed config file. If no
@@ -305,17 +354,15 @@ export async function showLaunchCommand(
       output.appendLine(
         'Note: shells are configured individually (wcli0.shells), so the server is launched',
       );
-      output.appendLine(
-        `with an auto-managed config file (written to ${managedConfigPath} on launch).`,
-      );
+      output.appendLine(`with an auto-managed config file (written to ${managedConfigPath}).`);
     } else {
       output.appendLine(
         'Note: the server is launched with an auto-managed config file (written to',
       );
       output.appendLine(
-        `${managedConfigPath} on launch) so the implicit ~/.win-cli-mcp/config.json cannot`,
+        `${managedConfigPath}) so an implicit config.json (the configured launch.cwd or`,
       );
-      output.appendLine('override these settings.');
+      output.appendLine('~/.win-cli-mcp/config.json) cannot override these settings.');
     }
   }
   // Show the cwd the server actually runs in. With no wcli0.launch.cwd set, the
@@ -480,6 +527,28 @@ function toPortablePath(folder: vscode.Uri, target: vscode.Uri): string {
     return `\${workspaceFolder}/${rel.split(path.sep).join('/')}`;
   }
   return target.fsPath;
+}
+
+/**
+ * The path of the committed `config.json` the server would discover for a stdio entry
+ * with no `--config`: `<workspace>/config.json` (VS Code defaults the entry's cwd to
+ * the workspace folder). Returns undefined when it is absent, so the export stays
+ * frictionless in the common case. Only the workspace file is checked — it is the
+ * override vector that travels with the committed mcp.json; the machine-local
+ * `~/.win-cli-mcp/config.json` is surfaced separately at launch (P63) and pinned away
+ * by the provider (P66). Used to gate the P72 override warning.
+ */
+async function workspaceImplicitConfig(
+  folder: vscode.WorkspaceFolder,
+): Promise<string | undefined> {
+  const wsConfig = vscode.Uri.joinPath(folder.uri, 'config.json');
+  try {
+    await vscode.workspace.fs.stat(wsConfig);
+    return wsConfig.fsPath;
+  } catch {
+    // Not present in the workspace — no committed override vector.
+    return undefined;
+  }
 }
 
 /** Whether a workspace.fs read error means the file is simply absent. */

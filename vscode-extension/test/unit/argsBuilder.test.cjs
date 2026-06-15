@@ -850,6 +850,47 @@ test('P59: managed launch strips the --config=/-c= attached forms from extraArgs
   assert.ok(args.includes('--keep'));
 });
 
+test('P71: a managed launch strips every other yargs config-alias form from extraArgs', () => {
+  const args = buildServerArgs(
+    defaults({
+      extraArgs: [
+        '--c', '/long-alias.json', // long form of the single-char alias
+        '--c=/attached-long.json', // attached long-alias form
+        '-c/bundled.json', // short-option bundling
+        '--no-config', // boolean negation (config === false)
+        '--keep', 'value',
+      ],
+    }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  // Only the mandatory managed --config survives.
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.equal(args[args.indexOf('--config') + 1], '/priv/managed-config.json');
+  // None of the alias forms (or their values) leak through.
+  assert.ok(!args.includes('--c') && !args.includes('--no-config'));
+  assert.ok(!args.some((a) => a.startsWith('--c=') || a.startsWith('-c')));
+  assert.ok(!args.some((a) => /long-alias|attached-long|bundled/.test(a)));
+  // Unrelated extras are preserved.
+  assert.ok(args.includes('--keep') && args.includes('value'));
+});
+
+test('P71: a referenced config strips the alias forms but keeps a -c-prefixed non-option', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const args = buildServerArgs(
+    defaults({
+      configFile: '/ws/wcli0.json',
+      // `--config-check` is a different (hypothetical) long flag, not the config
+      // alias; a `--` long flag that merely starts with "config" must be preserved.
+      extraArgs: ['--c', '/evil.json', '--config-check', '--keep'],
+    }),
+  );
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.equal(args[args.indexOf('--config') + 1], '/ws/wcli0.json');
+  assert.ok(!args.includes('/evil.json') && !args.includes('--c'));
+  assert.ok(args.includes('--config-check'), 'an unrelated --config* long flag is kept');
+  assert.ok(args.includes('--keep'));
+});
+
 test('P59: a referenced config strips a conflicting --config from extraArgs', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
   const args = buildServerArgs(

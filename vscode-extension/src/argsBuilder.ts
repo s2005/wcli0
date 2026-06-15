@@ -166,7 +166,7 @@ function stripTransportArgs(extraArgs: string[]): string[] {
 }
 
 /**
- * Remove any `--config`/`-c` entry (and its value) from a raw extraArgs list. Used
+ * Remove any config-option entry (and its value) from a raw extraArgs list. Used
  * whenever the extension has already emitted its own `--config`: always in managed
  * mode, and in non-managed mode when `wcli0.configFile` is set. The server's `config`
  * option is a scalar string with alias `c` (see src/index.ts), so a second `--config`
@@ -174,19 +174,39 @@ function stripTransportArgs(extraArgs: string[]): string[] {
  * `fs.existsSync`, which rejects it and silently falls back to `<cwd>/config.json` or
  * `~/.win-cli-mcp/config.json` — bypassing the mandatory managed config (and every
  * generated per-shell/safety setting) or the referenced config file. The conflicting
- * `--config` must therefore be dropped. A user `--config` is left intact when the
+ * entry must therefore be dropped. A user `--config` is left intact when the
  * extension emits none (plain launch, no configFile): there it is a valid escape hatch.
+ *
+ * yargs accepts the config alias in several forms, so all must be stripped:
+ *   - space-separated: `--config X`, `-c X`, and the single-char alias's long form `--c X`
+ *   - attached: `--config=X`, `-c=X`, `--c=X`
+ *   - short-option bundling: `-cX` (e.g. `-c/other.json`)
+ *   - boolean negation: `--no-config` (sets `config` to `false`, defeating the file)
+ * Leaving any one in place re-introduces the silent-fallback bug above.
  */
 function stripConfigArgs(extraArgs: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < extraArgs.length; i++) {
     const a = extraArgs[i];
-    if (a === '--config' || a === '-c') {
-      // Drop the flag and its separate value token so neither reaches yargs.
+    // Space-separated forms (drop the flag and its separate value token). `--c` is
+    // the long form yargs also accepts for the single-character `c` alias.
+    if (a === '--config' || a === '-c' || a === '--c') {
       i++;
       continue;
     }
-    if (a.startsWith('--config=') || a.startsWith('-c=')) {
+    // Attached forms with `=`.
+    if (a.startsWith('--config=') || a.startsWith('-c=') || a.startsWith('--c=')) {
+      continue;
+    }
+    // Boolean negation: `--no-config` carries no value and would make loadConfig skip
+    // the file entirely (config === false), so drop the flag alone.
+    if (a === '--no-config') {
+      continue;
+    }
+    // Short-option bundling: `-cVALUE` packs the value onto the `c` alias (the only
+    // single-char option), e.g. `-c/other.json`. Match a single-dash `-c` token with
+    // an attached value (the `=` form is already handled above).
+    if (a.startsWith('-c') && !a.startsWith('--') && a !== '-c' && a[2] !== '=') {
       continue;
     }
     out.push(a);

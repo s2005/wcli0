@@ -1,3 +1,4 @@
+import * as os from 'os';
 import * as vscode from 'vscode';
 
 export const CONFIG_SECTION = 'wcli0';
@@ -111,7 +112,11 @@ export function resolveVariables(value: string): string {
   }
   const folders = vscode.workspace.workspaceFolders ?? [];
   const primary = folders[0];
-  const userHome = process.env.HOME ?? process.env.USERPROFILE;
+  // Use the platform home resolution so `${userHome}` matches VS Code's own
+  // resolution. `os.homedir()` uses USERPROFILE on Windows and $HOME on POSIX;
+  // reading `process.env.HOME` first would, on Windows where Git/Cygwin set HOME,
+  // resolve to a Unix-style path (e.g. /home/me) instead of the real user home.
+  const userHome = os.homedir();
   return value
     .replace(/\$\{workspaceFolder:([^}]+)\}/g, (_m, name: string) => {
       const match = folders.find((f) => f.name === name);

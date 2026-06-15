@@ -53,8 +53,29 @@ test('non-finite numeric settings normalize to null', () => {
 test('resolveVariables expands workspaceFolder, named folder and userHome', () => {
   assert.equal(resolveVariables('${workspaceFolder}/x'), '/ws/x');
   assert.equal(resolveVariables('${workspaceFolder:other}/y'), '/other/y');
-  process.env.HOME = '/home/me';
-  assert.equal(resolveVariables('${userHome}/z'), '/home/me/z');
+  // P76: ${userHome} resolves via the platform home (os.homedir()), matching VS
+  // Code's own resolution, not whatever HOME happens to be set to.
+  assert.equal(resolveVariables('${userHome}/z'), require('os').homedir() + '/z');
+});
+
+test('P76: userHome ignores a Unix-style HOME on Windows in favor of the platform home', () => {
+  const os = require('os');
+  // Even with HOME pointed at a Unix-style path (as Git/Cygwin set it on Windows),
+  // resolution uses os.homedir() so the token never resolves to the wrong directory.
+  const savedHome = process.env.HOME;
+  process.env.HOME = '/home/cygwin-style';
+  try {
+    if (process.platform === 'win32') {
+      assert.equal(/^\/home\/cygwin-style/.test(resolveVariables('${userHome}/z')), false);
+    }
+    assert.equal(resolveVariables('${userHome}/z'), os.homedir() + '/z');
+  } finally {
+    if (savedHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = savedHome;
+    }
+  }
 });
 
 test('resolveVariables passes through empty and plain strings', () => {

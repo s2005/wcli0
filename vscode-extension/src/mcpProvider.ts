@@ -24,6 +24,22 @@ export function homeConfigExists(): boolean {
   }
 }
 
+/**
+ * Whether a `config.json` exists directly in the given (already resolved, absolute)
+ * launch cwd. `loadConfig` discovers `<cwd>/config.json` before the home config, so a
+ * launch from a configured `wcli0.launch.cwd` containing one would silently override
+ * the extension's settings. The provider pins against this just like the home config
+ * (see P74). Injected into the provider (defaulting here) so the decision is
+ * deterministic in tests regardless of the host filesystem.
+ */
+export function cwdConfigExists(cwd: string): boolean {
+  try {
+    return fs.existsSync(path.join(cwd, 'config.json'));
+  } catch {
+    return false;
+  }
+}
+
 const SERVER_LABEL = 'wcli0';
 
 /**
@@ -56,12 +72,16 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    *   (`~/.win-cli-mcp/config.json`) exists. Injected (defaulting to the real
    *   filesystem check) so the pinning decision and the safe-mode warning are
    *   deterministic in tests regardless of the host's home directory.
+   * @param cwdConfigPresent Whether a `config.json` exists in the resolved launch
+   *   cwd. Injected (defaulting to the real filesystem check) so the cwd-config
+   *   pinning decision is deterministic in tests (see P74).
    */
   constructor(
     private readonly log: (message: string) => void = (m) => console.warn(m),
     private readonly safeCwd?: string,
     private readonly managedConfigDir?: string,
     private readonly homeConfigPresent: () => boolean = homeConfigExists,
+    private readonly cwdConfigPresent: (cwd: string) => boolean = cwdConfigExists,
   ) {}
 
   /** Cached unique private dir, created lazily when no safe cwd was injected. */
@@ -130,9 +150,11 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
   /**
    * Write the auto-managed config file from settings and return its absolute
    * path, or undefined if it cannot be written (caller then registers no server
-   * rather than launching with no per-shell config silently in effect).
+   * rather than launching with no per-shell config silently in effect). Public so
+   * `showLaunchCommand` can materialize the same file before displaying its
+   * `--config` path (see P73), keeping the shown command actually runnable.
    */
-  private writeManagedConfig(settings: Wcli0Settings): string | undefined {
+  writeManagedConfig(settings: Wcli0Settings): string | undefined {
     // Use the same target as managedConfigTargetDir (workspace storage, else a
     // per-window-unique temp dir) — never the shared global safeCwd, which two
     // windows would clobber via the fixed managed-config.json filename.
@@ -193,23 +215,32 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     // expressed in a config file, so launch against an auto-managed one instead
     // of the global CLI flags.
     const perShell = hasPerShellConfig(settings);
+    // The cwd the server would actually launch from: the configured wcli0.launch.cwd
+    // resolved to an absolute path, or undefined when unset (the private-dir fallback
+    // has no config.json to discover). Reused as the final spec when not managed.
+    const baseSpec = buildLaunchSpec(settings, {});
+    const configuredCwd = baseSpec.cwd;
     // Even a plain launch must be pinned to a generated config when it would
-    // otherwise let the server's loadConfig fall back to ~/.win-cli-mcp/config.json:
-    // no per-shell config, no explicit wcli0.configFile, but that home config
-    // exists. The private cwd blocks only the <cwd>/config.json candidate; the home
-    // config is a separate vector with no CLI flag to disable discovery, so generate
-    // a managed config and launch with --config so the extension's settings take
-    // effect and the implicit home config is bypassed (see P66).
+    // otherwise let the server's loadConfig discover an implicit config that
+    // overrides the extension's settings. There are two such vectors, neither with
+    // a CLI flag to disable discovery, so generate a managed config and launch with
+    // --config (which loadConfig uses instead of falling back):
+    //   1. ~/.win-cli-mcp/config.json — the home fallback, when it exists (P66).
+    //   2. <cwd>/config.json — when an explicit wcli0.launch.cwd is configured and
+    //      contains one; loadConfig loads it before the home config (P74). The
+    //      private-dir fallback blocks this candidate only when no cwd is configured.
     const homeConfigPresent = this.homeConfigPresent();
-    const pinAgainstHomeConfig = !perShell && !settings.configFile.trim() && homeConfigPresent;
-    const managed = perShell || pinAgainstHomeConfig;
+    const pinnable = !perShell && !settings.configFile.trim();
+    const pinAgainstHomeConfig = pinnable && homeConfigPresent;
+    const pinAgainstCwdConfig = pinnable && !!configuredCwd && this.cwdConfigPresent(configuredCwd);
+    const managed = perShell || pinAgainstHomeConfig || pinAgainstCwdConfig;
     let managedConfigPath: string | undefined;
     if (managed) {
       managedConfigPath = this.writeManagedConfig(settings);
       if (!managedConfigPath) {
         // Could not write the managed config — don't launch with per-shell config
-        // silently missing, or (when pinning) with the implicit home config still
-        // able to override the settings the extension reports.
+        // silently missing, or (when pinning) with an implicit config still able to
+        // override the settings the extension reports.
         return [];
       }
     }
@@ -236,7 +267,7 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       );
     }
 
-    const spec = buildLaunchSpec(settings, managedConfigPath ? { managedConfigPath } : {});
+    const spec = managedConfigPath ? buildLaunchSpec(settings, { managedConfigPath }) : baseSpec;
     const def = new vscode.McpStdioServerDefinition(
       SERVER_LABEL,
       spec.command,

@@ -96,3 +96,12 @@
 - [x] P68: Do not expose a per-shell initial directory that is ignored (fixed - removed the per-shell `overrides.paths.initialDir` surface from the schema, type, webview, config emission, validation and meaningful-check; the server only honors the global `initialDir`)
 - [x] P69: Preserve unset state in the scoped configuration form (fixed - `OPTIONAL_ARRAY_KEYS`/`explicitlySetArrayKeys` plus a `setArrayKeys` post and an Inherit checkbox let an explicit empty `allowedDirectories` override mask a non-empty value from the other scope)
 - [x] P70: Prompt before discarding edits on scope changes (fixed - the scope radio reverts and posts `scopeChangeRequest` when the form is dirty; the host shows a modal and only reloads the other scope on confirmation)
+
+## Review Feedback (PR #86) - round 10
+
+- [x] P71: Strip every yargs config-alias form (fixed - `stripConfigArgs` now also drops the long single-char alias `--c`/`--c=`, short-option bundling `-cVALUE`, and the boolean negation `--no-config`, while keeping unrelated `--config*` long flags and the plain-launch escape hatch)
+- [x] P72: Prevent implicit configs from overriding exported mcp.json (fixed - `writeWorkspaceMcpJson` warns modally before exporting a configFile-less stdio entry over a committed `<workspace>/config.json`, since a portable mcp.json cannot pin an absolute generated config; recommends setting `wcli0.configFile`)
+- [x] P73: Materialize the managed config before showing its command (fixed - `showLaunchCommand` calls the now-public `provider.writeManagedConfig` so the displayed `--config` path references a file that exists and matches the shown settings)
+- [x] P74: Pin launches that use a configured cwd (fixed - the provider also pins, via an injectable `cwdConfigExists`, when a configured `launch.cwd` contains a `config.json` that `loadConfig` would load before the home config; `showLaunchCommand` mirrors it)
+- [x] P75: Validate settings before generating config.json (fixed - `generateConfigFile` runs `validateLaunchSpec(settings, true)` and refuses to write when a config-relevant blocking problem remains, filtering out launch-method-only problems)
+- [x] P76: Resolve userHome with the platform home directory (fixed - `resolveVariables` uses `os.homedir()` instead of preferring `process.env.HOME`, so `${userHome}` no longer resolves to a Unix-style path on Windows)

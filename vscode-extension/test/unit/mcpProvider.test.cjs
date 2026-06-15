@@ -297,3 +297,67 @@ test('P66: no pinning when the home config is absent (plain CLI flags)', () => {
   ).provideMcpServerDefinitions();
   assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
 });
+
+// --- P74: pin settings against a config.json in the configured launch cwd -----
+
+test('P74: a configured launch.cwd containing a config.json pins the launch', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  const dir = managedDir();
+  const seen = [];
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    dir,
+    () => false, // no home config: only the cwd config.json triggers pinning
+    (cwd) => {
+      seen.push(cwd);
+      return true; // a config.json sits in the configured launch cwd
+    },
+  ).provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  const args = defs[0].args;
+  const ci = args.indexOf('--config');
+  assert.ok(ci >= 0, '--config present so <cwd>/config.json is bypassed');
+  assert.equal(args[ci + 1], path.join(dir, 'managed-config.json'));
+  assert.ok(!args.includes('--shell'), 'global flags replaced by the generated file');
+  // The check used the resolved configured cwd, and the launch still runs there.
+  assert.ok(seen.includes('/ws'));
+  assert.equal(defs[0].cwd.fsPath, '/ws');
+  const written = JSON.parse(fs.readFileSync(path.join(dir, 'managed-config.json'), 'utf8'));
+  assert.equal(written.shells.cmd.enabled, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('P74: a configured launch.cwd with no config.json is not pinned (plain CLI flags)', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => false,
+    () => false, // no config.json in the cwd
+  ).provideMcpServerDefinitions();
+  assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
+  assert.equal(defs[0].cwd.fsPath, '/ws');
+});
+
+test('P74: no cwd-config check fires when launch.cwd is unset', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  let called = 0;
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => false,
+    () => {
+      called += 1;
+      return true;
+    },
+  ).provideMcpServerDefinitions();
+  // No configured cwd -> the private-dir fallback has no config.json, so the check
+  // is skipped entirely and the plain CLI-flag launch is used.
+  assert.equal(called, 0);
+  assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
+});

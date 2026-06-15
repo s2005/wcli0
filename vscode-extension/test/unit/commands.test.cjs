@@ -42,6 +42,26 @@ test('generateConfigFile is a no-op when the save dialog is cancelled', async ()
   assert.equal(vscode.__state.files.size, 0);
 });
 
+test('P75: generateConfigFile refuses settings the server would silently drop', async () => {
+  // 0.5 is dropped by buildConfigFile (the server rejects < 1), so the generated
+  // file would not match the requested timeout; generation must refuse and explain.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.commandTimeout', 0.5);
+  vscode.__state.calls.saveDialog = vscode.Uri.file('/ws/wcli0.config.json');
+  await generateConfigFile();
+  assert.equal(vscode.__state.files.has('/ws/wcli0.config.json'), false);
+  assert.ok(vscode.__state.calls.error.some((m) => /commandTimeout/i.test(m)));
+});
+
+test('P75: generateConfigFile ignores launch-method problems (the file carries no launch)', async () => {
+  // A node launch with no script path is a launch-method problem, irrelevant to the
+  // generated config content, so it must NOT block generation.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.method', 'node');
+  vscode.__state.calls.saveDialog = vscode.Uri.file('/ws/wcli0.config.json');
+  await generateConfigFile();
+  assert.ok(vscode.__state.files.has('/ws/wcli0.config.json'), 'config written despite launch problem');
+  assert.equal(vscode.__state.calls.error.length, 0);
+});
+
 test('writeWorkspaceMcpJson creates a stdio server entry', async () => {
   await writeWorkspaceMcpJson();
   const raw = vscode.__state.files.get('/ws/.vscode/mcp.json');
@@ -51,16 +71,28 @@ test('writeWorkspaceMcpJson creates a stdio server entry', async () => {
   assert.equal(parsed.servers.wcli0.command, 'npx');
 });
 
-test('P26: showLaunchCommand shows the provider resolved managed-config path', async () => {
+test('P26/P73: showLaunchCommand writes and shows the provider managed-config path', async () => {
   const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
   const output = vscode.window.createOutputChannel('t');
-  // Provider resolves its managed-config dir to '/managed/dir' (no private-dir fallback needed).
-  const provider = new Wcli0McpProvider(() => {}, undefined, '/managed/dir');
+  const dir = path.join(
+    os.tmpdir(),
+    'wcli0-show-' + process.pid + '-' + Math.random().toString(36).slice(2),
+  );
+  const provider = new Wcli0McpProvider(() => {}, undefined, dir);
   await showLaunchCommand(output, provider);
   const text = output.lines.join('\n');
+  const cfgPath = path.join(dir, 'managed-config.json');
   // The --config path uses the provider's resolved dir, not a bare relative name.
-  assert.ok(text.includes(require('node:path').join('/managed/dir', 'managed-config.json')));
+  assert.ok(text.includes(cfgPath));
+  // P73: the file is materialized so a copied command actually resolves it.
+  assert.ok(fs.existsSync(cfgPath), 'managed config written to disk');
+  const written = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  assert.equal(written.shells.cmd.enabled, true);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('P6: writeWorkspaceMcpJson refuses to export when shells are configured individually', async () => {
@@ -72,6 +104,33 @@ test('P6: writeWorkspaceMcpJson refuses to export when shells are configured ind
   // CLI flags would silently drop the per-shell settings).
   assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
   assert.ok(vscode.__state.calls.error.some((m) => /per-shell settings/i.test(m)));
+});
+
+test('P72: writeWorkspaceMcpJson warns before exporting over a workspace config.json', async () => {
+  // A committed <workspace>/config.json would override the exported (configFile-less)
+  // stdio entry; the export must warn and respect a cancel.
+  vscode.__state.files.set('/ws/config.json', Buffer.from('{}'));
+  vscode.__state.calls.warnReturn = undefined; // user cancels the modal
+  await writeWorkspaceMcpJson();
+  assert.ok(vscode.__state.calls.warn.some((w) => /can override the exported/i.test(w.message)));
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
+test('P72: writeWorkspaceMcpJson writes the entry when the override warning is accepted', async () => {
+  vscode.__state.files.set('/ws/config.json', Buffer.from('{}'));
+  vscode.__state.calls.warnReturn = 'Write anyway';
+  await writeWorkspaceMcpJson();
+  assert.ok(vscode.__state.files.has('/ws/.vscode/mcp.json'), 'entry written after confirmation');
+});
+
+test('P72: writeWorkspaceMcpJson does not warn when wcli0.configFile pins the launch', async () => {
+  // An explicit --config (from configFile) bypasses config.json discovery, so no
+  // override warning is needed even with a workspace config.json present.
+  vscode.__state.files.set('/ws/config.json', Buffer.from('{}'));
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '${workspaceFolder}/wcli0.json');
+  await writeWorkspaceMcpJson();
+  assert.equal(vscode.__state.calls.warn.length, 0);
+  assert.ok(vscode.__state.files.has('/ws/.vscode/mcp.json'));
 });
 
 test('writeWorkspaceMcpJson merges into an existing file', async () => {

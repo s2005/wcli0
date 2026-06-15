@@ -221,6 +221,14 @@ const workspace = {
     async writeFile(uri, content) {
       state.files.set(uri.fsPath, Buffer.from(content));
     },
+    async stat(uri) {
+      if (!state.files.has(uri.fsPath)) {
+        const err = new Error(`ENOENT: ${uri.fsPath}`);
+        err.code = 'FileNotFound';
+        throw err;
+      }
+      return { type: 1, size: state.files.get(uri.fsPath).length };
+    },
     async createDirectory() {},
   },
 };
