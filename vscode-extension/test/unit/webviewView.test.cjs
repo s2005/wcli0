@@ -48,12 +48,13 @@ test('save message persists values to the chosen scope', async () => {
   await view.webview._handler({
     type: 'save',
     target: 'Workspace',
-    values: { shell: 'cmd', commandTimeout: 42, configFile: '' },
+    values: { shell: 'cmd', commandTimeout: 42, 'launch.packageSpec': '' },
   });
   const cfg = vscode.workspace.getConfiguration('wcli0');
   assert.equal(cfg.get('shell', 'all'), 'cmd');
   assert.equal(cfg.get('commandTimeout', null), 42);
-  assert.equal(cfg.get('configFile', 'DEFAULT'), 'DEFAULT');
+  // A non-optional key's empty string clears back to default (undefined).
+  assert.equal(cfg.get('launch.packageSpec', 'DEFAULT'), 'DEFAULT');
   assert.equal(vscode.__state.calls.info.length, 1);
 });
 

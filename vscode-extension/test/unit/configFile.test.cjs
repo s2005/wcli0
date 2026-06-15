@@ -84,6 +84,41 @@ test('yolo/unsafe clear global and per-shell restrictions', () => {
   }
 });
 
+test('P47: yolo forces a per-shell restrictWorkingDirectory override to true', () => {
+  // A per-shell restrictWorkingDirectory: false would otherwise resolve OVER the
+  // global true and silently let yolo run commands in any directory for that shell.
+  const cfg = buildConfigFile(
+    defaults({
+      safetyMode: 'yolo',
+      shells: { cmd: { overrides: { security: { restrictWorkingDirectory: false } } } },
+    }),
+  );
+  assert.equal(cfg.shells.cmd.overrides.security.restrictWorkingDirectory, true);
+});
+
+test('P47: unsafe forces a per-shell restrictWorkingDirectory override to false', () => {
+  // An explicit per-shell true must not survive unsafe mode (global restrict: false).
+  const cfg = buildConfigFile(
+    defaults({
+      safetyMode: 'unsafe',
+      shells: { cmd: { overrides: { security: { restrictWorkingDirectory: true } } } },
+    }),
+  );
+  assert.equal(cfg.shells.cmd.overrides.security.restrictWorkingDirectory, false);
+});
+
+test('P47: a shell with no restrictWorkingDirectory override is left to inherit', () => {
+  // Without a per-shell override the shell inherits the global value; the cleanup
+  // must not inject one (only force an existing override to match the mode).
+  const cfg = buildConfigFile(
+    defaults({
+      safetyMode: 'yolo',
+      shells: { cmd: { overrides: { security: { maxCommandLength: 100 } } } },
+    }),
+  );
+  assert.equal('restrictWorkingDirectory' in (cfg.shells.cmd.overrides.security || {}), false);
+});
+
 test('allowAllDirs keeps restriction when paths are configured', () => {
   const withPaths = buildConfigFile(defaults({ allowAllDirs: true, allowedDirectories: ['/srv'] }));
   assert.equal(withPaths.global.security.restrictWorkingDirectory, true);

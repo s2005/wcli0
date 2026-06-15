@@ -289,9 +289,21 @@ export async function showLaunchCommand(
       `with an auto-managed config file (written to ${managedConfigPath} on launch).`,
     );
   }
-  if (spec.cwd) {
+  // Show the cwd the server actually runs in. With no wcli0.launch.cwd set, the
+  // provider does NOT inherit the caller's directory: it launches from a private
+  // extension-owned directory so the server can't auto-load a workspace/temp
+  // config.json. Display that resolved fallback so a copied command run elsewhere
+  // (e.g. a terminal in the workspace) is understood to differ from the provider.
+  const launchCwd = provider ? provider.resolveLaunchCwd(spec.cwd) : spec.cwd;
+  if (launchCwd) {
     output.appendLine('');
-    output.appendLine(`cwd: ${spec.cwd}`);
+    output.appendLine(`cwd: ${launchCwd}`);
+    if (!spec.cwd) {
+      output.appendLine(
+        '(no wcli0.launch.cwd set; the provider launches from this private extension directory ' +
+          'to avoid auto-loading a config.json from the workspace or a shared temp dir)',
+      );
+    }
   }
   if (Object.keys(spec.env).length) {
     // Show only variable names: values may be secrets and this output channel

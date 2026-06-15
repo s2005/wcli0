@@ -55,3 +55,14 @@
 - [x] P39: Refresh the configuration form when workspace folders change (fixed - subscribed to `onDidChangeWorkspaceFolders`; normalizes `currentScope` to Global when no folder remains and re-posts the form state)
 - [x] P40: Allow the form to configure an empty executable argument list (fixed - `argLines()` returns `[]` when a custom command is set and the args textarea is blank, so the server doesn't fill in default args like `/c` or `-c`)
 - [x] P41: Provide a way to remove non-empty scope overrides (fixed - enum selects gained an `Inherit` option and `allowAllDirs`/`debug` became tri-state selects; Inherit submits `''`/`null` which `applySettings` maps to undefined, clearing the override)
+
+## Review Feedback (PR #86) - round 6
+
+- [x] P42: Recognize Windows absolute paths on non-Windows hosts (fixed - shared `isAbsolutePath` checks both `path.win32` and `path.posix`, used by `resolvedPath`/`pathValue`/`resolveConfigPath`)
+- [x] P43: Re-enable workspace controls when a folder is added (fixed - `applyWorkspaceAvailability` toggles the Workspace radio, mcp.json button, and no-workspace hint in both directions)
+- [x] P44: Apply workspace-removal state even while the form is dirty (fixed - scope availability/selection applied before the dirty guard; only the field-value refresh stays deferred)
+- [x] P45: Add an Inherit option for logging tri-state settings (fixed - `enableTruncation`/`enableLogResources` selects gained an `Inherit` option that clears the scope override)
+- [x] P46: Resolve relative custom executable paths before provider launch (fixed - `customCommandValue` anchors a path-like relative command to the workspace when no cwd is set; validation blocks unanchorable)
+- [x] P47: Force per-shell directory restrictions to match safety mode (fixed - yolo/unsafe cleanup forces a present per-shell `restrictWorkingDirectory` to `true`/`false`)
+- [x] P48: Preserve explicit empty workspace string overrides (fixed - Inherit checkboxes plus `explicitlySetKeys`/`setKeys`; `null` clears, `''` persists for `configFile`/`initialDir`/`logDirectory`/`launch.cwd`)
+- [x] P49: Show the provider's fallback cwd with the launch command (fixed - `resolveLaunchCwd` shares `privateDir()` with `showLaunchCommand`, which now displays the private launch dir)

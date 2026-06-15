@@ -84,6 +84,18 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
   }
 
   /**
+   * The working directory the provider would launch the server from: the
+   * configured cwd when set, otherwise the private extension-owned fallback
+   * directory (the same `privateDir()` used at launch — never the shared temp
+   * root). Shared with `showLaunchCommand` so the displayed cwd matches what the
+   * provider actually registers. Returns undefined only when no private directory
+   * is available (the provider then registers no server).
+   */
+  resolveLaunchCwd(configuredCwd?: string): string | undefined {
+    return configuredCwd ?? this.privateDir();
+  }
+
+  /**
    * The directory the provider writes the auto-managed config into. NEVER the
    * shared global `safeCwd`: the config has a fixed filename (managed-config.json),
    * so every window would write the same path there and clobber each other's

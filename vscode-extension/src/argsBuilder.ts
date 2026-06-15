@@ -19,6 +19,27 @@ export interface LaunchSpec {
 }
 
 /**
+ * Whether a path is absolute under EITHER POSIX or Windows semantics. Node's
+ * `path.isAbsolute` is host-specific, so on a WSL/Linux extension host it returns
+ * false for a valid Windows path such as `C:\Users\me` (or a UNC path), which
+ * would make this code treat the path as workspace-relative and rewrite it (e.g.
+ * `/ws/C:\Users\me`). Checking both `path.win32` and `path.posix` keeps configured
+ * absolute paths intact regardless of the host OS.
+ */
+export function isAbsolutePath(p: string): boolean {
+  return path.win32.isAbsolute(p) || path.posix.isAbsolute(p);
+}
+
+/**
+ * Whether a command is path-like — it contains a path separator (`/` or `\`), so
+ * the OS resolves it relative to the process cwd rather than looking it up on
+ * PATH. A bare name (`npx`, `wcli0`, `bash`) is a PATH lookup and is left alone.
+ */
+function isPathLikeCommand(cmd: string): boolean {
+  return /[\\/]/.test(cmd);
+}
+
+/**
  * Resolve a path-like setting and return it only if it fully resolved to a
  * non-empty value. A `${workspaceFolder}` token with no workspace open is left
  * unresolved (or, for a bare token, empty); emitting such a value as e.g. an
@@ -33,7 +54,7 @@ function resolvedPath(value: string): string | undefined {
   // Resolve a relative path against the workspace folder so it does not depend
   // on the server's process cwd (the provider runs from a neutral temp dir, and
   // the server resolves --config and other paths against process.cwd()).
-  if (!path.isAbsolute(resolved)) {
+  if (!isAbsolutePath(resolved)) {
     const base = primaryWorkspaceFolder()?.uri.fsPath;
     if (!base) {
       // No workspace folder to anchor a relative path. The server would C-root
@@ -151,7 +172,7 @@ function pathValue(value: string, opts: BuildOptions): string | undefined {
     // server's normalizeWindowsPath (e.g. "src" -> C:\src), denying the intended
     // directory and possibly allowing an unrelated one. Values that already carry
     // a token (or are absolute) are kept verbatim for VS Code to resolve.
-    if (!path.isAbsolute(trimmed) && !hasUnresolvedVariables(trimmed)) {
+    if (!isAbsolutePath(trimmed) && !hasUnresolvedVariables(trimmed)) {
       return `\${workspaceFolder}/${trimmed.split(/[\\/]/).join('/')}`;
     }
     return trimmed;
@@ -278,6 +299,53 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
 }
 
 /**
+ * Resolve the custom launch command. A path-like relative command (one that
+ * contains a path separator, e.g. `./bin/server`) is anchored to the workspace
+ * folder when no explicit `launch.cwd` is configured — otherwise the provider,
+ * which launches from a private extension directory, would resolve it there and
+ * fail to start (and it would also diverge from an exported mcp.json, whose
+ * omitted cwd defaults to the workspace). With a cwd set the relative command
+ * resolves against it as intended, and a bare PATH command is left untouched.
+ * When preserving tokens (mcp.json) the trimmed value is returned for VS Code to
+ * resolve. An unanchorable relative path falls back to the resolved value;
+ * validateLaunchSpec blocks it.
+ */
+function customCommandValue(s: Wcli0Settings, opts: BuildOptions): string {
+  if (opts.resolvePaths === false) {
+    return s.customCommand.trim();
+  }
+  const resolved = resolveVariables(s.customCommand.trim());
+  if (
+    resolved &&
+    isPathLikeCommand(resolved) &&
+    !isAbsolutePath(resolved) &&
+    !s.cwd.trim()
+  ) {
+    const base = primaryWorkspaceFolder()?.uri.fsPath;
+    if (base) {
+      return path.resolve(base, resolved);
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Whether a custom command is a relative path-like value that cannot be anchored:
+ * no explicit `launch.cwd` to resolve it against and no workspace folder open to
+ * anchor it to. Mirrors what `customCommandValue` would fail to anchor, so
+ * validation refuses a command that would launch from the provider's private dir.
+ */
+function isUnanchorableCustomCommand(s: Wcli0Settings): boolean {
+  const resolved = resolveVariables(s.customCommand.trim());
+  if (!resolved || !isPathLikeCommand(resolved) || isAbsolutePath(resolved)) {
+    return false;
+  }
+  // A configured cwd anchors the relative command (its own validity is checked
+  // separately), so only an unset cwd with no workspace folder is unanchorable.
+  return !s.cwd.trim() && !primaryWorkspaceFolder();
+}
+
+/**
  * Build the full launch spec (command + launcher args + server flags) for the
  * configured launch method.
  */
@@ -306,7 +374,7 @@ export function buildLaunchSpec(s: Wcli0Settings, opts: BuildOptions = {}): Laun
       };
     case 'custom':
       return {
-        command: resolve(s.customCommand),
+        command: customCommandValue(s, opts),
         args: [
           ...s.customArgs.map((a) => (opts.resolvePaths === false ? a : resolveVariables(a))),
           ...serverArgs,
@@ -400,6 +468,14 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
     } else if (isUnresolvable(s.customCommand)) {
       problems.push({
         message: `wcli0.launch.customCommand "${s.customCommand}" contains an unresolved variable (no matching workspace folder is open).`,
+        blocking: true,
+      });
+    } else if (isUnanchorableCustomCommand(s)) {
+      // A relative path-like command (e.g. ./bin/server) with no wcli0.launch.cwd
+      // and no workspace folder would be launched from the provider's private
+      // extension directory and fail to start; refuse rather than register it.
+      problems.push({
+        message: `wcli0.launch.customCommand "${s.customCommand}" is a relative path but cannot be anchored (no wcli0.launch.cwd set and no workspace folder open); it would be launched from a private extension directory.`,
         blocking: true,
       });
     }

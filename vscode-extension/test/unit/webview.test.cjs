@@ -46,13 +46,13 @@ test('save message persists values to the chosen scope', async () => {
   await panel.webview._handler({
     type: 'save',
     target: 'Workspace',
-    values: { shell: 'cmd', commandTimeout: 42, configFile: '' },
+    values: { shell: 'cmd', commandTimeout: 42, 'launch.packageSpec': '' },
   });
   const cfg = vscode.workspace.getConfiguration('wcli0');
   assert.equal(cfg.get('shell', 'all'), 'cmd');
   assert.equal(cfg.get('commandTimeout', null), 42);
-  // empty string clears back to default (undefined).
-  assert.equal(cfg.get('configFile', 'DEFAULT'), 'DEFAULT');
+  // A non-optional key's empty string clears back to default (undefined).
+  assert.equal(cfg.get('launch.packageSpec', 'DEFAULT'), 'DEFAULT');
   assert.equal(vscode.__state.calls.info.length, 1);
 });
 
@@ -191,4 +191,51 @@ test('P41: selecting Inherit for launch.method clears the scope override', async
     values: { 'launch.method': '' },
   });
   assert.equal(vscode.__state.configWorkspace.has('wcli0.launch.method'), false);
+});
+
+test('P48: an explicit empty value for configFile is persisted, not cleared', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.configFile', '/user/config.json');
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { configFile: '' }, // explicit empty override (Inherit unchecked)
+  });
+  // The empty override is stored so it masks the non-empty User value.
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.configFile'), true);
+  assert.equal(vscode.__state.configWorkspace.get('wcli0.configFile'), '');
+});
+
+test('P48: Inherit (null) for configFile clears the scope override', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '/ws/config.json');
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { configFile: null }, // Inherit checked
+  });
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.configFile'), false);
+});
+
+test('P48: init reports which optional-string keys are explicitly set at the scope', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.initialDir', '/ws/start');
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init.setKeys.includes('configFile'), 'explicit empty configFile reported as set');
+  assert.ok(init.setKeys.includes('initialDir'), 'initialDir reported as set');
+  assert.ok(!init.setKeys.includes('logDirectory'), 'unset logDirectory not reported');
+});
+
+test('P45: the logging tri-state selects offer an Inherit option', () => {
+  openConfigPanel(makeContext());
+  const html = vscode.__state.lastWebviewPanel.webview.html;
+  const trunc = html.match(/<select id="enableTruncation">[\s\S]*?<\/select>/)[0];
+  const logres = html.match(/<select id="enableLogResources">[\s\S]*?<\/select>/)[0];
+  assert.match(trunc, /<option value="">Inherit<\/option>/);
+  assert.match(logres, /<option value="">Inherit<\/option>/);
 });

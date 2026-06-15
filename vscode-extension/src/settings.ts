@@ -269,3 +269,35 @@ export function readSettingsForScope(target: ConfigScope, scope?: vscode.Uri): W
     return value === undefined ? def : value;
   });
 }
+
+/**
+ * Optional string settings where an explicit empty value is meaningful at the
+ * workspace scope: an empty override disables a non-empty User-scope default
+ * (e.g. clearing a workspace configFile must NOT re-enable the user's global
+ * config file). The config form distinguishes such an explicit-empty override
+ * from "Inherit" (no override) for exactly these keys.
+ */
+export const OPTIONAL_STRING_KEYS = [
+  'launch.cwd',
+  'configFile',
+  'initialDir',
+  'logDirectory',
+] as const;
+
+/**
+ * The subset of {@link OPTIONAL_STRING_KEYS} that is explicitly set at the given
+ * scope (value !== undefined, including an empty string). Lets the config form
+ * tell an explicit empty override apart from an unset value, which
+ * `readSettingsForScope` alone cannot (it returns the default for both).
+ */
+export function explicitlySetKeys(target: ConfigScope, scope?: vscode.Uri): string[] {
+  const c = vscode.workspace.getConfiguration(CONFIG_SECTION, scope ?? null);
+  return OPTIONAL_STRING_KEYS.filter((key) => {
+    const info = c.inspect(key);
+    if (!info) {
+      return false;
+    }
+    const value = target === 'Global' ? info.globalValue : info.workspaceValue;
+    return value !== undefined;
+  });
+}

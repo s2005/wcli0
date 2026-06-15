@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { isServerInvalidLogPath, isValidPort } from './argsBuilder';
+import { isAbsolutePath, isServerInvalidLogPath, isValidPort } from './argsBuilder';
 import {
   hasUnresolvedVariables,
   PerShellConfig,
@@ -46,7 +46,7 @@ function resolveConfigPath(value: string): string | undefined {
   if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
     return undefined;
   }
-  if (!path.isAbsolute(resolved)) {
+  if (!isAbsolutePath(resolved)) {
     const base = primaryWorkspaceFolder()?.uri.fsPath;
     // No workspace to anchor a relative path: drop it rather than emit a value
     // the server would C-root (normalizeWindowsPath turns "src" into C:\src),
@@ -408,6 +408,15 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
       }
       if (overrides.security && overrides.security.enableInjectionProtection !== undefined) {
         overrides.security.enableInjectionProtection = false;
+      }
+      // A per-shell restrictWorkingDirectory override is resolved by the server
+      // OVER the global value, so a stale per-shell value silently contradicts the
+      // safety mode: yolo (global restrict: true, documented to keep directory
+      // restrictions) would still allow any directory for a shell pinned to false,
+      // and unsafe (global restrict: false) would keep a shell pinned to true.
+      // Force the per-shell value to match the mode: true for yolo, false for unsafe.
+      if (overrides.security && overrides.security.restrictWorkingDirectory !== undefined) {
+        overrides.security.restrictWorkingDirectory = s.safetyMode === 'yolo';
       }
     }
     shells[name] = entry;

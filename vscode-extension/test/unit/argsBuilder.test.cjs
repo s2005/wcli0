@@ -10,6 +10,7 @@ const {
   renderCommandLine,
   isValidPort,
   isServerInvalidLogPath,
+  isAbsolutePath,
 } = require('../../dist/argsBuilder.js');
 
 function defaults(overrides = {}) {
@@ -629,4 +630,65 @@ test('P36: a bare PATH executable command is not flagged', () => {
   const s = defaults({ shells: { cmd: { executable: { command: 'cmd.exe', args: ['/c'] } } } });
   const problems = validateLaunchSpec(s, true);
   assert.ok(!problems.some((p) => /executable\.command|executable\.args/.test(p.message)));
+});
+
+test('P42: isAbsolutePath recognizes both Windows and POSIX absolute paths', () => {
+  // A Windows path is absolute even on a POSIX host (and vice versa); the
+  // host-specific path.isAbsolute would miss one of these, treating a valid
+  // absolute path as workspace-relative.
+  assert.equal(isAbsolutePath('C:\\Users\\me'), true);
+  assert.equal(isAbsolutePath('C:/Users/me'), true);
+  assert.equal(isAbsolutePath('\\\\server\\share'), true);
+  assert.equal(isAbsolutePath('/usr/local/bin'), true);
+  assert.equal(isAbsolutePath('relative/path'), false);
+  assert.equal(isAbsolutePath('./rel'), false);
+  assert.equal(isAbsolutePath('bin\\server'), false);
+});
+
+test('P42: a Windows allowed dir is treated as absolute (not workspace-rewritten)', () => {
+  // Even with a workspace open, a Windows-absolute path must be emitted verbatim
+  // rather than anchored under the workspace folder.
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildServerArgs(defaults({ allowedDirectories: ['C:\\Users\\me'] }));
+  const idx = spec.indexOf('--allowedDir');
+  assert.equal(spec[idx + 1], 'C:\\Users\\me');
+});
+
+test('P46: a relative path-like custom command is anchored to the workspace', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildLaunchSpec(defaults({ launchMethod: 'custom', customCommand: './bin/server' }));
+  // Anchored to the workspace, not left to resolve against the provider's private cwd.
+  assert.equal(spec.command, path.resolve('/ws', './bin/server'));
+});
+
+test('P46: a relative custom command keeps a configured cwd as the anchor (unchanged)', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildLaunchSpec(
+    defaults({ launchMethod: 'custom', customCommand: './bin/server', cwd: '/elsewhere' }),
+  );
+  // With an explicit cwd the relative command resolves against it, so leave it as-is.
+  assert.equal(spec.command, './bin/server');
+});
+
+test('P46: a bare PATH custom command is not anchored', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildLaunchSpec(defaults({ launchMethod: 'custom', customCommand: 'my-server' }));
+  assert.equal(spec.command, 'my-server');
+});
+
+test('P46: a relative custom command with no cwd and no workspace is blocking', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const problems = validateLaunchSpec(
+    defaults({ launchMethod: 'custom', customCommand: './bin/server' }),
+  );
+  assert.ok(problems.some((p) => /customCommand/.test(p.message) && p.blocking));
+});
+
+test('P46: a relative custom command for mcp.json keeps its value (VS Code anchors cwd)', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const spec = buildLaunchSpec(
+    defaults({ launchMethod: 'custom', customCommand: './bin/server' }),
+    { resolvePaths: false },
+  );
+  assert.equal(spec.command, './bin/server');
 });

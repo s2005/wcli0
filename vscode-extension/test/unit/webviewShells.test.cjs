@@ -89,6 +89,8 @@ function makeHarness() {
   return {
     els,
     captured,
+    radios,
+    scope: (value) => radios.find((r) => r.value === value),
     dispatch: (data) => messageListener({ data }),
     clickSave: () => els.get('save')._l.click.forEach((cb) => cb()),
   };
@@ -323,4 +325,69 @@ test('P41: enum Inherit submits empty string so the host clears the override', (
   const save = h.captured.find((m) => m.type === 'save');
   assert.ok(save, 'save posted');
   assert.equal(save.values.safetyMode, '');
+});
+
+test('P43: adding a workspace folder re-enables the Workspace controls', () => {
+  const h = makeHarness();
+  // Open with no workspace: Workspace scope and the mcp.json export are disabled.
+  h.dispatch({ type: 'init', hasWorkspace: false, scope: 'Global', settings: { shells: {} } });
+  assert.equal(h.scope('Workspace').disabled, true);
+  assert.equal(h.els.get('writeMcp').disabled, true);
+  assert.equal(h.els.get('noWorkspace').style.display, 'block');
+  // A later init with a folder must re-enable them and hide the hint.
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  assert.equal(h.scope('Workspace').disabled, false);
+  assert.equal(h.els.get('writeMcp').disabled, false);
+  assert.equal(h.els.get('noWorkspace').style.display, 'none');
+});
+
+test('P44: removing the folder while dirty switches scope to Global but keeps edits', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  // Unsaved edit on a non-optional field so the form is dirty.
+  h.els.get('commandTimeout').value = '99';
+  // Folder removed: host normalizes scope to Global and posts an external init.
+  h.dispatch({
+    type: 'init',
+    external: true,
+    hasWorkspace: false,
+    scope: 'Global',
+    settings: { commandTimeout: 5, shells: {} },
+  });
+  // Field values are preserved (external reload skipped while dirty)...
+  assert.equal(h.els.get('commandTimeout').value, '99');
+  // ...but the Workspace scope is disabled and Global is selected, so a Save now
+  // targets a valid scope instead of a non-existent Workspace.
+  assert.equal(h.scope('Workspace').disabled, true);
+  assert.equal(h.scope('Global').checked, true);
+});
+
+test('P48: clearing a set optional field persists an explicit empty override', () => {
+  const h = makeHarness();
+  // configFile is explicitly set at this scope (Inherit unchecked).
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { configFile: '/ws/config.json', shells: {} },
+    setKeys: ['configFile'],
+  });
+  assert.equal(h.els.get('configFile-inherit').checked, false);
+  // User clears the field (does not touch Inherit) and saves.
+  h.els.get('configFile').value = '';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  // Empty + Inherit unchecked => explicit empty override (not null/clear).
+  assert.equal(save.values.configFile, '');
+});
+
+test('P48: an unset optional field defaults to Inherit and submits null', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  assert.equal(h.els.get('configFile-inherit').checked, true);
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  // Unchanged Inherit field is not part of collectChanged, so it isn't submitted.
+  assert.equal('configFile' in (save.values || {}), false);
 });

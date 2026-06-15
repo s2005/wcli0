@@ -2,9 +2,14 @@ import * as vscode from 'vscode';
 import {
   CONFIG_SECTION,
   ConfigScope,
+  explicitlySetKeys,
+  OPTIONAL_STRING_KEYS,
   primaryWorkspaceFolder,
   readSettingsForScope,
 } from './settings';
+
+/** Keys where an explicit empty string is a meaningful override, not "clear". */
+const OPTIONAL_STRING_KEY_SET = new Set<string>(OPTIONAL_STRING_KEYS);
 
 /** Settings keys editable from the form, with their value types. */
 const FIELD_KEYS = [
@@ -87,6 +92,9 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       hasWorkspace: !!primaryWorkspaceFolder(),
       scope: currentScope,
       settings: readSettingsForScope(currentScope, scope),
+      // Which optional-string keys are explicitly set at this scope, so the form
+      // can distinguish an empty override from "Inherit" (both read as empty).
+      setKeys: explicitlySetKeys(currentScope, scope),
     });
   };
 
@@ -170,7 +178,10 @@ async function applySettings(payload: SavePayload): Promise<void> {
     }
     let value = payload.values[key];
     // Normalize "empty" values back to undefined so the setting reverts to default.
-    if (value === '' || value === null) {
+    // For optional-string keys an explicit '' is a meaningful override (it masks a
+    // non-empty value from the other scope), so only `null` (the form's Inherit)
+    // clears them; '' is persisted as-is.
+    if (value === null || (value === '' && !OPTIONAL_STRING_KEY_SET.has(key))) {
       value = undefined;
     }
     // An empty object (e.g. wcli0.shells with no configured shells) should clear
@@ -357,8 +368,10 @@ function renderHtml(webview: vscode.Webview): string {
   <div id="customRow"><label>Custom command</label><input type="text" id="launch.customCommand" /></div>
   <label>Working directory <span class="hint">supports \${workspaceFolder}</span></label>
   <input type="text" id="launch.cwd" placeholder="\${workspaceFolder}" />
+  <label class="checkbox optional-inherit"><input type="checkbox" id="launch.cwd-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
   <label>Config file <span class="hint">passed via --config; CLI settings override it</span></label>
   <input type="text" id="configFile" placeholder="\${workspaceFolder}/wcli0.config.json" />
+  <label class="checkbox optional-inherit"><input type="checkbox" id="configFile-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
   </section>
 
   <section>
@@ -385,6 +398,7 @@ function renderHtml(webview: vscode.Webview): string {
   <textarea id="allowedDirectories" placeholder="\${workspaceFolder}"></textarea>
   <label>Initial directory</label>
   <input type="text" id="initialDir" />
+  <label class="checkbox optional-inherit"><input type="checkbox" id="initialDir-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
   </section>
 
   <section>
@@ -417,15 +431,16 @@ function renderHtml(webview: vscode.Webview): string {
     </div>
     <div>
       <label>Truncation</label>
-      <select id="enableTruncation"><option value="default">default</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>
+      <select id="enableTruncation"><option value="">Inherit</option><option value="default">default</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>
     </div>
     <div>
       <label>Log resources</label>
-      <select id="enableLogResources"><option value="default">default</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>
+      <select id="enableLogResources"><option value="">Inherit</option><option value="default">default</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>
     </div>
   </div>
   <label>Log directory</label>
   <input type="text" id="logDirectory" />
+  <label class="checkbox optional-inherit"><input type="checkbox" id="logDirectory-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
   <div class="row">
     <div><label>Allow all directories</label>${triSelect('allowAllDirs')}</div>
     <div><label>Debug logging</label>${triSelect('debug')}</div>
@@ -465,6 +480,13 @@ function renderHtml(webview: vscode.Webview): string {
   const triBoolFields = ['allowAllDirs','debug'];
   const arrayFields = ['allowedDirectories'];
   const stringFields = ['launch.packageSpec','launch.nodeScriptPath','launch.customCommand','launch.cwd','configFile','shell','wslMountPoint','initialDir','logDirectory','enableTruncation','enableLogResources','safetyMode','launch.method','transport.host','transport.mode'];
+  // Optional string settings where an explicit empty value is a meaningful
+  // override (it disables a non-empty value from the other scope). Each has an
+  // Inherit checkbox: checked -> no override (collect emits null -> cleared);
+  // unchecked -> the explicit text value, INCLUDING empty, is persisted. Mirrors
+  // OPTIONAL_STRING_KEYS on the host.
+  const optionalStringFields = ['launch.cwd','configFile','initialDir','logDirectory'];
+  const inheritCb = (f) => $(f + '-inherit');
 
   // Per-shell configuration (wcli0.shells). Mirrors PER_SHELL_DEFS on the host.
   const SHELL_DEFS = [
@@ -578,12 +600,22 @@ function renderHtml(webview: vscode.Webview): string {
     }
   }
 
-  function setVal(s) {
+  function setVal(s, setKeys) {
+    setKeys = setKeys || [];
     for (const f of stringFields) if ($(f)) $(f).value = s[mapKey(f)] ?? '';
     for (const f of numberFields) if ($(f)) $(f).value = s[mapKey(f)] == null ? '' : s[mapKey(f)];
     for (const f of triBoolFields) if ($(f)) $(f).value = boolToTri(s[mapKey(f)]);
     for (const f of arrayFields) if ($(f)) $(f).value = (s[mapKey(f)] || []).join('\\n');
     setShellsVal(s.shells);
+    // Optional string overrides: the "Inherit" checkbox reflects whether the key
+    // is actually set at this scope (setKeys). The text value was set by the
+    // generic stringFields loop above, so a stored value — or an explicit empty
+    // override — round-trips unchanged.
+    for (const f of optionalStringFields) {
+      const cb = inheritCb(f);
+      if (!cb || !$(f)) continue;
+      cb.checked = setKeys.indexOf(f) === -1;
+    }
     updateLaunchRows();
     updateTransportRows();
   }
@@ -609,6 +641,16 @@ function renderHtml(webview: vscode.Webview): string {
     // override; otherwise emit a real boolean.
     for (const f of triBoolFields) if ($(f)) values[f] = triToBool($(f).value) ?? null;
     for (const f of arrayFields) if ($(f)) values[f] = $(f).value.split('\\n').map(x=>x.trim()).filter(Boolean);
+    // Optional string overrides override the generic stringFields value above. A
+    // non-empty value is always an explicit override. When empty, the Inherit
+    // checkbox decides: checked -> null (applySettings clears the scope override);
+    // unchecked -> '' (an explicit empty override that masks the other scope).
+    for (const f of optionalStringFields) {
+      const cb = inheritCb(f);
+      if (!cb || !$(f)) continue;
+      const v = $(f).value.trim();
+      values[f] = v ? v : (cb.checked ? null : '');
+    }
     values['shells'] = collectShells();
     return values;
   }
@@ -655,6 +697,18 @@ function renderHtml(webview: vscode.Webview): string {
   }
   $('transport.mode').addEventListener('change', updateTransportRows);
 
+  // Keep the Inherit checkbox and its text field consistent: checking Inherit
+  // clears the field (so the inherited state is unambiguous), and typing a value
+  // clears Inherit (the entry becomes an explicit override). An empty field with
+  // Inherit unchecked is an explicit empty override.
+  for (const f of optionalStringFields) {
+    const cb = inheritCb(f);
+    const el = $(f);
+    if (!cb || !el) continue;
+    cb.addEventListener('change', () => { if (cb.checked) el.value = ''; });
+    el.addEventListener('input', () => { if (el.value.trim()) cb.checked = false; });
+  }
+
   $('save').addEventListener('click', () => {
     // Block out-of-range ports (the contributed setting is 1..65535) before
     // saving; an invalid port makes the provider register no server in http mode.
@@ -695,6 +749,28 @@ function renderHtml(webview: vscode.Webview): string {
     savedTimer = setTimeout(() => { el.style.display = 'none'; }, 2500);
   }
 
+  // Reflect whether a workspace folder is available: enable/disable the Workspace
+  // scope radio and the workspace-only .vscode/mcp.json export, and show the
+  // no-workspace hint. When the folder is gone, force the Global radio so the form
+  // never keeps Workspace selected against a non-existent target.
+  function applyWorkspaceAvailability(hasWorkspace) {
+    const ws = document.querySelector('input[name=scope][value=Workspace]');
+    const gl = document.querySelector('input[name=scope][value=Global]');
+    if (hasWorkspace) {
+      $('noWorkspace').style.display = 'none';
+      if (ws) ws.disabled = false;
+      $('writeMcp').disabled = false;
+    } else {
+      $('noWorkspace').style.display = 'block';
+      if (ws) {
+        ws.disabled = true;
+        if (ws.checked && gl) gl.checked = true;
+      }
+      // .vscode/mcp.json is workspace-relative; nothing to write without a folder.
+      $('writeMcp').disabled = true;
+    }
+  }
+
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'saved') {
@@ -702,25 +778,25 @@ function renderHtml(webview: vscode.Webview): string {
       return;
     }
     if (msg.type === 'init') {
-      // A background configuration change must not discard unsaved edits. Skip an
-      // external reload while the form is dirty; explicit ready/scope-change
-      // reloads (external falsy) always apply. A later save re-baselines cleanly.
+      // Scope availability/selection must track reality even when the field-value
+      // refresh is skipped: a folder added later must re-enable the Workspace
+      // controls, and a folder removed while the form is dirty must not leave
+      // Workspace selected (Save would then target a non-existent scope). Apply
+      // these before the dirty guard.
+      applyWorkspaceAvailability(msg.hasWorkspace);
+      if (msg.scope) {
+        const r = document.querySelector('input[name=scope][value=' + msg.scope + ']');
+        if (r && !r.disabled) r.checked = true;
+      }
+      // A background configuration change must not discard unsaved edits. Skip the
+      // field-value refresh on an external reload while the form is dirty; explicit
+      // ready/scope-change reloads (external falsy) always apply. A later save
+      // re-baselines cleanly.
       if (msg.external && isDirty()) {
         return;
       }
-      if (msg.scope) {
-        const r = document.querySelector('input[name=scope][value=' + msg.scope + ']');
-        if (r) r.checked = true;
-      }
-      setVal(msg.settings);
+      setVal(msg.settings, msg.setKeys);
       initial = collect();
-      if (!msg.hasWorkspace) {
-        $('noWorkspace').style.display = 'block';
-        document.querySelector('input[name=scope][value=Workspace]').disabled = true;
-        document.querySelector('input[name=scope][value=Global]').checked = true;
-        // .vscode/mcp.json is workspace-relative; nothing to write without a folder.
-        $('writeMcp').disabled = true;
-      }
     }
   });
   vscode.postMessage({ type: 'ready' });

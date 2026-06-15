@@ -148,6 +148,29 @@ test('showLaunchCommand reports cwd and env when configured', async () => {
   assert.equal(/bar/.test(text), false);
 });
 
+test("P49: showLaunchCommand shows the provider's private fallback cwd when none is configured", async () => {
+  const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
+  // No wcli0.launch.cwd set, but the provider has a private safe cwd.
+  const output = vscode.window.createOutputChannel('test');
+  const provider = new Wcli0McpProvider(() => {}, '/private/extension/dir', undefined);
+  await showLaunchCommand(output, provider);
+  const text = output.lines.join('\n');
+  assert.match(text, /cwd: \/private\/extension\/dir/);
+  // And it explains that the directory is the provider's private launch dir.
+  assert.match(text, /no wcli0\.launch\.cwd set/);
+});
+
+test('P49: a configured cwd is shown without the private-dir note', async () => {
+  const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}');
+  const output = vscode.window.createOutputChannel('test');
+  const provider = new Wcli0McpProvider(() => {}, '/private/extension/dir', undefined);
+  await showLaunchCommand(output, provider);
+  const text = output.lines.join('\n');
+  assert.match(text, /cwd: \/ws/);
+  assert.equal(/no wcli0\.launch\.cwd set/.test(text), false);
+});
+
 test('refreshServerDefinition refreshes the provider', async () => {
   let refreshed = 0;
   await refreshServerDefinition({ refresh: () => (refreshed += 1) });
