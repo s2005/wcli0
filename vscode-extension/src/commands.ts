@@ -242,7 +242,18 @@ export async function showLaunchCommand(
   const settings = readExportSettings(asScope(formScopeArg), scope);
   // Mirror the provider: when shells are configured individually the server is
   // launched against an auto-managed config file, not the global CLI flags.
-  const managed = hasPerShellConfig(settings) && settings.transportMode === 'stdio';
+  const perShell = hasPerShellConfig(settings) && settings.transportMode === 'stdio';
+  // Also mirror the provider's pinning: a plain stdio launch with no per-shell
+  // config and no wcli0.configFile is launched against a generated config when the
+  // server's implicit ~/.win-cli-mcp/config.json exists, so it cannot silently
+  // override the displayed settings (see P66).
+  const homeConfigPresent = homeConfigExists();
+  const pinAgainstHomeConfig =
+    !perShell &&
+    settings.transportMode === 'stdio' &&
+    !settings.configFile.trim() &&
+    homeConfigPresent;
+  const managed = perShell || pinAgainstHomeConfig;
   // Use the provider's resolved managed-config directory (which applies the same
   // private-dir fallback used at launch) so the displayed command matches what is
   // actually registered, instead of a bare relative "managed-config.json".
@@ -251,12 +262,14 @@ export async function showLaunchCommand(
     managed && managedConfigDir ? path.join(managedConfigDir, MANAGED_CONFIG_FILE) : undefined;
 
   output.clear();
-  // In per-shell mode the provider launches against an auto-managed config file.
-  // If no private directory is available to write it, the provider registers no
-  // server — so don't render a global-flag command that ignores every per-shell
-  // setting (and would claim the config was "written to undefined"). Report that
-  // no launch is available instead, mirroring the provider's behavior.
-  if (managed && !managedConfigPath) {
+  // In per-shell mode the provider REQUIRES an auto-managed config file. If no
+  // private directory is available to write it, the provider registers no server —
+  // so don't render a global-flag command that ignores every per-shell setting (and
+  // would claim the config was "written to undefined"). Report that no launch is
+  // available instead, mirroring the provider's behavior. (Pinning is only
+  // defense-in-depth, so when it can't write a config the plain command is still
+  // shown below, with the P63 home-config warning as the fallback.)
+  if (perShell && !managedConfigPath) {
     output.appendLine('No wcli0 launch command available.');
     output.appendLine('');
     output.appendLine(
@@ -275,21 +288,35 @@ export async function showLaunchCommand(
 
   const spec = buildLaunchSpec(settings, managedConfigPath ? { managedConfigPath } : {});
   const line = renderCommandLine(spec);
+  // Whether the command actually launches via a generated config (per-shell or
+  // pinned). A pin that could not be written falls back to plain flags, so validate
+  // as non-managed there to keep the P63 home-config warning.
+  const launchedManaged = !!managedConfigPath;
   // Pass whether the implicit home config exists so a safe launch with no configFile
   // surfaces the same reduced-protection note the provider logs (see P63).
-  const problems = validateLaunchSpec(settings, managed, homeConfigExists());
+  const problems = validateLaunchSpec(settings, launchedManaged, homeConfigPresent);
 
   output.appendLine('Resolved wcli0 launch command:');
   output.appendLine('');
   output.appendLine(line);
-  if (managed) {
+  if (launchedManaged) {
     output.appendLine('');
-    output.appendLine(
-      'Note: shells are configured individually (wcli0.shells), so the server is launched',
-    );
-    output.appendLine(
-      `with an auto-managed config file (written to ${managedConfigPath} on launch).`,
-    );
+    if (perShell) {
+      output.appendLine(
+        'Note: shells are configured individually (wcli0.shells), so the server is launched',
+      );
+      output.appendLine(
+        `with an auto-managed config file (written to ${managedConfigPath} on launch).`,
+      );
+    } else {
+      output.appendLine(
+        'Note: the server is launched with an auto-managed config file (written to',
+      );
+      output.appendLine(
+        `${managedConfigPath} on launch) so the implicit ~/.win-cli-mcp/config.json cannot`,
+      );
+      output.appendLine('override these settings.');
+    }
   }
   // Show the cwd the server actually runs in. With no wcli0.launch.cwd set, the
   // provider does NOT inherit the caller's directory: it launches from a private

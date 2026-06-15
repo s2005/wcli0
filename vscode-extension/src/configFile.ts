@@ -133,20 +133,23 @@ function isPathLikeCommand(cmd: string): boolean {
 }
 
 /**
- * Resolve a per-shell executable command: resolve extension-owned variables, then
- * anchor a path-like RELATIVE command to the workspace when no `launch.cwd` is set
- * — matching `customCommandValue` in argsBuilder. A managed launch runs the server
- * from a private extension-storage directory and the server passes
- * `executable.command` straight to spawn, so an unanchored relative command (e.g.
- * `./tools/bash`) would resolve under that private directory and never start. With
- * a cwd configured the relative command resolves against it as intended, and a
- * bare PATH command (e.g. `bash`) is left untouched. An unanchorable relative
- * command is left as-is and refused by validateLaunchSpec.
+ * Resolve a per-shell executable command to an absolute path: resolve
+ * extension-owned variables, then anchor a path-like RELATIVE command against the
+ * configured `launch.cwd` when set, otherwise the workspace folder. Unlike the
+ * custom LAUNCH command (which the provider runs from `launch.cwd`), the server
+ * spawns a shell's `executable.command` with `cwd` set to the command's REQUESTED
+ * working directory (`spawnCwd`), not the launch cwd — so a relative command would
+ * resolve under whichever allowed directory a command runs from and usually fail to
+ * find the executable (or run a different file at that path). Anchoring it to the
+ * launch cwd (where the user expects the relative command to live) makes the
+ * spawned path deterministic. A bare PATH command (e.g. `bash`) is left untouched;
+ * an unanchorable relative command is left as-is and refused by validateLaunchSpec
+ * (an unresolvable `launch.cwd` is reported separately).
  */
 function resolvePerShellCommand(command: string, s: Wcli0Settings): string {
   const resolved = resolveVariables(command);
-  if (resolved && isPathLikeCommand(resolved) && !isAbsolutePath(resolved) && !s.cwd.trim()) {
-    const base = primaryWorkspaceFolder()?.uri.fsPath;
+  if (resolved && isPathLikeCommand(resolved) && !isAbsolutePath(resolved)) {
+    const base = s.cwd.trim() ? resolveConfigPath(s.cwd) : primaryWorkspaceFolder()?.uri.fsPath;
     if (base) {
       return path.resolve(base, resolved);
     }
@@ -291,10 +294,10 @@ function applyPerShellOverrides(
           .filter((p): p is string => p !== undefined)
           .map(toShellPath);
       }
-      const initial = ov.paths.initialDir ? resolveConfigPath(ov.paths.initialDir) : undefined;
-      if (initial !== undefined) {
-        paths.initialDir = toShellPath(initial);
-      }
+      // A per-shell `initialDir` is intentionally NOT emitted: the server only
+      // chdir's to the GLOBAL config.global.paths.initialDir at startup and never
+      // consumes a shell-specific initialDir for execution or path validation, so
+      // writing one would expose a setting with no effect (see P68).
       if (Object.keys(paths).length > 0) {
         overrides.paths = paths;
       }
@@ -352,11 +355,10 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     if (!p) {
       return false;
     }
-    // A per-shell initialDir is NOT promoted into the shell's allowedPaths by the
-    // server, so it cannot satisfy the working-directory restriction. Counting it
-    // here would keep restrictWorkingDirectory enabled with an empty allowlist, so
-    // every command fails with "No allowed paths configured" instead of honoring
-    // allowAllDirs. Only resolved per-shell allowedPaths block the lift.
+    // Only resolved per-shell allowedPaths can satisfy the working-directory
+    // restriction. Counting anything else here would keep restrictWorkingDirectory
+    // enabled with an empty allowlist, so every command fails with "No allowed paths
+    // configured" instead of honoring allowAllDirs.
     const resolvedShellPaths = (p.allowedPaths ?? [])
       .map((x) => resolveConfigPath(x))
       .filter((x): x is string => x !== undefined);

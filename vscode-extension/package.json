@@ -266,9 +266,6 @@
                         "items": {
                           "type": "string"
                         }
-                      },
-                      "initialDir": {
-                        "type": "string"
                       }
                     },
                     "additionalProperties": false

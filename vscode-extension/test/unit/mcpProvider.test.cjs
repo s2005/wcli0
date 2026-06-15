@@ -11,7 +11,13 @@ test.beforeEach(() => {
 });
 
 test('uses the injected private cwd, not the workspace, by default', () => {
-  const defs = new Wcli0McpProvider(undefined, '/priv/storage').provideMcpServerDefinitions();
+  // No home config present (injected false), so the plain CLI-flag launch is used.
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv/storage',
+    undefined,
+    () => false,
+  ).provideMcpServerDefinitions();
   assert.equal(defs.length, 1);
   assert.ok(defs[0] instanceof vscode.McpStdioServerDefinition);
   assert.equal(defs[0].command, 'npx');
@@ -41,7 +47,13 @@ test('P19: refuses to launch (no server) when no private dir can be created', ()
     const logs = [];
     // No safeCwd injected and no launch.cwd set: privateDir() fails, so the
     // provider must register no server rather than launch from the shared root.
-    const defs = new Wcli0McpProvider((m) => logs.push(m)).provideMcpServerDefinitions();
+    // No home config (injected false) so the plain CLI-flag path is exercised.
+    const defs = new Wcli0McpProvider(
+      (m) => logs.push(m),
+      undefined,
+      undefined,
+      () => false,
+    ).provideMcpServerDefinitions();
     assert.deepEqual(defs, []);
     assert.ok(logs.some((m) => /shared temp root/i.test(m)));
   } finally {
@@ -69,7 +81,9 @@ test('sets cwd only when launch.cwd is configured', () => {
 test('logs non-blocking safety notes from the provider', () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.allowedDirectories', ['/ws']);
   const logged = [];
-  new Wcli0McpProvider((m) => logged.push(m)).provideMcpServerDefinitions();
+  // No home config (injected false): the launch uses CLI --allowedDir flags, which
+  // is what triggers the injection-protection note (a pinned config would not).
+  new Wcli0McpProvider((m) => logged.push(m), undefined, undefined, () => false).provideMcpServerDefinitions();
   assert.ok(logged.some((m) => /injection protection/i.test(m)));
 });
 
@@ -177,7 +191,13 @@ test('per-shell config launches via an auto-managed --config file', () => {
 
 test('without per-shell config the normal CLI-flag launch is unchanged', () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
-  const defs = new Wcli0McpProvider(undefined, '/priv', managedDir()).provideMcpServerDefinitions();
+  // No home config (injected false), so no pinning: the global CLI flags are used.
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => false,
+  ).provideMcpServerDefinitions();
   assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
 });
 
@@ -222,4 +242,58 @@ test('P31: managed config fallback is per-window unique, not the shared safeCwd'
   const written = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   assert.equal(written.shells.cmd.enabled, true);
   fs.rmSync(configDir, { recursive: true, force: true });
+});
+
+// --- P66: pin settings against the implicit home config ---------------------
+
+test('P66: a plain launch is pinned to a generated config when the home config exists', () => {
+  // No per-shell config and no wcli0.configFile, but the server would fall back to
+  // ~/.win-cli-mcp/config.json (injected present), so the provider must launch with
+  // a generated --config to bypass it rather than the bare CLI flags.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  const dir = managedDir();
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    dir,
+    () => true,
+  ).provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  const args = defs[0].args;
+  const ci = args.indexOf('--config');
+  assert.ok(ci >= 0, '--config present so the home config is bypassed');
+  assert.equal(args[ci + 1], path.join(dir, 'managed-config.json'));
+  assert.ok(args.includes('--transport') && args[args.indexOf('--transport') + 1] === 'stdio');
+  // Global CLI flags are not emitted; the shell selection lives in the file instead.
+  assert.ok(!args.includes('--shell'), 'no --shell flag in the pinned launch');
+  const written = JSON.parse(fs.readFileSync(path.join(dir, 'managed-config.json'), 'utf8'));
+  assert.equal(written.shells.cmd.enabled, true);
+  assert.equal(written.shells.powershell.enabled, false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('P66: pinning is skipped when wcli0.configFile is set (its --config bypasses the home config)', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', '/ws/wcli0.json');
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => true,
+  ).provideMcpServerDefinitions();
+  // The user's own --config already overrides the implicit home config, so the
+  // CLI-flag path is used with that referenced file (no generated managed config).
+  const args = defs[0].args;
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.equal(args[args.indexOf('--config') + 1], '/ws/wcli0.json');
+});
+
+test('P66: no pinning when the home config is absent (plain CLI flags)', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => false,
+  ).provideMcpServerDefinitions();
+  assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
 });

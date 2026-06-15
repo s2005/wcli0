@@ -327,22 +327,27 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   if (s.debug) {
     args.push('--debug');
   }
-  // Whether the extension emits its own --transport. When it does, a --transport in
-  // extraArgs must be dropped: yargs would parse the pair as an array and the
-  // server's applyCliTransport (scalar-only) would apply neither, silently keeping
-  // the referenced config's transport — defeating a forced stdio launch in
-  // particular (the process would open a network listener but never speak stdio).
-  let emittedTransport = false;
+  // Whether a --transport in extraArgs must be dropped. yargs parses a repeated
+  // string option as an array and the server's applyCliTransport (scalar-only)
+  // applies neither, silently keeping the referenced config's transport. This must
+  // be stripped whenever the extension emits its own --transport AND for every
+  // stdio launch: a provider/mcp.json stdio registration must never let an
+  // extraArgs value such as `--transport http` turn the process into a network
+  // listener the client never connects to.
+  let stripExtraTransport = false;
   if (s.transportMode === 'stdio') {
-    // When a config file is referenced it may select http/sse; force stdio so a
-    // provider-launched (stdio) process doesn't start an HTTP listener instead.
+    // When a config file is referenced it may select http/sse; emit an explicit
+    // --transport stdio to force a provider-launched (stdio) process to speak
+    // stdio. Without a config file the server already defaults to stdio, so no flag
+    // is emitted — but a conflicting --transport in extraArgs is still stripped
+    // below so it cannot start a network listener.
     if (configFile) {
       args.push('--transport', 'stdio');
-      emittedTransport = true;
     }
+    stripExtraTransport = true;
   } else {
     args.push('--transport', s.transportMode);
-    emittedTransport = true;
+    stripExtraTransport = true;
     const hostFlag = s.transportMode === 'http' ? '--http-host' : '--sse-host';
     const portFlag = s.transportMode === 'http' ? '--http-port' : '--sse-port';
     const originFlag =
@@ -365,7 +370,7 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   // yargs as a repeated option and silently defeat the extension's flag (forced
   // stdio / the referenced config). A user flag the extension did NOT emit is kept.
   let extras = s.extraArgs;
-  if (emittedTransport) {
+  if (stripExtraTransport) {
     extras = stripTransportArgs(extras);
   }
   if (configFile) {
@@ -747,13 +752,6 @@ export function validateLaunchSpec(
             blocking: true,
           });
         }
-      }
-      const initial = sh.overrides?.paths?.initialDir;
-      if (initial && isUnanchorablePath(initial)) {
-        problems.push({
-          message: `wcli0.shells.${name}.overrides.paths.initialDir "${initial}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
-          blocking: true,
-        });
       }
       const sec = sh.overrides?.security;
       for (const [field, value] of [

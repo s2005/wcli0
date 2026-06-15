@@ -39,7 +39,6 @@ export interface PerShellConfig {
     };
     paths?: {
       allowedPaths?: string[];
-      initialDir?: string;
     };
   };
   /** WSL-specific options (only meaningful for the wsl/bash shells). */
@@ -216,7 +215,7 @@ function isMeaningfulShellConfig(c: PerShellConfig | undefined): boolean {
     // An explicit (even empty) allowedPaths is meaningful: [] replaces the
     // inherited allowed paths for the shell.
     const p = o.paths;
-    if (p && (p.allowedPaths !== undefined || p.initialDir?.trim())) {
+    if (p && p.allowedPaths !== undefined) {
       return true;
     }
   }
@@ -303,6 +302,17 @@ export const INHERITABLE_SELECT_KEYS = [
   'debug',
 ] as const;
 
+/**
+ * Array settings the form edits where an explicit empty array is a meaningful
+ * override: an empty `allowedDirectories` at the workspace scope masks a non-empty
+ * User-scope value (VS Code merges the explicit `[]` over it). The form cannot tell
+ * such an explicit-empty override from "Inherit" otherwise, because an empty
+ * textarea reads identically to an unset value and `readSettingsForScope` returns
+ * the default `[]` for both. `allowedDirectories` is the only array field the form
+ * edits (blocked lists, custom args, env and origins are not form-editable).
+ */
+export const OPTIONAL_ARRAY_KEYS = ['allowedDirectories'] as const;
+
 /** Which of `keys` is explicitly set (value !== undefined) at the given scope. */
 function setKeysAmong(
   keys: readonly string[],
@@ -337,4 +347,14 @@ export function explicitlySetKeys(target: ConfigScope, scope?: vscode.Uri): stri
  */
 export function explicitlySetSelectKeys(target: ConfigScope, scope?: vscode.Uri): string[] {
   return setKeysAmong(INHERITABLE_SELECT_KEYS, target, scope);
+}
+
+/**
+ * The subset of {@link OPTIONAL_ARRAY_KEYS} that is explicitly set at the given
+ * scope. Lets the config form tell an explicit empty array override apart from an
+ * unset value (both render an empty textarea), so an empty `allowedDirectories`
+ * override can be shown as set and persisted to mask the other scope (see P69).
+ */
+export function explicitlySetArrayKeys(target: ConfigScope, scope?: vscode.Uri): string[] {
+  return setKeysAmong(OPTIONAL_ARRAY_KEYS, target, scope);
 }

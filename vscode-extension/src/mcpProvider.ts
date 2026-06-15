@@ -52,11 +52,16 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    *   auto-managed per-shell config file is written. Should be workspace-scoped
    *   (context.storageUri) so separate windows don't clobber each other's config;
    *   falls back to safeCwd, then os.tmpdir().
+   * @param homeConfigPresent Whether the server's implicit home config
+   *   (`~/.win-cli-mcp/config.json`) exists. Injected (defaulting to the real
+   *   filesystem check) so the pinning decision and the safe-mode warning are
+   *   deterministic in tests regardless of the host's home directory.
    */
   constructor(
     private readonly log: (message: string) => void = (m) => console.warn(m),
     private readonly safeCwd?: string,
     private readonly managedConfigDir?: string,
+    private readonly homeConfigPresent: () => boolean = homeConfigExists,
   ) {}
 
   /** Cached unique private dir, created lazily when no safe cwd was injected. */
@@ -187,18 +192,29 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     // When any shell is configured individually, per-shell settings can only be
     // expressed in a config file, so launch against an auto-managed one instead
     // of the global CLI flags.
-    const managed = hasPerShellConfig(settings);
+    const perShell = hasPerShellConfig(settings);
+    // Even a plain launch must be pinned to a generated config when it would
+    // otherwise let the server's loadConfig fall back to ~/.win-cli-mcp/config.json:
+    // no per-shell config, no explicit wcli0.configFile, but that home config
+    // exists. The private cwd blocks only the <cwd>/config.json candidate; the home
+    // config is a separate vector with no CLI flag to disable discovery, so generate
+    // a managed config and launch with --config so the extension's settings take
+    // effect and the implicit home config is bypassed (see P66).
+    const homeConfigPresent = this.homeConfigPresent();
+    const pinAgainstHomeConfig = !perShell && !settings.configFile.trim() && homeConfigPresent;
+    const managed = perShell || pinAgainstHomeConfig;
     let managedConfigPath: string | undefined;
     if (managed) {
       managedConfigPath = this.writeManagedConfig(settings);
       if (!managedConfigPath) {
         // Could not write the managed config — don't launch with per-shell config
-        // silently missing (the global flags wouldn't reflect the user's intent).
+        // silently missing, or (when pinning) with the implicit home config still
+        // able to override the settings the extension reports.
         return [];
       }
     }
 
-    const problems = validateLaunchSpec(settings, managed, homeConfigExists());
+    const problems = validateLaunchSpec(settings, managed, homeConfigPresent);
     const blocking = problems.filter((p) => p.blocking);
     if (blocking.length > 0) {
       // Misconfigured launch: log rather than register a broken server.

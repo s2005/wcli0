@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
   CONFIG_SECTION,
   ConfigScope,
+  explicitlySetArrayKeys,
   explicitlySetKeys,
   explicitlySetSelectKeys,
   OPTIONAL_STRING_KEYS,
@@ -100,6 +101,10 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // form can show "Inherit" for an unset field instead of the schema default it
       // reads back (which would misreport e.g. an unset safetyMode as "safe").
       setSelectKeys: explicitlySetSelectKeys(currentScope, scope),
+      // Which optional-array keys (allowedDirectories) are explicitly set at this
+      // scope, so the form can show an explicit empty override as set rather than as
+      // "Inherit" (both render an empty textarea otherwise — see P69).
+      setArrayKeys: explicitlySetArrayKeys(currentScope, scope),
     });
   };
 
@@ -110,6 +115,22 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
     } else if (msg.type === 'scopeChange' && msg.target) {
       currentScope = msg.target;
       post();
+    } else if (msg.type === 'scopeChangeRequest' && msg.target) {
+      // The form has unsaved edits and the user switched the scope radio. Switching
+      // reloads the other scope's values (a non-external init that bypasses the
+      // dirty guard), which would silently discard those edits — so confirm first.
+      // The webview already reverted the radio to the loaded scope; only on an
+      // explicit confirmation do we switch and reload (window.confirm is unavailable
+      // in a VS Code webview, so the host drives the modal). See P70.
+      const choice = await vscode.window.showWarningMessage(
+        `Discard unsaved changes and switch to ${msg.target === 'Global' ? 'User' : 'Workspace'} scope?`,
+        { modal: true },
+        'Discard changes',
+      );
+      if (choice === 'Discard changes') {
+        currentScope = msg.target;
+        post();
+      }
     } else if (msg.type === 'save' && msg.values && msg.target) {
       await applySettings(msg as SavePayload);
       // Re-post the now-persisted settings before the saved indicator re-baselines.
@@ -257,8 +278,6 @@ function renderShellBlocks(): string {
       <textarea id="sh-${d.name}-block-op"></textarea>
       <label>Allowed paths <span class="hint">one per line; supports \${workspaceFolder}</span></label>
       <textarea id="sh-${d.name}-paths"></textarea>
-      <label>Initial directory</label>
-      <input type="text" id="sh-${d.name}-initdir" />
     </details>
     ${
       d.wsl
@@ -411,6 +430,7 @@ function renderHtml(webview: vscode.Webview): string {
   </div>
   <label>Allowed directories <span class="hint">one per line; supports \${workspaceFolder}</span></label>
   <textarea id="allowedDirectories" placeholder="\${workspaceFolder}"></textarea>
+  <label class="checkbox optional-inherit"><input type="checkbox" id="allowedDirectories-inherit" /> Inherit <span class="hint">no override; uncheck and leave empty to set an explicit empty list that masks the other scope</span></label>
   <label>Initial directory</label>
   <input type="text" id="initialDir" />
   <label class="checkbox optional-inherit"><input type="checkbox" id="initialDir-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
@@ -501,6 +521,12 @@ function renderHtml(webview: vscode.Webview): string {
   // unchecked -> the explicit text value, INCLUDING empty, is persisted. Mirrors
   // OPTIONAL_STRING_KEYS on the host.
   const optionalStringFields = ['launch.cwd','configFile','initialDir','logDirectory'];
+  // Optional array settings where an explicit empty array is a meaningful override
+  // (it masks a non-empty value from the other scope). Like optionalStringFields,
+  // each has an Inherit checkbox: checked -> no override (collect emits null ->
+  // cleared); unchecked + empty -> an explicit [] override. Mirrors
+  // OPTIONAL_ARRAY_KEYS on the host.
+  const optionalArrayFields = ['allowedDirectories'];
   const inheritCb = (f) => $(f + '-inherit');
   // Enum selects with an Inherit ("") option, and tri-bool selects whose Inherit is
   // 'default'. When a key is unset at the scope (not in setSelectKeys) the form forces
@@ -582,7 +608,6 @@ function renderHtml(webview: vscode.Webview): string {
       if (Object.keys(rest).length) overrides.restrictions = rest;
       const paths = {};
       const ap = arr('sh-' + n + '-paths', lPaths.allowedPaths); if (ap !== undefined) paths.allowedPaths = ap;
-      const idir = $('sh-' + n + '-initdir').value.trim(); if (idir) paths.initialDir = idir;
       if (Object.keys(paths).length) overrides.paths = paths;
       if (Object.keys(overrides).length) cfg.overrides = overrides;
       if (d.wsl) {
@@ -616,7 +641,6 @@ function renderHtml(webview: vscode.Webview): string {
       $('sh-' + n + '-block-arg').value = (rest.blockedArguments || []).join('\\n');
       $('sh-' + n + '-block-op').value = (rest.blockedOperators || []).join('\\n');
       $('sh-' + n + '-paths').value = (paths.allowedPaths || []).join('\\n');
-      $('sh-' + n + '-initdir').value = paths.initialDir || '';
       if (d.wsl) {
         const wsl = c.wslConfig || {};
         $('sh-' + n + '-wsl-mount').value = wsl.mountPoint || '';
@@ -625,9 +649,10 @@ function renderHtml(webview: vscode.Webview): string {
     }
   }
 
-  function setVal(s, setKeys, setSelectKeys) {
+  function setVal(s, setKeys, setSelectKeys, setArrayKeys) {
     setKeys = setKeys || [];
     setSelectKeys = setSelectKeys || [];
+    setArrayKeys = setArrayKeys || [];
     for (const f of stringFields) if ($(f)) $(f).value = s[mapKey(f)] ?? '';
     for (const f of numberFields) if ($(f)) $(f).value = s[mapKey(f)] == null ? '' : s[mapKey(f)];
     for (const f of triBoolFields) if ($(f)) $(f).value = boolToTri(s[mapKey(f)]);
@@ -641,6 +666,15 @@ function renderHtml(webview: vscode.Webview): string {
       const cb = inheritCb(f);
       if (!cb || !$(f)) continue;
       cb.checked = setKeys.indexOf(f) === -1;
+    }
+    // Optional array overrides (allowedDirectories): the Inherit checkbox reflects
+    // whether the key is actually set at this scope (setArrayKeys). The textarea was
+    // populated by the arrayFields loop above, so a stored list — or an explicit
+    // empty override (empty textarea, Inherit unchecked) — round-trips unchanged.
+    for (const f of optionalArrayFields) {
+      const cb = inheritCb(f);
+      if (!cb || !$(f)) continue;
+      cb.checked = setArrayKeys.indexOf(f) === -1;
     }
     // Inheritable enum/boolean selects: readSettingsForScope returned the schema
     // default for a value unset at this scope, which the loops above rendered as an
@@ -670,6 +704,10 @@ function renderHtml(webview: vscode.Webview): string {
 
   let initial = {};
   let loadedShells = {};
+  // The scope ('Global'/'Workspace') whose values are currently loaded in the form.
+  // Used to revert the scope radio when a switch is cancelled (see the radio
+  // handler / P70). Set whenever the form is (re)populated from an init message.
+  let formScope = null;
 
   function collect() {
     const values = {};
@@ -688,6 +726,17 @@ function renderHtml(webview: vscode.Webview): string {
       if (!cb || !$(f)) continue;
       const v = $(f).value.trim();
       values[f] = v ? v : (cb.checked ? null : '');
+    }
+    // Optional array overrides (allowedDirectories) override the generic arrayFields
+    // value above. A non-empty list is always an explicit override. When empty, the
+    // Inherit checkbox decides: checked -> null (applySettings clears the scope
+    // override); unchecked -> [] (an explicit empty override that masks the other
+    // scope).
+    for (const f of optionalArrayFields) {
+      const cb = inheritCb(f);
+      if (!cb || !$(f)) continue;
+      const lines = $(f).value.split('\\n').map((x) => x.trim()).filter(Boolean);
+      values[f] = lines.length ? lines : (cb.checked ? null : []);
     }
     values['shells'] = collectShells();
     return values;
@@ -746,6 +795,15 @@ function renderHtml(webview: vscode.Webview): string {
     cb.addEventListener('change', () => { if (cb.checked) el.value = ''; });
     el.addEventListener('input', () => { if (el.value.trim()) cb.checked = false; });
   }
+  // Same Inherit <-> field coupling for the optional array textareas: checking
+  // Inherit clears the list; typing any entry clears Inherit (explicit override).
+  for (const f of optionalArrayFields) {
+    const cb = inheritCb(f);
+    const el = $(f);
+    if (!cb || !el) continue;
+    cb.addEventListener('change', () => { if (cb.checked) el.value = ''; });
+    el.addEventListener('input', () => { if (el.value.trim()) cb.checked = false; });
+  }
 
   $('save').addEventListener('click', () => {
     // Block out-of-range ports (the contributed setting is 1..65535) before
@@ -769,10 +827,20 @@ function renderHtml(webview: vscode.Webview): string {
   $('showCommand').addEventListener('click', () => exportAction('showCommand'));
 
   // Switching scope reloads the values stored at that scope so edits compare
-  // against (and save to) the selected scope only.
+  // against (and save to) the selected scope only. With unsaved edits, reloading
+  // would silently discard them (the host's reply is a non-external init that
+  // bypasses the dirty guard), so revert the radio to the loaded scope and ask the
+  // host to confirm before switching (P70). A clean form switches immediately.
   for (const radio of document.querySelectorAll('input[name=scope]')) {
     radio.addEventListener('change', () => {
-      vscode.postMessage({ type: 'scopeChange', target: radio.value });
+      if (radio.value === formScope) return;
+      if (isDirty()) {
+        const prev = formScope && document.querySelector('input[name=scope][value=' + formScope + ']');
+        if (prev) prev.checked = true;
+        vscode.postMessage({ type: 'scopeChangeRequest', target: radio.value });
+      } else {
+        vscode.postMessage({ type: 'scopeChange', target: radio.value });
+      }
     });
   }
 
@@ -833,8 +901,11 @@ function renderHtml(webview: vscode.Webview): string {
       if (msg.external && isDirty()) {
         return;
       }
-      setVal(msg.settings, msg.setKeys, msg.setSelectKeys);
+      setVal(msg.settings, msg.setKeys, msg.setSelectKeys, msg.setArrayKeys);
       initial = collect();
+      // Record the scope the form now reflects so a cancelled scope switch can
+      // revert the radio to it (P70).
+      formScope = msg.scope || formScope;
     }
   });
   vscode.postMessage({ type: 'ready' });

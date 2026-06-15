@@ -420,3 +420,68 @@ test('P55: per-shell executable args preserve leading/trailing and whitespace-on
   assert.ok(save, 'save posted');
   assert.deepEqual(save.values.shells.gitbash.executable.args, ['--flag', '  spaced  ']);
 });
+
+test('P69: an unset allowedDirectories shows Inherit and persists an explicit empty override', () => {
+  const h = makeHarness();
+  // Unset at the scope (not in setArrayKeys), default []: the Inherit box is checked.
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { allowedDirectories: [], shells: {} },
+    setArrayKeys: [],
+  });
+  assert.equal(h.els.get('allowedDirectories-inherit').checked, true, 'unset -> Inherit checked');
+  // User unchecks Inherit and leaves the textarea empty -> explicit empty override.
+  h.els.get('allowedDirectories-inherit').checked = false;
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.deepEqual(save.values.allowedDirectories, [], 'explicit [] override masks the other scope');
+});
+
+test('P69: checking Inherit for allowedDirectories clears the scope override (null)', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { allowedDirectories: ['/a'], shells: {} },
+    setArrayKeys: ['allowedDirectories'],
+  });
+  assert.equal(h.els.get('allowedDirectories-inherit').checked, false, 'set -> Inherit unchecked');
+  assert.equal(h.els.get('allowedDirectories').value, '/a');
+  // User checks Inherit: the change handler clears the textarea, and collect emits
+  // null so applySettings removes the override.
+  const cb = h.els.get('allowedDirectories-inherit');
+  cb.checked = true;
+  cb._l.change.forEach((fn) => fn());
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.equal(save.values.allowedDirectories, null, 'Inherit -> null clears the override');
+});
+
+test('P70: switching scope with unsaved edits requests confirmation and reverts the radio', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('initialDir').value = '/my/edit'; // dirty
+  const g = h.scope('Global');
+  g.checked = true;
+  g._l.change.forEach((fn) => fn());
+  const req = h.captured.find((m) => m.type === 'scopeChangeRequest');
+  assert.ok(req && req.target === 'Global', 'a scopeChangeRequest is posted');
+  assert.ok(!h.captured.some((m) => m.type === 'scopeChange'), 'no immediate scopeChange');
+  // The radio reverts to the loaded scope until the user confirms.
+  assert.equal(h.scope('Workspace').checked, true, 'radio reverted to the loaded scope');
+});
+
+test('P70: switching scope with a clean form changes scope immediately', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  const g = h.scope('Global');
+  g.checked = true;
+  g._l.change.forEach((fn) => fn());
+  const sc = h.captured.find((m) => m.type === 'scopeChange');
+  assert.ok(sc && sc.target === 'Global', 'a clean form switches immediately');
+  assert.ok(!h.captured.some((m) => m.type === 'scopeChangeRequest'), 'no confirmation needed');
+});

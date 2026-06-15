@@ -538,14 +538,13 @@ test('P10: unresolved per-shell paths are blocking only in managed mode', () => 
     shells: {
       cmd: {
         overrides: {
-          paths: { allowedPaths: ['${workspaceFolder:nope}/b'], initialDir: '${workspaceFolder:nope}/c' },
+          paths: { allowedPaths: ['${workspaceFolder:nope}/b'] },
         },
       },
     },
   });
   const problems = validateLaunchSpec(s, true);
   assert.ok(problems.some((p) => /shells\.cmd.*allowedPaths/.test(p.message) && p.blocking));
-  assert.ok(problems.some((p) => /shells\.cmd.*initialDir/.test(p.message) && p.blocking));
   // Per-shell config only applies in managed mode, so non-managed skips the check.
   assert.equal(validateLaunchSpec(s, false).some((p) => /shells\.cmd/.test(p.message)), false);
 });
@@ -813,12 +812,18 @@ test('P57: forced stdio with a referenced config strips --transport from extraAr
   assert.ok(!args.some((a) => a.startsWith('--transport=')));
 });
 
-test('P57: extraArgs --transport is left alone when the extension emits none', () => {
+test('P65: a stdio launch strips extraArgs --transport even with no config file', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
-  // stdio with no configFile: the extension emits no --transport, so a user
-  // --transport in extraArgs is not the extension's to strip.
+  // stdio with no configFile: the extension emits no --transport, but a provider/
+  // mcp.json stdio registration must never let an extraArgs --transport turn the
+  // process into a network listener the client can't reach, so it is stripped.
   const args = buildServerArgs(defaults({ transportMode: 'stdio', extraArgs: ['--transport', 'http'] }));
-  assert.deepEqual(args, ['--transport', 'http']);
+  assert.deepEqual(args, []);
+  // A non-transport extraArg is still carried through.
+  const kept = buildServerArgs(
+    defaults({ transportMode: 'stdio', extraArgs: ['--transport=http', '--foo', 'bar'] }),
+  );
+  assert.deepEqual(kept, ['--foo', 'bar']);
 });
 
 test('P59: a managed launch strips a conflicting --config/-c from extraArgs', () => {

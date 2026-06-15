@@ -369,13 +369,27 @@ test('per-shell allowed paths resolve and unresolved entries drop', () => {
   const cfg = buildConfigFile(
     defaults({
       shells: {
-        cmd: { overrides: { paths: { allowedPaths: ['${workspaceFolder}/a', '${workspaceFolder:nope}/b'], initialDir: '${workspaceFolder}/a' } } },
+        cmd: { overrides: { paths: { allowedPaths: ['${workspaceFolder}/a', '${workspaceFolder:nope}/b'] } } },
       },
     }),
   );
   const paths = cfg.shells.cmd.overrides.paths;
   assert.deepEqual(paths.allowedPaths, ['/ws/a']);
-  assert.equal(paths.initialDir, '/ws/a');
+});
+
+test('P68: a per-shell initialDir is never emitted (server ignores it)', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // The server only chdir's to the GLOBAL initialDir; a per-shell initialDir has no
+  // effect, so the extension must not write it (even when passed in raw settings).
+  const cfg = buildConfigFile(
+    defaults({
+      shells: {
+        cmd: { overrides: { paths: { allowedPaths: ['${workspaceFolder}/a'], initialDir: '${workspaceFolder}/a' } } },
+      },
+    }),
+  );
+  assert.equal(cfg.shells.cmd.overrides.paths.initialDir, undefined);
+  assert.deepEqual(cfg.shells.cmd.overrides.paths.allowedPaths, ['/ws/a']);
 });
 
 test('per-shell wsl mount point overrides the global wslMountPoint', () => {
@@ -516,12 +530,12 @@ test('P36: per-shell executable command/args resolve extension variables', () =>
   assert.deepEqual(cfg.shells.gitbash.executable.args, ['/ws/x', '-c']);
 });
 
-test('P50: per-shell WSL allowed paths and initialDir convert Windows paths to the mount form', () => {
+test('P50: per-shell WSL allowed paths convert Windows paths to the mount form', () => {
   const cfg = buildConfigFile(
     defaults({
       shells: {
         wsl: {
-          overrides: { paths: { allowedPaths: ['C:/repo', '/home/user'], initialDir: 'C:/work' } },
+          overrides: { paths: { allowedPaths: ['C:/repo', '/home/user'] } },
         },
       },
     }),
@@ -531,7 +545,6 @@ test('P50: per-shell WSL allowed paths and initialDir convert Windows paths to t
   // converted), so a Windows path must be written in /mnt/<drive> form to match a
   // /mnt/c/... working directory. An already-Unix path is left untouched.
   assert.deepEqual(paths.allowedPaths, ['/mnt/c/repo', '/home/user']);
-  assert.equal(paths.initialDir, '/mnt/c/work');
 });
 
 test('P50: a per-shell WSL mount point override is honored when converting paths', () => {
@@ -565,12 +578,15 @@ test('P51: a relative path-like per-shell command is anchored to the workspace',
   assert.equal(cfg.shells.gitbash.executable.command, require('path').resolve('/ws', './tools/bash'));
 });
 
-test('P51: a configured cwd leaves a relative per-shell command for the server to resolve', () => {
+test('P67: a configured cwd anchors a relative per-shell command to that cwd', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
   const cfg = buildConfigFile(
     defaults({ cwd: '/repo', shells: { gitbash: { executable: { command: './tools/bash' } } } }),
   );
-  assert.equal(cfg.shells.gitbash.executable.command, './tools/bash');
+  // The server spawns executable.command with cwd set to the command's requested
+  // working directory, not the launch cwd, so a relative command must be resolved to
+  // an absolute path against the configured launch cwd before being written.
+  assert.equal(cfg.shells.gitbash.executable.command, require('path').resolve('/repo', './tools/bash'));
 });
 
 test('P51: a bare PATH per-shell command is not anchored', () => {
@@ -581,16 +597,17 @@ test('P51: a bare PATH per-shell command is not anchored', () => {
   assert.equal(cfg.shells.gitbash.executable.command, 'bash');
 });
 
-test('P54: a per-shell initialDir alone does not keep restrictWorkingDirectory on under allowAllDirs', () => {
+test('P54: an enabled per-shell config without allowedPaths does not keep restrictWorkingDirectory on under allowAllDirs', () => {
   vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
   const cfg = buildConfigFile(
     defaults({
       allowAllDirs: true,
-      shells: { cmd: { enabled: true, overrides: { paths: { initialDir: '${workspaceFolder}/sub' } } } },
+      shells: { cmd: { enabled: true, overrides: { security: { maxCommandLength: 100 } } } },
     }),
   );
-  // initialDir is never promoted into allowedPaths, so allowAllDirs must lift the
-  // restriction rather than leave the shell restricted with an empty allowlist.
+  // Only resolved per-shell allowedPaths can satisfy the working-directory
+  // restriction, so with none configured allowAllDirs must lift it rather than leave
+  // the shell restricted with an empty allowlist.
   assert.equal(cfg.global.security.restrictWorkingDirectory, false);
 });
 

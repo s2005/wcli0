@@ -86,3 +86,13 @@
 - [x] P61: Reconcile deferred external changes after saving (fixed - the host re-posts persisted settings after `applySettings` on save/export, so an external change to an untouched field is reflected instead of left stale by the `saved` re-baseline)
 - [x] P62: Preserve monotonic versions when the local date goes backward (fixed - `computeNextVersion` never moves the date slot backward; a backward local date keeps `prevDate` and bumps the build counter)
 - [x] P63: Prevent implicit home configs from overriding safe mode (fixed - `validateLaunchSpec` warns, via a `homeConfigPresent` flag supplied by `homeConfigExists()`, when a safe non-managed launch with no `configFile` would still load `~/.win-cli-mcp/config.json`)
+
+## Review Feedback (PR #86) - round 9
+
+- [x] P64: Strip config overrides from managed launch extra arguments (already fixed in P59 - `buildManagedServerArgs` strips a conflicting `--config`/`-c` from `extraArgs`; thread was re-raised on an outdated line, no code change)
+- [x] P65: Force stdio despite transport values in extra arguments (fixed - `buildServerArgs` now strips `--transport` from `extraArgs` for every stdio launch, not only when the extension emits its own, so an `extraArgs --transport http` can't turn a provider stdio registration into a network listener)
+- [x] P66: Prevent implicit config files from overriding safe settings (fixed - the provider pins settings by generating a managed config and launching with `--config` when a plain launch has no per-shell config, no `wcli0.configFile`, but the implicit `~/.win-cli-mcp/config.json` exists; the home-config check is injectable for deterministic tests, and `showLaunchCommand` mirrors the pinning)
+- [x] P67: Anchor relative per-shell executables to the launch cwd (fixed - `resolvePerShellCommand` resolves a path-like relative per-shell command to an absolute path against the configured `launch.cwd` when set, since the server spawns it with the command's requested cwd rather than the launch cwd)
+- [x] P68: Do not expose a per-shell initial directory that is ignored (fixed - removed the per-shell `overrides.paths.initialDir` surface from the schema, type, webview, config emission, validation and meaningful-check; the server only honors the global `initialDir`)
+- [x] P69: Preserve unset state in the scoped configuration form (fixed - `OPTIONAL_ARRAY_KEYS`/`explicitlySetArrayKeys` plus a `setArrayKeys` post and an Inherit checkbox let an explicit empty `allowedDirectories` override mask a non-empty value from the other scope)
+- [x] P70: Prompt before discarding edits on scope changes (fixed - the scope radio reverts and posts `scopeChangeRequest` when the form is dirty; the host shows a modal and only reloads the other scope on confirmation)

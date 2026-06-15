@@ -121,7 +121,6 @@ test('hasPerShellConfig detects any meaningful per-shell field', () => {
     { cmd: { overrides: { security: { enableInjectionProtection: false } } } },
     { cmd: { overrides: { restrictions: { blockedCommands: ['x'] } } } },
     { cmd: { overrides: { paths: { allowedPaths: ['/a'] } } } },
-    { cmd: { overrides: { paths: { initialDir: '/a' } } } },
     { wsl: { wslConfig: { mountPoint: '/mnt/' } } },
     { wsl: { wslConfig: { inheritGlobalPaths: false } } },
     // P12: an explicit (even empty) array is meaningful — [] replaces inherited

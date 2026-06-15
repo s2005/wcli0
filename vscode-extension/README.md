@@ -77,7 +77,7 @@ Per shell you can set:
 | `executable.command` / `executable.args` | Override the shell executable and its arguments. |
 | `overrides.security.*` | Per-shell `maxCommandLength`, `commandTimeout`, `enableInjectionProtection`, `restrictWorkingDirectory`. |
 | `overrides.restrictions.*` | Per-shell `blockedCommands` / `blockedArguments` / `blockedOperators` (replaces this shell's default blocklist). |
-| `overrides.paths.*` | Per-shell `allowedPaths` / `initialDir` (supports `${workspaceFolder}`). |
+| `overrides.paths.allowedPaths` | Per-shell allowed paths (supports `${workspaceFolder}`). |
 | `wslConfig.*` | `mountPoint` / `inheritGlobalPaths` (wsl/bash only). |
 
 Per-shell settings **cannot** be passed as CLI flags, so whenever `wcli0.shells`

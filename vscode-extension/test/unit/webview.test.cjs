@@ -246,6 +246,48 @@ test('P60: init reports which inheritable enum/boolean keys are set at the scope
   assert.ok(!init.setSelectKeys.includes('safetyMode'), 'unset workspace safetyMode not reported');
 });
 
+test('P69: init reports which optional-array keys are explicitly set at the scope', async () => {
+  // An explicit empty allowedDirectories at Workspace is a meaningful override.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.allowedDirectories', []);
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(Array.isArray(init.setArrayKeys), 'setArrayKeys present');
+  assert.ok(init.setArrayKeys.includes('allowedDirectories'), 'explicit empty array reported set');
+});
+
+test('P69: an unset allowedDirectories is not reported as set', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(!init.setArrayKeys.includes('allowedDirectories'), 'unset array not reported');
+});
+
+test('P70: a confirmed scope-change request reloads the requested scope', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.safetyMode', 'unsafe');
+  vscode.__state.calls.warnReturn = 'Discard changes';
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' }); // default Workspace
+  panel.webview.posted.length = 0;
+  await panel.webview._handler({ type: 'scopeChangeRequest', target: 'Global' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 'a fresh init was posted after confirmation');
+  assert.equal(init.scope, 'Global', 'reloads the requested scope');
+});
+
+test('P70: a cancelled scope-change request keeps the current scope (no reload)', async () => {
+  vscode.__state.calls.warnReturn = undefined; // user dismissed the modal
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' }); // default Workspace
+  panel.webview.posted.length = 0;
+  await panel.webview._handler({ type: 'scopeChangeRequest', target: 'Global' });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'init'), undefined, 'no reload on cancel');
+});
+
 test('P61: saving re-posts settings so a deferred external change is reconciled', async () => {
   openConfigPanel(makeContext());
   const panel = vscode.__state.lastWebviewPanel;
