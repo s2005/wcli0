@@ -24,4 +24,4 @@ edit" behavior the form's dirty-tracking relies on. Two existing host-side tests
 that sent `configFile: ''` to mean "clear" were updated to use a non-optional key,
 matching the new contract (null clears, '' persists).
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86

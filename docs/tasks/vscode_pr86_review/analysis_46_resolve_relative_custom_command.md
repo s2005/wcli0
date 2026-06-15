@@ -20,4 +20,4 @@ mcp.json. The path-separator heuristic matches OS exec semantics (a bare name is
 PATH lookup, a separator means resolve-against-cwd), so `npx`/`wcli0` stay PATH
 commands while `./bin/server` is anchored.
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86

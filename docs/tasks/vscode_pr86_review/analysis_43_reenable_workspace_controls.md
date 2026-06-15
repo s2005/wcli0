@@ -16,4 +16,4 @@ P39); the form must reflect a folder being added, not just removed, or the user
 is stuck on User scope with no workspace export. A single idempotent helper makes
 the available/unavailable transitions symmetric and is shared with the P44 fix.
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86

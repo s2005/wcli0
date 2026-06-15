@@ -17,4 +17,4 @@ at a non-existent scope. Splitting "scope/availability always applies" from
 "field values only when clean" satisfies both: the user's in-progress values
 survive and a later Save targets the valid Global scope.
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86

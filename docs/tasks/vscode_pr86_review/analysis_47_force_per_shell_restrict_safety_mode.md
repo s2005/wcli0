@@ -19,4 +19,4 @@ emitting a contradicting per-shell value would silently widen access - exactly t
 P1 security gap. Only forcing an already-present override (not injecting one)
 keeps inheritance intact for shells the user did not pin.
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86

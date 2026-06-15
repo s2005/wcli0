@@ -17,4 +17,4 @@ inherit because `triToBool('default')` is undefined; but for these string enums
 an override - the same gap round-5 P41 closed for the other enums. `''` is never
 persisted (it maps to undefined), so the package.json enum needs no new member.
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86

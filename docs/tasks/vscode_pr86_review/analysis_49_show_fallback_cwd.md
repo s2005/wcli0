@@ -18,4 +18,4 @@ Reusing the provider's own `privateDir()` via a thin accessor guarantees the sho
 cwd equals the launch cwd, and the explanatory note prevents a user from assuming
 a copied command runs in their current directory.
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86

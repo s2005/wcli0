@@ -18,4 +18,4 @@ keeps allowed directories, cwd, config file, and node script paths intact under
 WSL. `path.relative`-derived checks (commands.toPortablePath) stay host-specific
 because they operate on freshly host-joined paths.
 
-**Commit:** 52c2bb8 - fix(vscode): address Codex round-6 review feedback for PR #86
+**Commit:** 11d813f - fix(vscode): address Codex round-6 review feedback for PR #86
