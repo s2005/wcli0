@@ -15,4 +15,4 @@ provider over them prevented the enabled shells from registering at all. Verifie
 `P53` tests in `argsBuilder.test.cjs` (explicit `enabled:false` and legacy-selector
 disablement do not block; the selected shell is still validated).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

@@ -17,4 +17,4 @@ network listener but never spoke over stdio. Dropping the conflicting override k
 forced stdio in effect. Verified by `P57` tests in `argsBuilder.test.cjs` (managed and
 referenced-config stripping, and passthrough when no transport is emitted).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

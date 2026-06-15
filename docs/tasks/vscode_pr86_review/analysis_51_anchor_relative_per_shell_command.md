@@ -18,4 +18,4 @@ matches the documented custom-command behavior. Verified by `P51` tests in
 `configFile.test.cjs` (anchoring, cwd passthrough, bare command) and
 `argsBuilder.test.cjs` (validation blocks/allows).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

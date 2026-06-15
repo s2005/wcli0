@@ -14,4 +14,4 @@ Resolved per-shell `allowedPaths` still correctly block the lift. Verified by `P
 tests in `configFile.test.cjs` (initialDir-only lifts the restriction; allowedPaths
 keeps it).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

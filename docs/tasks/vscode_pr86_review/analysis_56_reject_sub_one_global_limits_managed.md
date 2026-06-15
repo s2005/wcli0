@@ -15,4 +15,4 @@ with no warning. The previous validation only caught non-positive values. Verifi
 `P56` test in `argsBuilder.test.cjs` (0.5 blocks in managed mode, is accepted as a CLI
 flag, and 0 blocks in both modes).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

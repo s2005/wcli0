@@ -14,4 +14,4 @@ teammates' machines. The traversal-component check keeps a real escape (`../up`)
 absolute path while restoring the portable `${workspaceFolder}` token for legitimate
 children. Verified by `P58` test in `commands.test.cjs`.
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

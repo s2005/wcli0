@@ -17,4 +17,4 @@ also wrongly blocked a relative script that an absolute cwd could anchor when no
 workspace was open. Verified by `P52` tests in `argsBuilder.test.cjs` (cwd resolution,
 no-workspace anchorability, mcp.json relative preservation).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

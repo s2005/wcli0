@@ -17,4 +17,4 @@ path in mount form is what the validator actually compares against. Verified by
 `P50` tests in `configFile.test.cjs` (conversion, custom mount point, non-WSL
 untouched).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86

@@ -14,4 +14,4 @@ altered arguments — changing or breaking the configured invocation. Verified b
 test in `webviewShells.test.cjs` (whitespace-significant args round-trip through a save
 triggered by an unrelated field change).
 
-**Commit:** 838acc4 — fix(vscode): address Codex round-7 review feedback for PR #86
+**Commit:** 03524b0 — fix(vscode): address Codex round-7 review feedback for PR #86
