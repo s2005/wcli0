@@ -21,4 +21,4 @@ no-home-config case while still flagging the genuine reduced-protection scenario
 `validateLaunchSpec` stays pure (the fs check lives in the callers). Verified by `P63`
 tests in `argsBuilder.test.cjs` (warning present/absent by flag, configFile, and mode).
 
-**Commit:** d85a780 — fix(vscode): address Codex round-8 review feedback for PR #86
+**Commit:** 34888ec — fix(vscode): address Codex round-8 review feedback for PR #86

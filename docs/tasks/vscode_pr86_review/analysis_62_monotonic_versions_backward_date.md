@@ -18,4 +18,4 @@ now guarded by `require.main === module` so the pure function can be unit-tested
 side effects. Verified by `P62` tests in `bumpVersion.test.cjs` (new day resets, same
 day increments, backward date stays monotonic).
 
-**Commit:** d85a780 — fix(vscode): address Codex round-8 review feedback for PR #86
+**Commit:** 34888ec — fix(vscode): address Codex round-8 review feedback for PR #86

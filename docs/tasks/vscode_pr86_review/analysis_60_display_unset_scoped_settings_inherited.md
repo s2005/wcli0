@@ -18,4 +18,4 @@ the set/unset state keeps the displayed safety state accurate (Inherit, not a sp
 `safe`). Verified by `P60` tests in `settings.test.cjs` (set/unset reporting) and
 `webview.test.cjs` (init carries `setSelectKeys`).
 
-**Commit:** d85a780 — fix(vscode): address Codex round-8 review feedback for PR #86
+**Commit:** 34888ec — fix(vscode): address Codex round-8 review feedback for PR #86

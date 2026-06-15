@@ -18,4 +18,4 @@ saved" option the reviewer suggested, and it keeps the displayed safety state ho
 Verified by a `P61` test in `webview.test.cjs` (an external `safetyMode` change is
 reflected in the post-save `init`).
 
-**Commit:** d85a780 — fix(vscode): address Codex round-8 review feedback for PR #86
+**Commit:** 34888ec — fix(vscode): address Codex round-8 review feedback for PR #86

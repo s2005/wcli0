@@ -19,4 +19,4 @@ the existing `stripTransportArgs` (P57) approach. Verified by `P59` tests in
 `argsBuilder.test.cjs` (managed and referenced-config stripping, and passthrough when no
 config is emitted).
 
-**Commit:** d85a780 — fix(vscode): address Codex round-8 review feedback for PR #86
+**Commit:** 34888ec — fix(vscode): address Codex round-8 review feedback for PR #86
