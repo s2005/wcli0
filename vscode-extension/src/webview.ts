@@ -532,7 +532,11 @@ function renderHtml(webview: vscode.Webview): string {
           if (hasCmd) return [];
           return Array.isArray(loadedVal) && loadedVal.length === 0 ? [] : undefined;
         }
-        return raw.split('\\n').map((x) => x.trim());
+        // Executable args are passed verbatim to spawn, so leading/trailing
+        // whitespace and whitespace-only positional args (e.g. ['--flag','  '])
+        // are meaningful. Do NOT trim each line: trimming would silently rewrite
+        // the configured invocation the next time any per-shell field is saved.
+        return raw.split('\\n');
       };
       const en = triToBool($('sh-' + n + '-enabled').value);
       if (en !== undefined) cfg.enabled = en;

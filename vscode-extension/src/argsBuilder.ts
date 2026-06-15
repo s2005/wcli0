@@ -3,6 +3,7 @@ import {
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
   resolveVariables,
+  ShellName,
   SHELL_NAMES,
   Wcli0Settings,
 } from './settings';
@@ -139,6 +140,32 @@ export interface BuildOptions {
 }
 
 /**
+ * Remove any `--transport` entry (and its value) from a raw extraArgs list. Used
+ * whenever the extension has already emitted its own `--transport`: yargs parses a
+ * repeated string option as an array, and the server's `applyCliTransport` only
+ * matches a scalar string, so a second `--transport` makes it apply neither value
+ * and silently fall back to the referenced config's transport. For a provider
+ * (stdio) launch that means a process that opens a network listener but never
+ * speaks over stdio, so the conflicting override must be dropped.
+ */
+function stripTransportArgs(extraArgs: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i++) {
+    const a = extraArgs[i];
+    if (a === '--transport') {
+      // Drop the flag and its separate value token so neither reaches yargs.
+      i++;
+      continue;
+    }
+    if (a.startsWith('--transport=')) {
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
+
+/**
  * Build the minimal arg list for an auto-managed-config launch: point the server
  * at the generated config file and force stdio (a provider-launched process must
  * not start an HTTP listener even if the file selected one). Everything else the
@@ -150,7 +177,10 @@ function buildManagedServerArgs(s: Wcli0Settings, managedConfigPath: string): st
   if (s.debug) {
     args.push('--debug');
   }
-  for (const extra of s.extraArgs) {
+  // Strip any --transport from extraArgs: a managed launch forces stdio, and a
+  // second --transport would make the server ignore both and start a network
+  // listener instead of speaking over stdio (see stripTransportArgs).
+  for (const extra of stripTransportArgs(s.extraArgs)) {
     args.push(extra);
   }
   return args;
@@ -266,14 +296,22 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   if (s.debug) {
     args.push('--debug');
   }
+  // Whether the extension emits its own --transport. When it does, a --transport in
+  // extraArgs must be dropped: yargs would parse the pair as an array and the
+  // server's applyCliTransport (scalar-only) would apply neither, silently keeping
+  // the referenced config's transport — defeating a forced stdio launch in
+  // particular (the process would open a network listener but never speak stdio).
+  let emittedTransport = false;
   if (s.transportMode === 'stdio') {
     // When a config file is referenced it may select http/sse; force stdio so a
     // provider-launched (stdio) process doesn't start an HTTP listener instead.
     if (configFile) {
       args.push('--transport', 'stdio');
+      emittedTransport = true;
     }
   } else {
     args.push('--transport', s.transportMode);
+    emittedTransport = true;
     const hostFlag = s.transportMode === 'http' ? '--http-host' : '--sse-host';
     const portFlag = s.transportMode === 'http' ? '--http-port' : '--sse-port';
     const originFlag =
@@ -291,11 +329,75 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     }
   }
 
-  for (const extra of s.extraArgs) {
+  for (const extra of emittedTransport ? stripTransportArgs(s.extraArgs) : s.extraArgs) {
     args.push(extra);
   }
 
   return args;
+}
+
+/**
+ * Build the `node` script-path argument. A relative script must resolve against the
+ * directory node actually runs in: when `launch.cwd` is configured the provider
+ * launches the server there, so a relative script is resolved against that cwd (or,
+ * for mcp.json, left relative for VS Code/node to resolve under cwd) rather than
+ * anchored to the workspace root — anchoring would launch a different file (cwd
+ * `/repo/server` + `dist/index.js` must be `/repo/server/dist/index.js`, not
+ * `/repo/dist/index.js`). Without a cwd it falls back to the workspace-anchored
+ * value (`${workspaceFolder}` token for mcp.json), matching the other path settings.
+ */
+function nodeScriptArg(s: Wcli0Settings, opts: BuildOptions): string {
+  const raw = s.nodeScriptPath.trim();
+  const cwdSet = s.cwd.trim().length > 0;
+  if (opts.resolvePaths === false) {
+    // Preserving tokens for mcp.json. With a cwd configured, keep a plain relative
+    // script relative so node resolves it under that cwd; converting it to a
+    // ${workspaceFolder} token would anchor it to the workspace root instead.
+    if (cwdSet && raw && !isAbsolutePath(raw) && !hasUnresolvedVariables(raw)) {
+      return raw.split(/[\\/]/).join('/');
+    }
+    return pathValue(s.nodeScriptPath, opts) ?? raw;
+  }
+  // Resolving for launch. Resolve a relative script against the configured cwd
+  // (what node would do at runtime) when one is set and resolvable.
+  const resolvedScript = resolveVariables(raw);
+  if (
+    cwdSet &&
+    resolvedScript.trim() &&
+    !hasUnresolvedVariables(resolvedScript) &&
+    !isAbsolutePath(resolvedScript)
+  ) {
+    const resolvedCwd = resolvedPath(s.cwd);
+    if (resolvedCwd) {
+      return path.resolve(resolvedCwd, resolvedScript);
+    }
+  }
+  return pathValue(s.nodeScriptPath, opts) ?? resolveVariables(raw);
+}
+
+/**
+ * Whether the `node` script path cannot be turned into a usable absolute path: an
+ * unresolved variable, or a relative path with neither a resolvable `launch.cwd`
+ * nor a workspace folder to anchor it. Mirrors what `nodeScriptArg` can resolve so
+ * validation refuses only what would actually launch the wrong (or no) file.
+ */
+function isUnanchorableNodeScript(s: Wcli0Settings): boolean {
+  const raw = s.nodeScriptPath.trim();
+  if (!raw) {
+    return false;
+  }
+  const resolved = resolveVariables(raw);
+  if (!resolved.trim() || hasUnresolvedVariables(resolved)) {
+    return true;
+  }
+  if (isAbsolutePath(resolved)) {
+    return false;
+  }
+  // Relative: anchorable by a resolvable configured cwd, otherwise by a workspace.
+  if (s.cwd.trim() && resolvedPath(s.cwd)) {
+    return false;
+  }
+  return !primaryWorkspaceFolder();
 }
 
 /**
@@ -346,6 +448,20 @@ function isUnanchorableCustomCommand(s: Wcli0Settings): boolean {
 }
 
 /**
+ * Whether a per-shell executable command is a relative path-like value that cannot
+ * be anchored: no `launch.cwd` to resolve it against and no workspace folder open.
+ * Mirrors what `resolvePerShellCommand` (configFile) would fail to anchor, so
+ * validation refuses a command that would launch from the provider's private dir.
+ */
+function isUnanchorablePerShellCommand(command: string, s: Wcli0Settings): boolean {
+  const resolved = resolveVariables(command.trim());
+  if (!resolved || !isPathLikeCommand(resolved) || isAbsolutePath(resolved)) {
+    return false;
+  }
+  return !s.cwd.trim() && !primaryWorkspaceFolder();
+}
+
+/**
  * Build the full launch spec (command + launcher args + server flags) for the
  * configured launch method.
  */
@@ -353,22 +469,15 @@ export function buildLaunchSpec(s: Wcli0Settings, opts: BuildOptions = {}): Laun
   const serverArgs = buildServerArgs(s, opts);
   const env = { ...s.env };
   const cwd = pathValue(s.cwd, opts);
-  // When preserving tokens, leave executable paths/args untouched; otherwise
-  // resolve workspace variables to concrete values.
-  const resolve = (v: string): string =>
-    opts.resolvePaths === false ? v.trim() : resolveVariables(v.trim());
 
   switch (s.launchMethod) {
     case 'node':
-      // Resolve the script path like the other path-like settings: anchor a
-      // relative value to the workspace (or keep the ${workspaceFolder} token when
-      // emitting mcp.json) instead of leaving it relative to the server's process
-      // cwd — the provider runs from a private extension dir, so a bare relative
-      // "dist/index.js" would resolve there and never start. Fall back to the raw
-      // resolved value when it cannot be anchored (validateLaunchSpec blocks it).
+      // nodeScriptArg resolves a relative script against the configured cwd (or the
+      // workspace when no cwd is set), so it never resolves under the provider's
+      // private cwd; validateLaunchSpec blocks a script that cannot be anchored.
       return {
         command: 'node',
-        args: [pathValue(s.nodeScriptPath, opts) ?? resolve(s.nodeScriptPath), ...serverArgs],
+        args: [nodeScriptArg(s, opts), ...serverArgs],
         cwd,
         env,
       };
@@ -398,6 +507,20 @@ export interface LaunchProblem {
   message: string;
   /** When true, the server should not be launched with this configuration. */
   blocking: boolean;
+}
+
+/**
+ * Whether a shell is effectively enabled, using the same precedence applied when
+ * the managed config is emitted (configFile.isShellEnabled): an explicit per-shell
+ * `enabled` wins, otherwise the legacy `wcli0.shell` selector. Duplicated here
+ * rather than imported to avoid a circular dependency with configFile.
+ */
+function isShellEnabledForValidation(s: Wcli0Settings, name: ShellName): boolean {
+  const explicit = s.shells?.[name]?.enabled;
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  return s.shell === 'all' || name === s.shell;
 }
 
 /** Whether a non-empty value still has unresolved tokens (or resolves to empty). */
@@ -448,13 +571,14 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
         message: 'Launch method is "node" but wcli0.launch.nodeScriptPath is empty.',
         blocking: true,
       });
-    } else if (isUnanchorablePath(s.nodeScriptPath)) {
-      // The script path can't be turned into an absolute path: an unresolved
-      // ${workspaceFolder} token, or a relative path with no workspace folder to
-      // anchor it. Either way `node <path>` would resolve against the provider's
-      // private cwd and fail every start; refuse rather than register a broken one.
+    } else if (isUnanchorableNodeScript(s)) {
+      // The script path can't be turned into a usable path: an unresolved
+      // ${workspaceFolder} token, or a relative path with neither a resolvable
+      // launch.cwd nor a workspace folder to anchor it. Either way `node <path>`
+      // would resolve against the provider's private cwd and fail every start;
+      // refuse rather than register a broken one.
       problems.push({
-        message: `wcli0.launch.nodeScriptPath "${s.nodeScriptPath}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no workspace folder open).`,
+        message: `wcli0.launch.nodeScriptPath "${s.nodeScriptPath}" cannot be resolved to an absolute path (unresolved variable, or a relative path with no wcli0.launch.cwd set and no workspace folder open).`,
         blocking: true,
       });
     }
@@ -559,6 +683,13 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
       if (!sh) {
         continue;
       }
+      // A shell disabled explicitly or by the legacy single-shell selector is
+      // never spawned and the generated config preserves its disabled state, so
+      // its stale machine-specific paths/limits/variables must not block the
+      // enabled shells from registering. Skip validation for disabled shells.
+      if (!isShellEnabledForValidation(s, name)) {
+        continue;
+      }
       for (const p of sh.overrides?.paths?.allowedPaths ?? []) {
         if (isUnanchorablePath(p)) {
           problems.push({
@@ -596,6 +727,14 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
       if (cmd && cmd.trim() && hasUnresolvedExtensionVariable(cmd)) {
         problems.push({
           message: `wcli0.shells.${name}.executable.command "${cmd}" contains an unresolved \${workspaceFolder}/\${userHome} variable (no matching workspace folder is open).`,
+          blocking: true,
+        });
+      } else if (cmd && cmd.trim() && isUnanchorablePerShellCommand(cmd, s)) {
+        // A relative path-like command (e.g. ./tools/bash) with no launch.cwd and
+        // no workspace folder would be written unchanged and resolved under the
+        // provider's private extension dir at spawn, so the shell never starts.
+        problems.push({
+          message: `wcli0.shells.${name}.executable.command "${cmd}" is a relative path but cannot be anchored (no wcli0.launch.cwd set and no workspace folder open); it would be launched from a private extension directory.`,
           blocking: true,
         });
       }
@@ -660,13 +799,27 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
       blocking: true,
     });
   }
-  // The server ignores a non-positive commandTimeout/maxCommandLength and uses
-  // its default, so the value shown in settings would not take effect.
+  // commandTimeout/maxCommandLength: the bound depends on how they reach the
+  // server. As CLI flags (non-managed) the server ignores a non-positive value and
+  // uses its default, so reject <= 0. In managed mode they are written into the
+  // generated config, where validateConfig rejects values between 0 and 1 and
+  // buildConfigFile drops them silently — so a value such as 0.5 would launch with
+  // the server default instead of the configured limit. Require >= 1 there to match.
   for (const [name, value] of [
     ['commandTimeout', s.commandTimeout],
     ['maxCommandLength', s.maxCommandLength],
   ] as const) {
-    if (value != null && !(value > 0)) {
+    if (value == null) {
+      continue;
+    }
+    if (managed) {
+      if (!(Number.isFinite(value) && value >= 1)) {
+        problems.push({
+          message: `wcli0.${name} (${value}) must be a number >= 1; in per-shell (managed) mode it is written to the generated config, which the server rejects for values below 1, so the configured value would not take effect.`,
+          blocking: true,
+        });
+      }
+    } else if (!(value > 0)) {
       problems.push({
         message: `wcli0.${name} (${value}) must be a positive number; the server ignores non-positive values and uses its default.`,
         blocking: true,

@@ -441,7 +441,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  */
 function toPortablePath(folder: vscode.Uri, target: vscode.Uri): string {
   const rel = path.relative(folder.fsPath, target.fsPath);
-  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+  // Only an actual parent-traversal component means the target is outside the
+  // workspace: a bare `..` or a leading `../` (or `..\\` on Windows). A plain
+  // `rel.startsWith('..')` check also matches ordinary in-workspace names such as
+  // `..generated`, which would wrongly store an absolute, non-portable path.
+  const escapesWorkspace =
+    rel === '..' || rel.startsWith(`..${path.sep}`) || rel.startsWith('../');
+  if (rel && !escapesWorkspace && !path.isAbsolute(rel)) {
     return `\${workspaceFolder}/${rel.split(path.sep).join('/')}`;
   }
   return target.fsPath;

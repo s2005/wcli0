@@ -515,3 +515,92 @@ test('P36: per-shell executable command/args resolve extension variables', () =>
   assert.equal(cfg.shells.gitbash.executable.command, '/ws/bin/sh');
   assert.deepEqual(cfg.shells.gitbash.executable.args, ['/ws/x', '-c']);
 });
+
+test('P50: per-shell WSL allowed paths and initialDir convert Windows paths to the mount form', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      shells: {
+        wsl: {
+          overrides: { paths: { allowedPaths: ['C:/repo', '/home/user'], initialDir: 'C:/work' } },
+        },
+      },
+    }),
+  );
+  const paths = cfg.shells.wsl.overrides.paths;
+  // The server adds per-shell WSL allowedPaths verbatim (only global paths are
+  // converted), so a Windows path must be written in /mnt/<drive> form to match a
+  // /mnt/c/... working directory. An already-Unix path is left untouched.
+  assert.deepEqual(paths.allowedPaths, ['/mnt/c/repo', '/home/user']);
+  assert.equal(paths.initialDir, '/mnt/c/work');
+});
+
+test('P50: a per-shell WSL mount point override is honored when converting paths', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      shells: {
+        wsl: {
+          wslConfig: { mountPoint: '/drives' },
+          overrides: { paths: { allowedPaths: ['D:/data'] } },
+        },
+      },
+    }),
+  );
+  assert.deepEqual(cfg.shells.wsl.overrides.paths.allowedPaths, ['/drives/d/data']);
+});
+
+test('P50: non-WSL shells keep Windows allowed paths unchanged', () => {
+  const cfg = buildConfigFile(
+    defaults({ shells: { cmd: { overrides: { paths: { allowedPaths: ['C:/repo'] } } } } }),
+  );
+  // cmd is validated as a Windows shell, so its allowlist stays in Windows form.
+  assert.deepEqual(cfg.shells.cmd.overrides.paths.allowedPaths, ['C:/repo']);
+});
+
+test('P51: a relative path-like per-shell command is anchored to the workspace', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({ shells: { gitbash: { executable: { command: './tools/bash' } } } }),
+  );
+  // Anchored so a managed launch from the private extension dir still finds it.
+  assert.equal(cfg.shells.gitbash.executable.command, require('path').resolve('/ws', './tools/bash'));
+});
+
+test('P51: a configured cwd leaves a relative per-shell command for the server to resolve', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({ cwd: '/repo', shells: { gitbash: { executable: { command: './tools/bash' } } } }),
+  );
+  assert.equal(cfg.shells.gitbash.executable.command, './tools/bash');
+});
+
+test('P51: a bare PATH per-shell command is not anchored', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({ shells: { gitbash: { executable: { command: 'bash' } } } }),
+  );
+  assert.equal(cfg.shells.gitbash.executable.command, 'bash');
+});
+
+test('P54: a per-shell initialDir alone does not keep restrictWorkingDirectory on under allowAllDirs', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({
+      allowAllDirs: true,
+      shells: { cmd: { enabled: true, overrides: { paths: { initialDir: '${workspaceFolder}/sub' } } } },
+    }),
+  );
+  // initialDir is never promoted into allowedPaths, so allowAllDirs must lift the
+  // restriction rather than leave the shell restricted with an empty allowlist.
+  assert.equal(cfg.global.security.restrictWorkingDirectory, false);
+});
+
+test('P54: a per-shell allowedPaths entry still blocks the allowAllDirs lift', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({
+      allowAllDirs: true,
+      shells: { cmd: { enabled: true, overrides: { paths: { allowedPaths: ['${workspaceFolder}/sub'] } } } },
+    }),
+  );
+  assert.equal(cfg.global.security.restrictWorkingDirectory, true);
+});

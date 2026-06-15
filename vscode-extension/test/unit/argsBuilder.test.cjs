@@ -692,3 +692,131 @@ test('P46: a relative custom command for mcp.json keeps its value (VS Code ancho
   );
   assert.equal(spec.command, './bin/server');
 });
+
+test('P51: a relative path-like per-shell command with no cwd/workspace is blocking in managed mode', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ shells: { gitbash: { executable: { command: './tools/bash' } } } });
+  const problems = validateLaunchSpec(s, true);
+  assert.ok(problems.some((p) => /shells\.gitbash\.executable\.command/.test(p.message) && p.blocking));
+  // With a workspace open it anchors cleanly and is not flagged.
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  assert.equal(
+    validateLaunchSpec(s, true).some((p) => /shells\.gitbash\.executable\.command/.test(p.message)),
+    false,
+  );
+});
+
+test('P51: a relative per-shell command with a configured cwd is anchorable (not blocking)', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ cwd: '/repo', shells: { gitbash: { executable: { command: './tools/bash' } } } });
+  assert.equal(
+    validateLaunchSpec(s, true).some((p) => /shells\.gitbash\.executable\.command/.test(p.message)),
+    false,
+  );
+});
+
+test('P52: a relative node script resolves against the configured cwd, not the workspace', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/repo' }, name: 'repo', index: 0 }];
+  const spec = buildLaunchSpec(
+    defaults({ launchMethod: 'node', nodeScriptPath: 'dist/index.js', cwd: '/repo/server' }),
+  );
+  // node runs in cwd /repo/server, so the script must resolve there.
+  assert.equal(spec.args[0], path.resolve('/repo/server', 'dist/index.js'));
+});
+
+test('P52: a relative node script with a configured cwd is anchorable without a workspace', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({ launchMethod: 'node', nodeScriptPath: 'dist/index.js', cwd: '/repo/server' });
+  // The cwd anchors it, so validation must not block it...
+  assert.equal(validateLaunchSpec(s).some((p) => /nodeScriptPath/.test(p.message)), false);
+  // ...and it resolves against the cwd.
+  assert.equal(buildLaunchSpec(s).args[0], path.resolve('/repo/server', 'dist/index.js'));
+});
+
+test('P52: a relative node script for mcp.json stays relative when a cwd is set', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/repo' }, name: 'repo', index: 0 }];
+  const spec = buildLaunchSpec(
+    defaults({ launchMethod: 'node', nodeScriptPath: 'dist/index.js', cwd: '/repo/server' }),
+    { resolvePaths: false },
+  );
+  // A ${workspaceFolder} token would anchor to the workspace root, not the cwd, so
+  // keep the relative script for node to resolve under the configured cwd.
+  assert.equal(spec.args[0], 'dist/index.js');
+});
+
+test('P53: a disabled shell does not block managed validation (explicit enabled:false)', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({
+    shells: {
+      cmd: {
+        enabled: false,
+        overrides: {
+          paths: { allowedPaths: ['${workspaceFolder:nope}/b'] },
+          security: { commandTimeout: 0.5 },
+        },
+        executable: { command: '${workspaceFolder}/bin/sh' },
+      },
+    },
+  });
+  // None of the disabled shell's stale machine-specific settings should block.
+  assert.equal(validateLaunchSpec(s, true).filter((p) => p.blocking).length, 0);
+});
+
+test('P53: the legacy single-shell selector disables other shells for managed validation', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const s = defaults({
+    shell: 'gitbash',
+    shells: { cmd: { overrides: { security: { commandTimeout: 0.5 } } } },
+  });
+  // cmd is not the selected shell -> disabled -> its invalid limit must not block.
+  assert.equal(validateLaunchSpec(s, true).filter((p) => p.blocking).length, 0);
+  // The selected shell IS validated.
+  const sel = defaults({
+    shell: 'gitbash',
+    shells: { gitbash: { overrides: { security: { commandTimeout: 0.5 } } } },
+  });
+  assert.ok(validateLaunchSpec(sel, true).some((p) => /shells\.gitbash.*commandTimeout/.test(p.message) && p.blocking));
+});
+
+test('P56: a global limit below 1 is blocking in managed mode but allowed (>0) as a CLI flag', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({ commandTimeout: 0.5, maxCommandLength: 0.5 });
+  // Managed: written to the config, which the server rejects below 1 -> blocking.
+  const managed = validateLaunchSpec(s, true);
+  assert.ok(managed.some((p) => /commandTimeout \(0.5\)/.test(p.message) && p.blocking));
+  assert.ok(managed.some((p) => /maxCommandLength \(0.5\)/.test(p.message) && p.blocking));
+  // Non-managed: a CLI flag value > 0 is accepted (the server takes 0.5 directly).
+  assert.equal(validateLaunchSpec(s, false).filter((p) => p.blocking).length, 0);
+  // Non-positive is blocking in both modes.
+  assert.ok(validateLaunchSpec(defaults({ commandTimeout: 0 }), false).some((p) => /commandTimeout/.test(p.message) && p.blocking));
+});
+
+test('P57: a managed launch strips a conflicting --transport from extraArgs', () => {
+  const args = buildServerArgs(
+    defaults({ extraArgs: ['--transport', 'http', '--foo', 'bar'] }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  // The forced stdio must survive; only one --transport (stdio) remains.
+  assert.equal(args.filter((a) => a === '--transport').length, 1);
+  assert.equal(args[args.indexOf('--transport') + 1], 'stdio');
+  assert.ok(!args.includes('http'));
+  assert.ok(args.includes('--foo') && args.includes('bar'));
+});
+
+test('P57: forced stdio with a referenced config strips --transport from extraArgs', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const args = buildServerArgs(
+    defaults({ configFile: '/ws/wcli0.json', transportMode: 'stdio', extraArgs: ['--transport=sse'] }),
+  );
+  assert.equal(args.filter((a) => a === '--transport').length, 1);
+  assert.equal(args[args.indexOf('--transport') + 1], 'stdio');
+  assert.ok(!args.some((a) => a.startsWith('--transport=')));
+});
+
+test('P57: extraArgs --transport is left alone when the extension emits none', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // stdio with no configFile: the extension emits no --transport, so a user
+  // --transport in extraArgs is not the extension's to strip.
+  const args = buildServerArgs(defaults({ transportMode: 'stdio', extraArgs: ['--transport', 'http'] }));
+  assert.deepEqual(args, ['--transport', 'http']);
+});

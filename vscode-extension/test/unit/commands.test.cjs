@@ -397,3 +397,19 @@ test('P38: form scope=Workspace without a folder falls back to Global', async ()
   assert.equal(vscode.__state.configGlobal.get('wcli0.configFile'), '/abs/cfg.json');
   assert.equal(vscode.__state.configWorkspace.has('wcli0.configFile'), false);
 });
+
+test('P58: a workspace child whose name starts with ".." keeps a portable configFile path', async () => {
+  // "..generated" is an ordinary in-workspace directory, not a parent traversal,
+  // so the committed setting must stay a ${workspaceFolder} token (portable),
+  // not an absolute machine-specific path.
+  const target = vscode.Uri.file('/ws/..generated/wcli0.config.json');
+  vscode.__state.calls.saveDialog = target;
+  vscode.__state.calls.infoReturn = 'Set wcli0.configFile';
+
+  await generateConfigFile();
+
+  assert.equal(
+    vscode.workspace.getConfiguration('wcli0').get('configFile', ''),
+    '${workspaceFolder}/..generated/wcli0.config.json',
+  );
+});

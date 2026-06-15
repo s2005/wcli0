@@ -66,3 +66,15 @@
 - [x] P47: Force per-shell directory restrictions to match safety mode (fixed - yolo/unsafe cleanup forces a present per-shell `restrictWorkingDirectory` to `true`/`false`)
 - [x] P48: Preserve explicit empty workspace string overrides (fixed - Inherit checkboxes plus `explicitlySetKeys`/`setKeys`; `null` clears, `''` persists for `configFile`/`initialDir`/`logDirectory`/`launch.cwd`)
 - [x] P49: Show the provider's fallback cwd with the launch command (fixed - `resolveLaunchCwd` shares `privateDir()` with `showLaunchCommand`, which now displays the private launch dir)
+
+## Review Feedback (PR #86) - round 7
+
+- [x] P50: Convert workspace paths for WSL shell overrides (fixed - `applyPerShellOverrides` converts resolved Windows drive paths in a wsl shell's `allowedPaths`/`initialDir` to `/mnt/<drive>` form via `convertWindowsToWslPath`, matching what the server's WSL validator compares against)
+- [x] P51: Anchor relative per-shell executable commands (fixed - `resolvePerShellCommand` anchors a path-like relative command to the workspace when no `launch.cwd` is set; `validateLaunchSpec` blocks an unanchorable one)
+- [x] P52: Resolve relative Node scripts against the configured cwd (fixed - `nodeScriptArg` resolves a relative script against `launch.cwd` when set, leaving it relative for mcp.json; `isUnanchorableNodeScript` treats a resolvable cwd as an anchor)
+- [x] P53: Skip validation for shells that are effectively disabled (fixed - the managed loop skips shells that fail `isShellEnabledForValidation`)
+- [x] P54: Do not treat per-shell initialDir as an allowed path (fixed - `hasPerShellPaths` counts only resolved per-shell `allowedPaths`, so `allowAllDirs` lifts the restriction for an initialDir-only shell)
+- [x] P55: Preserve whitespace in per-shell executable arguments (fixed - webview `argLines` no longer trims each line)
+- [x] P56: Reject sub-one global limits in managed mode (fixed - managed `validateLaunchSpec` requires global `commandTimeout`/`maxCommandLength` >= 1, matching the config-file rule)
+- [x] P57: Prevent extraArgs from defeating forced stdio (fixed - `stripTransportArgs` drops a conflicting `--transport` from `extraArgs` whenever the extension emits its own)
+- [x] P58: Preserve portability for dot-dot-prefixed workspace children (fixed - `toPortablePath` checks for an actual `..`/`../` traversal component instead of any `..` prefix)

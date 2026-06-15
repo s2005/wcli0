@@ -123,6 +123,68 @@ function normalizeMount(mount: string): string {
 }
 
 /**
+ * Whether a command is path-like — it contains a path separator (`/` or `\`), so
+ * the OS resolves it relative to the process cwd rather than looking it up on
+ * PATH. Mirrors `isPathLikeCommand` in argsBuilder so per-shell executable
+ * commands are anchored the same way as the custom launch command.
+ */
+function isPathLikeCommand(cmd: string): boolean {
+  return /[\\/]/.test(cmd);
+}
+
+/**
+ * Resolve a per-shell executable command: resolve extension-owned variables, then
+ * anchor a path-like RELATIVE command to the workspace when no `launch.cwd` is set
+ * — matching `customCommandValue` in argsBuilder. A managed launch runs the server
+ * from a private extension-storage directory and the server passes
+ * `executable.command` straight to spawn, so an unanchored relative command (e.g.
+ * `./tools/bash`) would resolve under that private directory and never start. With
+ * a cwd configured the relative command resolves against it as intended, and a
+ * bare PATH command (e.g. `bash`) is left untouched. An unanchorable relative
+ * command is left as-is and refused by validateLaunchSpec.
+ */
+function resolvePerShellCommand(command: string, s: Wcli0Settings): string {
+  const resolved = resolveVariables(command);
+  if (resolved && isPathLikeCommand(resolved) && !isAbsolutePath(resolved) && !s.cwd.trim()) {
+    const base = primaryWorkspaceFolder()?.uri.fsPath;
+    if (base) {
+      return path.resolve(base, resolved);
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Convert a resolved Windows drive path (e.g. `C:\repo`) to its WSL mount form
+ * (e.g. `/mnt/c/repo`) using the shell's mount point. Mirrors the server's
+ * `convertWindowsToWslPath` so per-shell WSL allowlists written by the extension
+ * match what the WSL working-directory validator compares against: that validator
+ * adds per-shell `allowedPaths` verbatim (only GLOBAL paths are converted), so a
+ * Windows path here would never match a `/mnt/...` working directory and every WSL
+ * execution would be rejected. A non-drive path (already a `/mnt/...` or `/home`
+ * path, or a UNC path the server can't mount) is returned unchanged.
+ */
+function convertWindowsToWslPath(windowsPath: string, mountPoint: string): string {
+  if (windowsPath.startsWith('\\\\') || windowsPath.startsWith('//')) {
+    return windowsPath;
+  }
+  const match = windowsPath.match(/^([a-zA-Z]):([\\/]?.*)$/);
+  if (!match) {
+    return windowsPath;
+  }
+  const drive = match[1].toLowerCase();
+  let rest = match[2]
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .replace(/\/+/g, '/');
+  if (rest.endsWith('/')) {
+    rest = rest.slice(0, -1);
+  }
+  const base = mountPoint.endsWith('/') ? mountPoint : `${mountPoint}/`;
+  return rest ? `${base}${drive}/${rest}` : `${base}${drive}`;
+}
+
+/**
  * Merge a user's per-shell config (`wcli0.shells[name]`) onto a shell entry built
  * from SHELL_DEFAULTS. Values are sanitized the same way the global section is:
  * numeric limits via posNum, paths via resolveConfigPath, empty strings dropped.
@@ -134,6 +196,7 @@ function applyPerShellOverrides(
   entry: Record<string, unknown>,
   perShell: PerShellConfig | undefined,
   name: string,
+  s: Wcli0Settings,
 ): void {
   if (!perShell) {
     return;
@@ -147,9 +210,11 @@ function applyPerShellOverrides(
     // Resolve extension-owned variables (${workspaceFolder}/${userHome}) before
     // emitting: the server passes executable.command to spawn without expanding
     // them, so a token like ${workspaceFolder}/bin/shell must become a concrete
-    // path here. An unresolvable token is left intact and refused by
+    // path here. A path-like RELATIVE command is anchored to the workspace (when no
+    // launch.cwd is set) so it doesn't resolve under the provider's private cwd; an
+    // unresolvable token / unanchorable relative path is left intact and refused by
     // validateLaunchSpec; a bare PATH command (e.g. bash) has no token to resolve.
-    exec.command = resolveVariables(perShell.executable.command.trim());
+    exec.command = resolvePerShellCommand(perShell.executable.command.trim(), s);
   }
   // Honor an explicit args list, including an empty one: `args: []` is valid
   // server config (run the executable with no prefix args) and must replace the
@@ -203,16 +268,32 @@ function applyPerShellOverrides(
 
     if (ov.paths) {
       const paths = (overrides.paths as Record<string, unknown>) ?? {};
+      // For the wsl shell, convert resolved Windows paths to their WSL mount form
+      // so they match the working directory the server validates against (it adds
+      // per-shell allowedPaths verbatim, converting only GLOBAL paths). Use the
+      // effective mount point: a per-shell override wins, else the value already
+      // seeded on the entry from --wslMountPoint, else the server default.
+      const toShellPath = (resolved: string): string => {
+        if (name !== 'wsl') {
+          return resolved;
+        }
+        const seeded = (entry.wslConfig as { mountPoint?: string } | undefined)?.mountPoint;
+        const mount = perShell.wslConfig?.mountPoint?.trim()
+          ? normalizeMount(perShell.wslConfig.mountPoint)
+          : seeded || '/mnt/';
+        return convertWindowsToWslPath(resolved, mount);
+      };
       if (ov.paths.allowedPaths) {
         // Drop unresolved/empty entries (the server treats an empty allowed
         // prefix as matching every path), mirroring the global paths handling.
         paths.allowedPaths = ov.paths.allowedPaths
           .map((p) => resolveConfigPath(p))
-          .filter((p): p is string => p !== undefined);
+          .filter((p): p is string => p !== undefined)
+          .map(toShellPath);
       }
       const initial = ov.paths.initialDir ? resolveConfigPath(ov.paths.initialDir) : undefined;
       if (initial !== undefined) {
-        paths.initialDir = initial;
+        paths.initialDir = toShellPath(initial);
       }
       if (Object.keys(paths).length > 0) {
         overrides.paths = paths;
@@ -255,10 +336,10 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     .filter((d): d is string => d !== undefined);
   const resolvedInitialDir = resolveConfigPath(s.initialDir);
 
-  // Per-shell allowed paths / initialDir also count as configured paths: a shell
-  // inherits the global restrictWorkingDirectory unless it overrides it, so if
-  // allowAllDirs disabled the global restriction the shell's allowlist would be
-  // present but never enforced. Include resolved per-shell paths in the decision.
+  // Per-shell allowed paths also count as configured paths: a shell inherits the
+  // global restrictWorkingDirectory unless it overrides it, so if allowAllDirs
+  // disabled the global restriction the shell's allowlist would be present but
+  // never enforced. Include resolved per-shell allowedPaths in the decision.
   const hasPerShellPaths = SHELL_NAMES.some((name) => {
     // A disabled shell is never launched, so its allowlist can't constrain
     // anything; counting it would keep restrictWorkingDirectory on and leave the
@@ -271,10 +352,15 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
     if (!p) {
       return false;
     }
+    // A per-shell initialDir is NOT promoted into the shell's allowedPaths by the
+    // server, so it cannot satisfy the working-directory restriction. Counting it
+    // here would keep restrictWorkingDirectory enabled with an empty allowlist, so
+    // every command fails with "No allowed paths configured" instead of honoring
+    // allowAllDirs. Only resolved per-shell allowedPaths block the lift.
     const resolvedShellPaths = (p.allowedPaths ?? [])
       .map((x) => resolveConfigPath(x))
       .filter((x): x is string => x !== undefined);
-    return resolvedShellPaths.length > 0 || (p.initialDir ? resolveConfigPath(p.initialDir) !== undefined : false);
+    return resolvedShellPaths.length > 0;
   });
   // allowAllDirs only lifts the restriction when nothing else is configured,
   // matching the server's "when no allowed paths are configured" behavior. Base
@@ -388,7 +474,7 @@ export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
         wsl.mountPoint = normalizeMount(s.wslMountPoint);
       }
     }
-    applyPerShellOverrides(entry, s.shells?.[name], name);
+    applyPerShellOverrides(entry, s.shells?.[name], name, s);
     if (clearShellRestrictions && entry.overrides) {
       // --yolo/--unsafe clear shell-specific blocked lists AND force per-shell
       // injection protection off (matching applyCliUnsafeMode, which sets

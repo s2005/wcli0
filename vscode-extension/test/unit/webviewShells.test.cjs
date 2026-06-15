@@ -391,3 +391,23 @@ test('P48: an unset optional field defaults to Inherit and submits null', () => 
   // Unchanged Inherit field is not part of collectChanged, so it isn't submitted.
   assert.equal('configFile' in (save.values || {}), false);
 });
+
+test('P55: per-shell executable args preserve leading/trailing and whitespace-only entries', () => {
+  const h = makeHarness();
+  // Baseline: a shell with whitespace-significant args already configured.
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { gitbash: { executable: { command: 'bash', args: ['--flag', '  spaced  '] } } } },
+  });
+  // The textarea round-trips the args verbatim.
+  assert.equal(h.els.get('sh-gitbash-args').value, '--flag\n  spaced  ');
+  // Editing an unrelated field and saving must NOT trim the args: they are passed
+  // straight to spawn, so the whitespace is meaningful and would otherwise be lost.
+  h.els.get('sh-gitbash-enabled').value = 'disabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.deepEqual(save.values.shells.gitbash.executable.args, ['--flag', '  spaced  ']);
+});
