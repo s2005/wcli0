@@ -574,3 +574,59 @@ test('P84: an allowed-paths override alone marks the launch isolated', () => {
   el._l.input.forEach((cb) => cb());
   assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
 });
+
+test('Shells mode: defaults to Simple when no shell is configured', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  assert.equal(h.els.get('simplePane').style.display, '', 'simple pane shown');
+  assert.equal(h.els.get('perShellSection').style.display, 'none', 'per-shell section hidden');
+  assert.ok(h.els.get('mode-simple').className.includes('sel'), 'Simple button selected');
+  assert.ok(!h.els.get('mode-per').className.includes('sel'), 'Per-shell button not selected');
+});
+
+test('Shells mode: defaults to Per-shell when a shell is configured', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { cmd: { enabled: true } } },
+  });
+  assert.equal(h.els.get('simplePane').style.display, 'none', 'simple pane hidden');
+  assert.equal(h.els.get('perShellSection').style.display, '', 'per-shell section shown');
+  assert.ok(h.els.get('mode-per').className.includes('sel'), 'Per-shell button selected');
+});
+
+test('Shells mode: the mode buttons toggle which editor is visible', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('mode-per')._l.click.forEach((cb) => cb());
+  assert.equal(h.els.get('simplePane').style.display, 'none');
+  assert.equal(h.els.get('perShellSection').style.display, '');
+  h.els.get('mode-simple')._l.click.forEach((cb) => cb());
+  assert.equal(h.els.get('simplePane').style.display, '');
+  assert.equal(h.els.get('perShellSection').style.display, 'none');
+});
+
+test('Shells mode: switching to Simple warns when per-shell overrides exist', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { cmd: { enabled: true } } },
+  });
+  // Loaded in Per-shell mode: the warning is hidden.
+  assert.equal(h.els.get('shellModeWarn').style.display, 'none');
+  // Switching to Simple while a per-shell override is configured surfaces the warning
+  // that wcli0.shells still overrides the simple selection.
+  h.els.get('mode-simple')._l.click.forEach((cb) => cb());
+  assert.equal(h.els.get('shellModeWarn').style.display, '');
+});
+
+test('Shells mode: switching to Simple shows no warning when no per-shell config exists', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('mode-simple')._l.click.forEach((cb) => cb());
+  assert.equal(h.els.get('shellModeWarn').style.display, 'none');
+});

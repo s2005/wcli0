@@ -362,8 +362,11 @@ function renderHtml(webview: vscode.Webview): string {
   }
   input:disabled, select:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
   textarea { min-height: 60px; font-family: var(--vscode-editor-font-family); resize: vertical; }
-  .row { display: flex; gap: 16px; flex-wrap: wrap; }
-  .row > div { flex: 1; min-width: 170px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: stretch; }
+  /* Make each cell a column so a label that wraps to two lines grows to fill the
+     extra height, keeping the inputs below sibling labels aligned on one line. */
+  .row > div { flex: 1; min-width: 170px; display: flex; flex-direction: column; }
+  .row > div > label { flex: 1 0 auto; }
   .checkbox { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
   .checkbox input { width: auto; }
   .checkbox label { margin: 0; font-weight: 400; }
@@ -413,9 +416,9 @@ function renderHtml(webview: vscode.Webview): string {
   /* Isolation status chip in the sticky header */
   .statuschip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px;
     font-size: 0.82em; font-weight: 600; white-space: nowrap; }
-  .statuschip.sc-ok { background: var(--vscode-testing-iconPassed, transparent);
+  .statuschip.sc-ok { background: transparent;
     color: var(--vscode-charts-green, #3fb950); border: 1px solid var(--vscode-charts-green, #3fb950); }
-  .statuschip.sc-warn { color: var(--vscode-charts-yellow, #d7a930);
+  .statuschip.sc-warn { background: transparent; color: var(--vscode-charts-yellow, #d7a930);
     border: 1px solid var(--vscode-charts-yellow, #d7a930); }
   /* Per-shell cards + segmented enable toggle */
   .shell-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 14px; }
@@ -436,6 +439,8 @@ function renderHtml(webview: vscode.Webview): string {
   .seg button.segbtn:first-child { border-left: none; }
   .seg button.segbtn:hover { background: var(--vscode-button-secondaryHoverBackground); }
   .seg button.segbtn.sel { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+  .modeseg { margin: 4px 0 6px; }
+  .modeseg button.segbtn { padding: 6px 16px; }
   .hidden-enable { display: none; }
   .wsl-box { margin-top: 12px; padding: 10px 12px; border-radius: 5px;
     border: 1px solid var(--vscode-panel-border, transparent);
@@ -513,39 +518,41 @@ function renderHtml(webview: vscode.Webview): string {
   <div class="tabpanel" data-tab="shells">
   <section>
   <h2>Shells & Directories</h2>
-  <div class="row">
-    <div>
-      <label>Shell <span class="hint">the legacy single-shell selector; per-shell settings below override it</span></label>
-      <select id="shell">
-        <option value="">Inherit</option>
-        <option value="all">all</option>
-        <option value="cmd">cmd</option>
-        <option value="powershell">powershell</option>
-        <option value="gitbash">gitbash</option>
-        <option value="wsl">wsl</option>
-        <option value="bash">bash</option>
-      </select>
-    </div>
-    <div>
-      <label>WSL mount point <span class="hint">applies to WSL-family shells only</span></label>
-      <input type="text" id="wslMountPoint" placeholder="/mnt/" />
-    </div>
+  <label>Configuration mode <span class="hint">pick one way to choose which shells are enabled</span></label>
+  <div class="seg modeseg" id="shellModeSeg">
+    <button type="button" class="segbtn" id="mode-simple">Simple &mdash; one shell</button>
+    <button type="button" class="segbtn" id="mode-per">Per-shell &mdash; advanced</button>
   </div>
-  <label>Allowed directories <span class="hint">one per line; supports \${workspaceFolder}</span></label>
+  <div class="hint" id="shellModeHelp" style="margin:0 0 6px"></div>
+  <div class="hint" id="shellModeWarn" style="display:none;margin:0 0 6px;color:var(--vscode-charts-yellow,#d7a930)">Per-shell settings are configured and still override the simple selection. Switch to Per-shell to view or clear them.</div>
+
+  <div id="simplePane">
+    <label>Shell <span class="hint">enable one shell, or "all"</span></label>
+    <select id="shell">
+      <option value="">Inherit</option>
+      <option value="all">all</option>
+      <option value="cmd">cmd</option>
+      <option value="powershell">powershell</option>
+      <option value="gitbash">gitbash</option>
+      <option value="wsl">wsl</option>
+      <option value="bash">bash</option>
+    </select>
+  </div>
+
+  <label>Allowed directories <span class="hint">one per line; supports \${workspaceFolder}; shared by all shells</span></label>
   <textarea id="allowedDirectories" placeholder="\${workspaceFolder}"></textarea>
   <label class="checkbox optional-inherit"><input type="checkbox" id="allowedDirectories-inherit" /> Inherit <span class="hint">no override; uncheck and leave empty to set an explicit empty list that masks the other scope</span></label>
-  <label>Initial directory</label>
+  <label>Initial directory <span class="hint">shared by all shells</span></label>
   <input type="text" id="initialDir" />
   <label class="checkbox optional-inherit"><input type="checkbox" id="initialDir-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
   </section>
 
-  <section>
+  <section id="perShellSection">
   <h2>Per-Shell Configuration</h2>
   <div class="hint" style="margin-bottom:4px">
-    Enable each shell and optionally override it. When any shell is set here, these values take
-    precedence over the single <strong>Shell</strong> dropdown and the global limit/restriction
-    fields: the extension writes an auto-managed config file and launches the server with
-    <code>--config</code>. Restart the MCP server to apply changes.
+    Configure each shell independently. These per-shell values are used instead of the simple
+    <strong>Shell</strong> selection: the extension writes an auto-managed config file and launches the
+    server with <code>--config</code>. Restart the MCP server to apply changes.
   </div>
   <div class="shell-summary" id="shellSummary"><span class="lbl">Enabled shells:</span>${renderShellSummary()}</div>
   ${renderShellBlocks()}
@@ -625,7 +632,7 @@ function renderHtml(webview: vscode.Webview): string {
   // at the target scope so a previous override can be removed from the form.
   const triBoolFields = ['allowAllDirs','debug'];
   const arrayFields = ['allowedDirectories'];
-  const stringFields = ['launch.packageSpec','launch.nodeScriptPath','launch.customCommand','launch.cwd','configFile','shell','wslMountPoint','initialDir','logDirectory','enableTruncation','enableLogResources','safetyMode','launch.method','transport.host','transport.mode'];
+  const stringFields = ['launch.packageSpec','launch.nodeScriptPath','launch.customCommand','launch.cwd','configFile','shell','initialDir','logDirectory','enableTruncation','enableLogResources','safetyMode','launch.method','transport.host','transport.mode'];
   // Optional string settings where an explicit empty value is a meaningful
   // override (it disables a non-empty value from the other scope). Each has an
   // Inherit checkbox: checked -> no override (collect emits null -> cleared);
@@ -772,6 +779,10 @@ function renderHtml(webview: vscode.Webview): string {
     for (const f of triBoolFields) if ($(f)) $(f).value = boolToTri(s[mapKey(f)]);
     for (const f of arrayFields) if ($(f)) $(f).value = (s[mapKey(f)] || []).join('\\n');
     setShellsVal(s.shells);
+    // Default the shells editor to whichever mode the loaded config implies: the
+    // per-shell cards when any shell is configured (wcli0.shells), otherwise the
+    // simple single-shell selector. The two are mutually-exclusive views.
+    setShellMode(Object.keys(loadedShells || {}).length > 0 ? 'per' : 'simple');
     // Optional string overrides: the "Inherit" checkbox reflects whether the key
     // is actually set at this scope (setKeys). The text value was set by the
     // generic stringFields loop above, so a stored value — or an explicit empty
@@ -909,6 +920,37 @@ function renderHtml(webview: vscode.Webview): string {
     tabButtons.forEach((x) => x.classList.toggle('active', x === t));
     tabPanels.forEach((p) => p.classList.toggle('active', p.dataset.tab === name));
   }));
+
+  // Shells editor mode: Simple (the single Shell selector) vs Per-shell (the cards).
+  // A view toggle only — it shows one editor at a time so a user is not configuring
+  // shells in two places at once. It does not change what collect() submits; the
+  // per-shell cards still map to wcli0.shells and the dropdown to wcli0.shell. Uses
+  // only style.display / className so it is safe under the test harness's minimal DOM
+  // (which has no classList). The mode itself is never persisted; it is re-derived
+  // from the loaded config on every (re)populate (see setVal).
+  let shellMode = 'simple';
+  function applyShellMode() {
+    const simple = shellMode === 'simple';
+    const sp = $('simplePane'); if (sp) sp.style.display = simple ? '' : 'none';
+    const ps = $('perShellSection'); if (ps) ps.style.display = simple ? 'none' : '';
+    const bs = $('mode-simple'); if (bs) bs.className = 'segbtn' + (simple ? ' sel' : '');
+    const bp = $('mode-per'); if (bp) bp.className = 'segbtn' + (simple ? '' : ' sel');
+    const help = $('shellModeHelp');
+    if (help) {
+      help.textContent = simple
+        ? 'Enable one shell (or "all") with the shared directories below. Best for most setups.'
+        : 'Configure each shell independently - executable, security limits and its own allowed paths.';
+    }
+    // In Simple mode, warn when per-shell overrides are configured: the server still
+    // applies wcli0.shells when present, so they win over the simple selection.
+    const warn = $('shellModeWarn');
+    if (warn) warn.style.display = (simple && Object.keys(collectShells()).length > 0) ? '' : 'none';
+  }
+  function setShellMode(m) { shellMode = m; applyShellMode(); }
+  const modeSimpleBtn = $('mode-simple');
+  if (modeSimpleBtn) modeSimpleBtn.addEventListener('click', () => setShellMode('simple'));
+  const modePerBtn = $('mode-per');
+  if (modePerBtn) modePerBtn.addEventListener('click', () => setShellMode('per'));
 
   // Reflect a per-shell enabled <select> value onto its segmented buttons, the
   // collapsed-card state label and its summary chip. Pure property assignments, so
