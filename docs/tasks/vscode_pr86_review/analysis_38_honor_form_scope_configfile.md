@@ -16,4 +16,4 @@ the scope the user is editing. Bypassing that for the configFile reference re-in
 "hidden Workspace override" leak P29 fixed. Falling back to the folder-based heuristic for palette
 invocations preserves the original behavior when there is no form context to honor.
 
-**Commit:** b56a677 — fix(vscode): address Codex round-5 review feedback for PR #86
+**Commit:** dea9217 — fix(vscode): address Codex round-5 review feedback for PR #86

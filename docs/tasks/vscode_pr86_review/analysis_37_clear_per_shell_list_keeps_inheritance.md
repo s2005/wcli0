@@ -17,4 +17,4 @@ controls, matching the reviewer's first suggestion (distinguish unchanged-origin
 non-empty). Arrays that use append-merge (`blockedCommands`/`blockedArguments`) are unaffected because
 the loaded-vs-cleared distinction now resolves to "remove override", which is also the safer behavior.
 
-**Commit:** b56a677 — fix(vscode): address Codex round-5 review feedback for PR #86
+**Commit:** dea9217 — fix(vscode): address Codex round-5 review feedback for PR #86

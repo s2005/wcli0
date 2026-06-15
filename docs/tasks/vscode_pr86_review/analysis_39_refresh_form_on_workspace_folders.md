@@ -16,4 +16,4 @@ folder drives `${workspaceFolder}` resolution and scope selection, and the form 
 it. The form's `external` reload guard (round-4 P35) still applies, so this refresh won't clobber unsaved
 edits; it only ensures the scope metadata and control state track reality.
 
-**Commit:** b56a677 — fix(vscode): address Codex round-5 review feedback for PR #86
+**Commit:** dea9217 — fix(vscode): address Codex round-5 review feedback for PR #86

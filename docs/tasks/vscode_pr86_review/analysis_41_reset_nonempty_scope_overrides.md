@@ -23,4 +23,4 @@ button (which would have been a larger UX redesign). The form's defaults-loaded 
 `readSettingsForScope` still returns concrete defaults when no override exists, so users only see
 Inherit when they explicitly choose it.
 
-**Commit:** b56a677 — fix(vscode): address Codex round-5 review feedback for PR #86
+**Commit:** dea9217 — fix(vscode): address Codex round-5 review feedback for PR #86

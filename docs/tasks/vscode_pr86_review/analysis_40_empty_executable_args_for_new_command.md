@@ -16,4 +16,4 @@ The form already supports `[]` as a meaningful value (round-2 P11, round-4 P32);
 that *entering a new command* with blank args didn't produce that `[]`. Threading `hasCmd` keeps the
 existing lossless round-trip for already-configured args while closing the new-command hole.
 
-**Commit:** b56a677 — fix(vscode): address Codex round-5 review feedback for PR #86
+**Commit:** dea9217 — fix(vscode): address Codex round-5 review feedback for PR #86
