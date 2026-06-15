@@ -248,16 +248,28 @@ function triSelect(id: string): string {
   return `<select id="${id}"><option value="default">default</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>`;
 }
 
-/** Render the collapsible per-shell configuration blocks. */
+/** Render the "Enabled shells" summary chips (one per shell; updated by the script). */
+function renderShellSummary(): string {
+  return PER_SHELL_DEFS.map(
+    (d) => `<span class="stchip def" id="sum-${d.name}">${d.label}: default</span>`,
+  ).join('');
+}
+
+/** Render the per-shell configuration cards (Design 5). */
 function renderShellBlocks(): string {
   return PER_SHELL_DEFS.map(
     (d) => /* html */ `
-  <details class="shell-block">
-    <summary>${d.label} <span class="hint">${d.name}</span></summary>
-    <div class="row">
-      <div><label>Enabled</label>${triSelect(`sh-${d.name}-enabled`)}</div>
-      <div><label>Executable command</label><input type="text" id="sh-${d.name}-cmd" /></div>
+  <details class="shell-block scard" id="scard-${d.name}">
+    <summary>${d.label} <span class="hint">${d.name}${d.wsl ? ' &middot; WSL family' : ''}</span><span class="sstate" id="sstate-${d.name}">inherit (default)</span></summary>
+    <label>Enabled</label>
+    <div class="seg" id="seg-${d.name}">
+      <button type="button" class="segbtn" id="seg-${d.name}-default">Default</button>
+      <button type="button" class="segbtn" id="seg-${d.name}-on">On</button>
+      <button type="button" class="segbtn" id="seg-${d.name}-off">Off</button>
     </div>
+    <select id="sh-${d.name}-enabled" class="hidden-enable" aria-hidden="true"><option value="default">default</option><option value="enabled">enabled</option><option value="disabled">disabled</option></select>
+    <label>Executable command</label>
+    <input type="text" id="sh-${d.name}-cmd" />
     <label>Executable args <span class="hint">one per line</span></label>
     <textarea id="sh-${d.name}-args"></textarea>
     <details class="overrides">
@@ -281,9 +293,12 @@ function renderShellBlocks(): string {
     </details>
     ${
       d.wsl
-        ? `<div class="row">
-      <div><label>WSL mount point</label><input type="text" id="sh-${d.name}-wsl-mount" placeholder="/mnt/" /></div>
-      <div><label>Inherit global paths</label>${triSelect(`sh-${d.name}-wsl-inherit`)}</div>
+        ? `<div class="wsl-box">
+      <div class="wsl-h">WSL settings <span class="hint">only for WSL-family shells</span></div>
+      <div class="row">
+        <div><label>WSL mount point</label><input type="text" id="sh-${d.name}-wsl-mount" placeholder="/mnt/" /></div>
+        <div><label>Inherit global paths</label>${triSelect(`sh-${d.name}-wsl-inherit`)}</div>
+      </div>
     </div>`
         : ''
     }
@@ -365,6 +380,49 @@ function renderHtml(webview: vscode.Webview): string {
   }
   details.overrides { margin-top: 10px; }
   details.overrides > summary { cursor: pointer; font-weight: 600; font-size: 0.9em; opacity: 0.85; padding: 2px 0; }
+  /* Tabbed navigation (Design 5) */
+  .tabnav { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 10px;
+    border-bottom: 1px solid var(--vscode-panel-border, transparent); }
+  .tabnav button.tab {
+    margin: 0; padding: 7px 13px; background: transparent; color: var(--vscode-foreground);
+    opacity: 0.65; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  }
+  .tabnav button.tab:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, transparent); }
+  .tabnav button.tab.active { opacity: 1; font-weight: 600; border-bottom-color: var(--vscode-focusBorder); }
+  .tabpanel { display: none; }
+  .tabpanel.active { display: block; }
+  /* Isolation status chip in the sticky header */
+  .statuschip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.82em; font-weight: 600; white-space: nowrap; }
+  .statuschip.sc-ok { background: var(--vscode-testing-iconPassed, transparent);
+    color: var(--vscode-charts-green, #3fb950); border: 1px solid var(--vscode-charts-green, #3fb950); }
+  .statuschip.sc-warn { color: var(--vscode-charts-yellow, #d7a930);
+    border: 1px solid var(--vscode-charts-yellow, #d7a930); }
+  /* Per-shell cards + segmented enable toggle */
+  .shell-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 14px; }
+  .shell-summary .lbl { font-size: 0.85em; opacity: 0.7; }
+  .stchip { font-size: 0.76em; padding: 2px 9px; border-radius: 11px;
+    border: 1px solid var(--vscode-panel-border, transparent); }
+  .stchip.on { color: var(--vscode-charts-green, #3fb950); }
+  .stchip.off { color: var(--vscode-charts-red, #f48771); }
+  .stchip.def { opacity: 0.6; }
+  details.scard > summary .sstate { font-size: 0.8em; opacity: 0.7; margin-left: 8px; font-weight: 400; }
+  .seg { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, transparent));
+    border-radius: 5px; overflow: hidden; margin: 8px 0; }
+  .seg button.segbtn {
+    margin: 0; padding: 4px 13px; border: none; border-radius: 0;
+    border-left: 1px solid var(--vscode-panel-border, transparent); font-size: 0.85em;
+    background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
+  }
+  .seg button.segbtn:first-child { border-left: none; }
+  .seg button.segbtn:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  .seg button.segbtn.sel { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+  .hidden-enable { display: none; }
+  .wsl-box { margin-top: 12px; padding: 10px 12px; border-radius: 5px;
+    border: 1px solid var(--vscode-panel-border, transparent);
+    border-left: 3px solid var(--vscode-charts-blue, #6fb3e0);
+    background: var(--vscode-editor-background); }
+  .wsl-box .wsl-h { font-weight: 600; font-size: 0.9em; margin-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -376,6 +434,7 @@ function renderHtml(webview: vscode.Webview): string {
         <label><input type="radio" name="scope" value="Global" /> User</label>
       </div>
       <div class="saveactions">
+        <span id="isolationChip" class="statuschip sc-warn" title="Whether an implicit config.json could override these settings. Open the Config source tab.">Overridable</span>
         <span id="savedMsg" class="saved-msg" style="display:none">Saved &#10003;</span>
         <button id="save">Save settings</button>
       </div>
@@ -386,8 +445,34 @@ function renderHtml(webview: vscode.Webview): string {
     <div id="noWorkspace" class="hint" style="display:none;color:var(--vscode-errorForeground)">
       No workspace folder open — only User scope is available.
     </div>
+    <div class="tabnav" id="tabnav">
+      <button type="button" class="tab active" data-tab="config">Config source</button>
+      <button type="button" class="tab" data-tab="launch">Launch</button>
+      <button type="button" class="tab" data-tab="shells">Shells</button>
+      <button type="button" class="tab" data-tab="safety">Limits &amp; Safety</button>
+      <button type="button" class="tab" data-tab="transport">Transport</button>
+      <button type="button" class="tab" data-tab="export">Export</button>
+    </div>
   </div>
 
+  <div class="tabpanel active" data-tab="config">
+  <section>
+  <h2>Config source &amp; launch isolation</h2>
+  <div class="hint" style="margin-bottom:10px">
+    Controls whether an implicit <code>config.json</code> (in the launch working directory or
+    <code>~/.win-cli-mcp/</code>) can silently override the settings on the other tabs. Referencing a
+    config file passes <code>--config</code>, which makes the server ignore implicit files; per-shell
+    settings (Shells tab) do the same via an auto-managed config. With neither, the launch uses plain
+    CLI flags and an implicit <code>config.json</code> can override them — the status chip in the
+    header reflects this.
+  </div>
+  <label>Config file <span class="hint">passed via --config; CLI settings override it</span></label>
+  <input type="text" id="configFile" placeholder="\${workspaceFolder}/wcli0.config.json" />
+  <label class="checkbox optional-inherit"><input type="checkbox" id="configFile-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
+  </section>
+  </div>
+
+  <div class="tabpanel" data-tab="launch">
   <section>
   <h2>Launch</h2>
   <label>Launch method <span class="hint">how the server process starts</span></label>
@@ -403,16 +488,15 @@ function renderHtml(webview: vscode.Webview): string {
   <label>Working directory <span class="hint">supports \${workspaceFolder}</span></label>
   <input type="text" id="launch.cwd" placeholder="\${workspaceFolder}" />
   <label class="checkbox optional-inherit"><input type="checkbox" id="launch.cwd-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
-  <label>Config file <span class="hint">passed via --config; CLI settings override it</span></label>
-  <input type="text" id="configFile" placeholder="\${workspaceFolder}/wcli0.config.json" />
-  <label class="checkbox optional-inherit"><input type="checkbox" id="configFile-inherit" /> Inherit <span class="hint">no override; uncheck to set an explicit value (empty allowed)</span></label>
   </section>
+  </div>
 
+  <div class="tabpanel" data-tab="shells">
   <section>
   <h2>Shells & Directories</h2>
   <div class="row">
     <div>
-      <label>Shell</label>
+      <label>Shell <span class="hint">the legacy single-shell selector; per-shell settings below override it</span></label>
       <select id="shell">
         <option value="">Inherit</option>
         <option value="all">all</option>
@@ -424,7 +508,7 @@ function renderHtml(webview: vscode.Webview): string {
       </select>
     </div>
     <div>
-      <label>WSL mount point</label>
+      <label>WSL mount point <span class="hint">applies to WSL-family shells only</span></label>
       <input type="text" id="wslMountPoint" placeholder="/mnt/" />
     </div>
   </div>
@@ -439,14 +523,17 @@ function renderHtml(webview: vscode.Webview): string {
   <section>
   <h2>Per-Shell Configuration</h2>
   <div class="hint" style="margin-bottom:4px">
-    Configure each shell individually. When any shell is set here, these values take
+    Enable each shell and optionally override it. When any shell is set here, these values take
     precedence over the single <strong>Shell</strong> dropdown and the global limit/restriction
     fields: the extension writes an auto-managed config file and launches the server with
     <code>--config</code>. Restart the MCP server to apply changes.
   </div>
+  <div class="shell-summary" id="shellSummary"><span class="lbl">Enabled shells:</span>${renderShellSummary()}</div>
   ${renderShellBlocks()}
   </section>
+  </div>
 
+  <div class="tabpanel" data-tab="safety">
   <section>
   <h2>Limits & Safety</h2>
   <div class="row">
@@ -481,7 +568,9 @@ function renderHtml(webview: vscode.Webview): string {
     <div><label>Debug logging</label>${triSelect('debug')}</div>
   </div>
   </section>
+  </div>
 
+  <div class="tabpanel" data-tab="transport">
   <section>
   <h2>Transport</h2>
   <div class="row">
@@ -494,7 +583,9 @@ function renderHtml(webview: vscode.Webview): string {
   </div>
   <div id="transportHint" class="hint" style="margin-top:6px">Host and Port apply to http/sse transport only.</div>
   </section>
+  </div>
 
+  <div class="tabpanel" data-tab="export">
   <section>
   <h2>Generate &amp; Export</h2>
   <div class="hint" style="margin-bottom:10px">Export the configuration as a runnable command or file. Your current changes in this form are saved to the selected scope first, so the output always matches what you see.</div>
@@ -504,6 +595,7 @@ function renderHtml(webview: vscode.Webview): string {
     <button class="secondary" id="writeMcp">Write .vscode/mcp.json</button>
   </div>
   </section>
+  </div>
 
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
@@ -537,8 +629,9 @@ function renderHtml(webview: vscode.Webview): string {
 
   // Per-shell configuration (wcli0.shells). Mirrors PER_SHELL_DEFS on the host.
   const SHELL_DEFS = [
-    { name: 'powershell', wsl: false }, { name: 'cmd', wsl: false }, { name: 'gitbash', wsl: false },
-    { name: 'wsl', wsl: true }, { name: 'bash', wsl: true },
+    { name: 'powershell', label: 'PowerShell', wsl: false }, { name: 'cmd', label: 'cmd', wsl: false },
+    { name: 'gitbash', label: 'Git Bash', wsl: false }, { name: 'wsl', label: 'WSL', wsl: true },
+    { name: 'bash', label: 'bash', wsl: true },
   ];
   const triToBool = (v) => (v === 'enabled' ? true : v === 'disabled' ? false : undefined);
   const boolToTri = (b) => (b === true ? 'enabled' : b === false ? 'disabled' : 'default');
@@ -647,6 +740,8 @@ function renderHtml(webview: vscode.Webview): string {
         $('sh-' + n + '-wsl-inherit').value = boolToTri(wsl.inheritGlobalPaths);
       }
     }
+    // Reflect the loaded enabled state onto the segmented toggles and summary chips.
+    syncAllSegs();
   }
 
   function setVal(s, setKeys, setSelectKeys, setArrayKeys) {
@@ -690,6 +785,7 @@ function renderHtml(webview: vscode.Webview): string {
     }
     updateLaunchRows();
     updateTransportRows();
+    updateIsolation();
   }
 
   // Map dotted setting key -> normalized settings property name.
@@ -783,6 +879,82 @@ function renderHtml(webview: vscode.Webview): string {
     $('transportHint').style.display = networked ? 'none' : '';
   }
   $('transport.mode').addEventListener('change', updateTransportRows);
+
+  // ---- Design 5: tabs, per-shell segmented enable, isolation status ----
+  // Tab switching. Only runs in the real webview; the test harness exposes no
+  // '.tab' elements (querySelectorAll returns []), so this no-ops there.
+  const tabButtons = document.querySelectorAll('.tab');
+  const tabPanels = document.querySelectorAll('.tabpanel');
+  tabButtons.forEach((t) => t.addEventListener('click', () => {
+    const name = t.dataset.tab;
+    tabButtons.forEach((x) => x.classList.toggle('active', x === t));
+    tabPanels.forEach((p) => p.classList.toggle('active', p.dataset.tab === name));
+  }));
+
+  // Reflect a per-shell enabled <select> value onto its segmented buttons, the
+  // collapsed-card state label and its summary chip. Pure property assignments, so
+  // it is safe under the test harness's minimal DOM (no classList/createElement).
+  const SEG_TO_VAL = { 'default': 'default', on: 'enabled', off: 'disabled' };
+  function setSeg(name) {
+    const sel = $('sh-' + name + '-enabled');
+    if (!sel) return;
+    const v = sel.value || 'default';
+    for (const k of ['default', 'on', 'off']) {
+      const b = $('seg-' + name + '-' + k);
+      if (b) b.className = 'segbtn' + (SEG_TO_VAL[k] === v ? ' sel' : '');
+    }
+    const st = $('sstate-' + name);
+    if (st) st.textContent = v === 'enabled' ? 'enabled' : v === 'disabled' ? 'disabled' : 'inherit (default)';
+    const sum = $('sum-' + name);
+    if (sum) {
+      const def = SHELL_DEFS.find((d) => d.name === name) || {};
+      sum.className = 'stchip ' + (v === 'enabled' ? 'on' : v === 'disabled' ? 'off' : 'def');
+      sum.textContent = (def.label || name) + ': ' + (v === 'enabled' ? 'on' : v === 'disabled' ? 'off' : 'default');
+    }
+  }
+  function syncAllSegs() { for (const d of SHELL_DEFS) setSeg(d.name); }
+
+  // Wire the segmented enable buttons to drive the hidden <select> (the value source
+  // collectShells reads). getElementById works in the harness, so wiring is safe;
+  // the click handlers only run on user interaction.
+  for (const d of SHELL_DEFS) {
+    const sel = $('sh-' + d.name + '-enabled');
+    if (!sel) continue;
+    for (const k of ['default', 'on', 'off']) {
+      const b = $('seg-' + d.name + '-' + k);
+      if (!b) continue;
+      b.addEventListener('click', (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        sel.value = SEG_TO_VAL[k];
+        setSeg(d.name);
+        updateIsolation();
+      });
+    }
+  }
+
+  // Derive the header isolation status from the current form: a referenced config
+  // file OR any per-shell configuration isolates the launch (the server then ignores
+  // implicit config.json files); otherwise an implicit file could override the flags.
+  function updateIsolation() {
+    const chip = $('isolationChip');
+    if (!chip) return;
+    const cfg = $('configFile');
+    let isolated = !!(cfg && cfg.value && cfg.value.trim());
+    if (!isolated) {
+      for (const d of SHELL_DEFS) {
+        const en = $('sh-' + d.name + '-enabled');
+        const cmd = $('sh-' + d.name + '-cmd');
+        if ((en && en.value && en.value !== 'default') || (cmd && cmd.value && cmd.value.trim())) {
+          isolated = true;
+          break;
+        }
+      }
+    }
+    chip.className = 'statuschip ' + (isolated ? 'sc-ok' : 'sc-warn');
+    chip.textContent = isolated ? 'Isolated' : 'Overridable';
+  }
+  const configFileEl = $('configFile');
+  if (configFileEl) configFileEl.addEventListener('input', updateIsolation);
 
   // Keep the Inherit checkbox and its text field consistent: checking Inherit
   // clears the field (so the inherited state is unambiguous), and typing a value

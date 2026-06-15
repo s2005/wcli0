@@ -485,3 +485,26 @@ test('P70: switching scope with a clean form changes scope immediately', () => {
   assert.ok(sc && sc.target === 'Global', 'a clean form switches immediately');
   assert.ok(!h.captured.some((m) => m.type === 'scopeChangeRequest'), 'no confirmation needed');
 });
+
+test('Design 5: segmented enable buttons drive the hidden select, summary chip and isolation status', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  // No per-shell config and no config file -> the launch is overridable.
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+  // Clicking the cmd "On" segment sets the hidden enable select the collector reads.
+  h.els.get('seg-cmd-on')._l.click.forEach((cb) => cb());
+  assert.equal(h.els.get('sh-cmd-enabled').value, 'enabled');
+  // The summary chip and the header isolation status reflect the change.
+  assert.equal(h.els.get('sum-cmd').textContent, 'cmd: on');
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+  // A save persists the enabled flag the segmented button drove onto the select.
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.equal(save.values.shells.cmd.enabled, true);
+});
+
+test('Design 5: a referenced config file marks the launch isolated', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {}, configFile: '${workspaceFolder}/wcli0.json' } });
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
