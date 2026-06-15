@@ -231,6 +231,42 @@ test('P48: init reports which optional-string keys are explicitly set at the sco
   assert.ok(!init.setKeys.includes('logDirectory'), 'unset logDirectory not reported');
 });
 
+test('P60: init reports which inheritable enum/boolean keys are set at the scope', async () => {
+  // safetyMode set only at User scope; allowAllDirs set at Workspace.
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.safetyMode', 'unsafe');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.allowAllDirs', true);
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' }); // default scope is Workspace
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(Array.isArray(init.setSelectKeys), 'setSelectKeys present');
+  assert.ok(init.setSelectKeys.includes('allowAllDirs'), 'workspace allowAllDirs reported set');
+  // safetyMode is a User override, unset at Workspace -> not reported, so the form
+  // shows Inherit instead of the schema default "safe".
+  assert.ok(!init.setSelectKeys.includes('safetyMode'), 'unset workspace safetyMode not reported');
+});
+
+test('P61: saving re-posts settings so a deferred external change is reconciled', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  panel.webview.posted = [];
+  // An external change lands in the Workspace scope while the form is open.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.safetyMode', 'unsafe');
+  // The user saves an unrelated field.
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { commandTimeout: 30 },
+  });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 'settings re-posted after save');
+  // The post-save refresh reflects the external safetyMode change for the untouched
+  // field, instead of leaving the form showing the stale value.
+  assert.equal(init.settings.safetyMode, 'unsafe');
+  assert.ok(panel.webview.posted.some((m) => m.type === 'saved'), 'saved indicator still sent');
+});
+
 test('P45: the logging tri-state selects offer an Inherit option', () => {
   openConfigPanel(makeContext());
   const html = vscode.__state.lastWebviewPanel.webview.html;

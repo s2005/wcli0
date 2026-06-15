@@ -3,6 +3,7 @@ import {
   CONFIG_SECTION,
   ConfigScope,
   explicitlySetKeys,
+  explicitlySetSelectKeys,
   OPTIONAL_STRING_KEYS,
   primaryWorkspaceFolder,
   readSettingsForScope,
@@ -95,6 +96,10 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // Which optional-string keys are explicitly set at this scope, so the form
       // can distinguish an empty override from "Inherit" (both read as empty).
       setKeys: explicitlySetKeys(currentScope, scope),
+      // Which inheritable enum/boolean keys are explicitly set at this scope, so the
+      // form can show "Inherit" for an unset field instead of the schema default it
+      // reads back (which would misreport e.g. an unset safetyMode as "safe").
+      setSelectKeys: explicitlySetSelectKeys(currentScope, scope),
     });
   };
 
@@ -107,6 +112,13 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       post();
     } else if (msg.type === 'save' && msg.values && msg.target) {
       await applySettings(msg as SavePayload);
+      // Re-post the now-persisted settings before the saved indicator re-baselines.
+      // A background configuration change that arrived while the form was dirty was
+      // skipped (to protect unsaved edits) and never reconciled; without this refresh
+      // the form would keep showing stale values for fields the user did not touch
+      // (e.g. an external safetyMode -> unsafe). A save submits every changed field,
+      // so re-posting cannot lose an edit but does pick up untouched external values.
+      post();
       webview.postMessage({ type: 'saved' });
       void vscode.window.showInformationMessage(
         `wcli0: settings saved to ${msg.target === 'Global' ? 'User' : 'Workspace'} scope.`,
@@ -122,6 +134,9 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // dropped from the generated config.json / mcp.json / launch command.
       if (msg.values && msg.target) {
         await applySettings(msg as SavePayload);
+        // Refresh from the persisted state (reconciling any deferred external change)
+        // before re-baselining, matching the save path above.
+        post();
         webview.postMessage({ type: 'saved' });
       }
       const command =
@@ -487,6 +502,12 @@ function renderHtml(webview: vscode.Webview): string {
   // OPTIONAL_STRING_KEYS on the host.
   const optionalStringFields = ['launch.cwd','configFile','initialDir','logDirectory'];
   const inheritCb = (f) => $(f + '-inherit');
+  // Enum selects with an Inherit ("") option, and tri-bool selects whose Inherit is
+  // 'default'. When a key is unset at the scope (not in setSelectKeys) the form forces
+  // the control to Inherit so an unset value is not shown as an explicit default.
+  // Mirrors INHERITABLE_SELECT_KEYS on the host.
+  const inheritSelectFields = ['launch.method','shell','safetyMode','enableTruncation','enableLogResources','transport.mode'];
+  const inheritTriFields = ['allowAllDirs','debug'];
 
   // Per-shell configuration (wcli0.shells). Mirrors PER_SHELL_DEFS on the host.
   const SHELL_DEFS = [
@@ -604,8 +625,9 @@ function renderHtml(webview: vscode.Webview): string {
     }
   }
 
-  function setVal(s, setKeys) {
+  function setVal(s, setKeys, setSelectKeys) {
     setKeys = setKeys || [];
+    setSelectKeys = setSelectKeys || [];
     for (const f of stringFields) if ($(f)) $(f).value = s[mapKey(f)] ?? '';
     for (const f of numberFields) if ($(f)) $(f).value = s[mapKey(f)] == null ? '' : s[mapKey(f)];
     for (const f of triBoolFields) if ($(f)) $(f).value = boolToTri(s[mapKey(f)]);
@@ -619,6 +641,18 @@ function renderHtml(webview: vscode.Webview): string {
       const cb = inheritCb(f);
       if (!cb || !$(f)) continue;
       cb.checked = setKeys.indexOf(f) === -1;
+    }
+    // Inheritable enum/boolean selects: readSettingsForScope returned the schema
+    // default for a value unset at this scope, which the loops above rendered as an
+    // explicit override equal to that default. When the key is NOT in setSelectKeys
+    // it is unset, so force the control to its Inherit state ('' for enum selects,
+    // 'default' for the tri-bool selects) — otherwise an unset safetyMode would show
+    // 'safe' while an effective override from the other scope is 'unsafe'.
+    for (const f of inheritSelectFields) {
+      if ($(f) && setSelectKeys.indexOf(f) === -1) $(f).value = '';
+    }
+    for (const f of inheritTriFields) {
+      if ($(f) && setSelectKeys.indexOf(f) === -1) $(f).value = 'default';
     }
     updateLaunchRows();
     updateTransportRows();
@@ -799,7 +833,7 @@ function renderHtml(webview: vscode.Webview): string {
       if (msg.external && isDirty()) {
         return;
       }
-      setVal(msg.settings, msg.setKeys);
+      setVal(msg.settings, msg.setKeys, msg.setSelectKeys);
       initial = collect();
     }
   });

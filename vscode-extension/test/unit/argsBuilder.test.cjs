@@ -820,3 +820,72 @@ test('P57: extraArgs --transport is left alone when the extension emits none', (
   const args = buildServerArgs(defaults({ transportMode: 'stdio', extraArgs: ['--transport', 'http'] }));
   assert.deepEqual(args, ['--transport', 'http']);
 });
+
+test('P59: a managed launch strips a conflicting --config/-c from extraArgs', () => {
+  const args = buildServerArgs(
+    defaults({ extraArgs: ['--config', '/evil.json', '-c', '/also.json', '--foo', 'bar'] }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  // The mandatory managed --config must survive as the only one; the extra config
+  // flags (which would make yargs parse args.config as an array) are dropped.
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.equal(args[args.indexOf('--config') + 1], '/priv/managed-config.json');
+  assert.ok(!args.includes('-c'));
+  assert.ok(!args.includes('/evil.json') && !args.includes('/also.json'));
+  assert.ok(args.includes('--foo') && args.includes('bar'));
+});
+
+test('P59: managed launch strips the --config=/-c= attached forms from extraArgs', () => {
+  const args = buildServerArgs(
+    defaults({ extraArgs: ['--config=/evil.json', '-c=/also.json', '--keep'] }),
+    { managedConfigPath: '/priv/managed-config.json' },
+  );
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.ok(!args.some((a) => a.startsWith('--config=') || a.startsWith('-c=')));
+  assert.ok(args.includes('--keep'));
+});
+
+test('P59: a referenced config strips a conflicting --config from extraArgs', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const args = buildServerArgs(
+    defaults({ configFile: '/ws/wcli0.json', extraArgs: ['--config', '/evil.json', '--foo'] }),
+  );
+  // Only the extension's own --config (the referenced file) remains.
+  assert.equal(args.filter((a) => a === '--config').length, 1);
+  assert.equal(args[args.indexOf('--config') + 1], '/ws/wcli0.json');
+  assert.ok(!args.includes('/evil.json'));
+  assert.ok(args.includes('--foo'));
+});
+
+test('P59: extraArgs --config is left alone when the extension emits none', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // No configFile and not managed: the extension emits no --config, so a user
+  // --config in extraArgs is a legitimate escape hatch and must be preserved.
+  const args = buildServerArgs(defaults({ extraArgs: ['--config', '/user.json'] }));
+  assert.deepEqual(args, ['--config', '/user.json']);
+});
+
+test('P63: safe mode with no configFile warns when the home config exists', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({ safetyMode: 'safe', configFile: '' });
+  // Home config present -> non-blocking warning about the implicit fallback.
+  const withHome = validateLaunchSpec(s, false, true);
+  assert.ok(withHome.some((p) => /win-cli-mcp\/config\.json/.test(p.message) && !p.blocking));
+  // Home config absent -> no warning (avoids noise on the common case).
+  assert.ok(!validateLaunchSpec(s, false, false).some((p) => /win-cli-mcp/.test(p.message)));
+});
+
+test('P63: the implicit-home-config warning is suppressed in the cases it does not apply', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // A referenced configFile passes an explicit --config, so the home fallback never
+  // applies (the existing referenced-config warning covers that case instead).
+  const referenced = validateLaunchSpec(
+    defaults({ safetyMode: 'safe', configFile: '/ws/x.json' }), false, true);
+  assert.ok(!referenced.some((p) => /win-cli-mcp/.test(p.message)));
+  // Managed mode passes an explicit --config too.
+  const managed = validateLaunchSpec(defaults({ safetyMode: 'safe' }), true, true);
+  assert.ok(!managed.some((p) => /win-cli-mcp/.test(p.message)));
+  // Not safe mode: the home config can't weaken an already-unrestricted launch.
+  const unsafe = validateLaunchSpec(defaults({ safetyMode: 'unsafe' }), false, true);
+  assert.ok(!unsafe.some((p) => /win-cli-mcp/.test(p.message)));
+});

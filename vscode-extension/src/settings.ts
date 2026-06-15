@@ -285,14 +285,32 @@ export const OPTIONAL_STRING_KEYS = [
 ] as const;
 
 /**
- * The subset of {@link OPTIONAL_STRING_KEYS} that is explicitly set at the given
- * scope (value !== undefined, including an empty string). Lets the config form
- * tell an explicit empty override apart from an unset value, which
- * `readSettingsForScope` alone cannot (it returns the default for both).
+ * Enum/boolean form fields that have an "Inherit" affordance. Like
+ * {@link OPTIONAL_STRING_KEYS}, the form must know whether each is actually set at
+ * the scope, because `readSettingsForScope` returns the schema default for an unset
+ * value — indistinguishable from an explicit default-valued override. Without this,
+ * an unset Workspace `safetyMode` renders as `safe` even when an effective User
+ * override is `unsafe`, misreporting the safety state.
  */
-export function explicitlySetKeys(target: ConfigScope, scope?: vscode.Uri): string[] {
+export const INHERITABLE_SELECT_KEYS = [
+  'launch.method',
+  'shell',
+  'safetyMode',
+  'enableTruncation',
+  'enableLogResources',
+  'transport.mode',
+  'allowAllDirs',
+  'debug',
+] as const;
+
+/** Which of `keys` is explicitly set (value !== undefined) at the given scope. */
+function setKeysAmong(
+  keys: readonly string[],
+  target: ConfigScope,
+  scope?: vscode.Uri,
+): string[] {
   const c = vscode.workspace.getConfiguration(CONFIG_SECTION, scope ?? null);
-  return OPTIONAL_STRING_KEYS.filter((key) => {
+  return keys.filter((key) => {
     const info = c.inspect(key);
     if (!info) {
       return false;
@@ -300,4 +318,23 @@ export function explicitlySetKeys(target: ConfigScope, scope?: vscode.Uri): stri
     const value = target === 'Global' ? info.globalValue : info.workspaceValue;
     return value !== undefined;
   });
+}
+
+/**
+ * The subset of {@link OPTIONAL_STRING_KEYS} that is explicitly set at the given
+ * scope (value !== undefined, including an empty string). Lets the config form
+ * tell an explicit empty override apart from an unset value, which
+ * `readSettingsForScope` alone cannot (it returns the default for both).
+ */
+export function explicitlySetKeys(target: ConfigScope, scope?: vscode.Uri): string[] {
+  return setKeysAmong(OPTIONAL_STRING_KEYS, target, scope);
+}
+
+/**
+ * The subset of {@link INHERITABLE_SELECT_KEYS} that is explicitly set at the given
+ * scope. Lets the config form show "Inherit" for an unset enum/boolean field rather
+ * than the schema default it would otherwise read back (see P60).
+ */
+export function explicitlySetSelectKeys(target: ConfigScope, scope?: vscode.Uri): string[] {
+  return setKeysAmong(INHERITABLE_SELECT_KEYS, target, scope);
 }

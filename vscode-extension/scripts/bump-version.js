@@ -30,33 +30,57 @@ function writeJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
 }
 
-// Pack today's local date into a single YYYYMMDD integer (e.g. 20260614).
-const now = new Date();
-const today = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
-
-const pkg = readJson(pkgPath);
-const [majorRaw, prevDateRaw, prevBuildRaw] = String(pkg.version || '0.0.0').split('.');
-const major = Number(majorRaw) || 0;
-const prevDate = Number(prevDateRaw) || 0;
-const prevBuild = Number(prevBuildRaw) || 0;
-
-const build = prevDate === today ? prevBuild + 1 : 1;
-const next = `${major}.${today}.${build}`;
-
-pkg.version = next;
-writeJson(pkgPath, pkg);
-
-// Keep package-lock.json's mirrored version fields in sync so they don't drift
-// from package.json between installs.
-if (fs.existsSync(lockPath)) {
-  const lock = readJson(lockPath);
-  if (lock.version) {
-    lock.version = next;
-  }
-  if (lock.packages && lock.packages[''] && lock.packages[''].version) {
-    lock.packages[''].version = next;
-  }
-  writeJson(lockPath, lock);
+// Pack a local date into a single YYYYMMDD integer (e.g. 20260614).
+function packDate(d) {
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 }
 
-console.log(`wcli0-vscode version -> ${next}`);
+// Compute the next 0.<YYYYMMDD>.<build> version from the previous version string and
+// today's packed date. The date slot NEVER moves backward: if the local calendar date
+// is earlier than the committed version's date (e.g. a US-timezone build right after a
+// post-UTC-midnight commit), keep the previous date and just bump the build counter so
+// the version stays monotonically increasing — a lower minor could fail a Marketplace
+// publish for being older than an already-published build. A genuinely newer date
+// resets the build counter to 1; the same date increments it.
+function computeNextVersion(prevVersion, today) {
+  const [majorRaw, prevDateRaw, prevBuildRaw] = String(prevVersion || '0.0.0').split('.');
+  const major = Number(majorRaw) || 0;
+  const prevDate = Number(prevDateRaw) || 0;
+  const prevBuild = Number(prevBuildRaw) || 0;
+
+  const date = today > prevDate ? today : prevDate;
+  const build = date === prevDate ? prevBuild + 1 : 1;
+  return `${major}.${date}.${build}`;
+}
+
+function main() {
+  const today = packDate(new Date());
+  const pkg = readJson(pkgPath);
+  const next = computeNextVersion(pkg.version, today);
+
+  pkg.version = next;
+  writeJson(pkgPath, pkg);
+
+  // Keep package-lock.json's mirrored version fields in sync so they don't drift
+  // from package.json between installs.
+  if (fs.existsSync(lockPath)) {
+    const lock = readJson(lockPath);
+    if (lock.version) {
+      lock.version = next;
+    }
+    if (lock.packages && lock.packages[''] && lock.packages[''].version) {
+      lock.packages[''].version = next;
+    }
+    writeJson(lockPath, lock);
+  }
+
+  console.log(`wcli0-vscode version -> ${next}`);
+}
+
+// Only touch the filesystem when run as a script; requiring this module (e.g. from a
+// unit test) just exposes the pure computation without side effects.
+if (require.main === module) {
+  main();
+}
+
+module.exports = { computeNextVersion, packDate };

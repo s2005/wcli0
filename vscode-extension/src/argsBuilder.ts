@@ -166,6 +166,35 @@ function stripTransportArgs(extraArgs: string[]): string[] {
 }
 
 /**
+ * Remove any `--config`/`-c` entry (and its value) from a raw extraArgs list. Used
+ * whenever the extension has already emitted its own `--config`: always in managed
+ * mode, and in non-managed mode when `wcli0.configFile` is set. The server's `config`
+ * option is a scalar string with alias `c` (see src/index.ts), so a second `--config`
+ * makes yargs parse `args.config` as an array. `loadConfig` passes that array to
+ * `fs.existsSync`, which rejects it and silently falls back to `<cwd>/config.json` or
+ * `~/.win-cli-mcp/config.json` — bypassing the mandatory managed config (and every
+ * generated per-shell/safety setting) or the referenced config file. The conflicting
+ * `--config` must therefore be dropped. A user `--config` is left intact when the
+ * extension emits none (plain launch, no configFile): there it is a valid escape hatch.
+ */
+function stripConfigArgs(extraArgs: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i++) {
+    const a = extraArgs[i];
+    if (a === '--config' || a === '-c') {
+      // Drop the flag and its separate value token so neither reaches yargs.
+      i++;
+      continue;
+    }
+    if (a.startsWith('--config=') || a.startsWith('-c=')) {
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
+
+/**
  * Build the minimal arg list for an auto-managed-config launch: point the server
  * at the generated config file and force stdio (a provider-launched process must
  * not start an HTTP listener even if the file selected one). Everything else the
@@ -177,10 +206,12 @@ function buildManagedServerArgs(s: Wcli0Settings, managedConfigPath: string): st
   if (s.debug) {
     args.push('--debug');
   }
-  // Strip any --transport from extraArgs: a managed launch forces stdio, and a
-  // second --transport would make the server ignore both and start a network
-  // listener instead of speaking over stdio (see stripTransportArgs).
-  for (const extra of stripTransportArgs(s.extraArgs)) {
+  // Strip any --transport AND --config from extraArgs: a managed launch forces stdio
+  // and carries its own mandatory --config. A second --transport would make the server
+  // start a network listener instead of speaking stdio (see stripTransportArgs); a
+  // second --config would make yargs parse args.config as an array and the server fall
+  // back to a different/default config, ignoring the managed file (see stripConfigArgs).
+  for (const extra of stripConfigArgs(stripTransportArgs(s.extraArgs))) {
     args.push(extra);
   }
   return args;
@@ -329,7 +360,18 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     }
   }
 
-  for (const extra of emittedTransport ? stripTransportArgs(s.extraArgs) : s.extraArgs) {
+  // Drop a conflicting --transport (when the extension emitted its own) and a
+  // conflicting --config (when a configFile was emitted): either would be parsed by
+  // yargs as a repeated option and silently defeat the extension's flag (forced
+  // stdio / the referenced config). A user flag the extension did NOT emit is kept.
+  let extras = s.extraArgs;
+  if (emittedTransport) {
+    extras = stripTransportArgs(extras);
+  }
+  if (configFile) {
+    extras = stripConfigArgs(extras);
+  }
+  for (const extra of extras) {
     args.push(extra);
   }
 
@@ -562,8 +604,16 @@ function hasUnresolvedExtensionVariable(raw: string): boolean {
  * mode), so CLI-flag-specific notes (the `--allowedDir` injection-protection
  * warning and the referenced-config-file warning) are suppressed — they do not
  * apply because those values live in the generated file instead of CLI flags.
+ * `homeConfigPresent` tells the validator whether the server's implicit home
+ * config (`~/.win-cli-mcp/config.json`) exists; callers compute it from the
+ * filesystem so this function stays pure. When it does, a non-managed safe launch
+ * with no `configFile` gets a non-blocking warning that the home config still loads.
  */
-export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchProblem[] {
+export function validateLaunchSpec(
+  s: Wcli0Settings,
+  managed = false,
+  homeConfigPresent = false,
+): LaunchProblem[] {
   const problems: LaunchProblem[] = [];
   if (s.launchMethod === 'node') {
     if (!s.nodeScriptPath.trim()) {
@@ -774,6 +824,19 @@ export function validateLaunchSpec(s: Wcli0Settings, managed = false): LaunchPro
     problems.push({
       message:
         'A config file is referenced while safety mode is "safe": settings in the file (including disabled safety checks) take effect and are not overridden by the extension.',
+      blocking: false,
+    });
+  }
+  // Even with no configFile referenced, the server's loadConfig falls back to
+  // ~/.win-cli-mcp/config.json (after the private cwd) when no --config is passed. In
+  // safe mode that file can silently disable injection/directory restrictions or
+  // replace shell executables while the extension reports safe; warn when it exists so
+  // the reduced protection isn't silent. Managed mode passes an explicit --config, so
+  // the home fallback never applies and no warning is emitted there.
+  if (!managed && s.safetyMode === 'safe' && !s.configFile.trim() && homeConfigPresent) {
+    problems.push({
+      message:
+        'Safety mode is "safe" with no config file referenced, but the server still loads ~/.win-cli-mcp/config.json: its settings (including disabled safety checks or replaced shell executables) take effect and are not overridden by the extension. Reference an explicit config file (wcli0.configFile) to control this.',
       blocking: false,
     });
   }

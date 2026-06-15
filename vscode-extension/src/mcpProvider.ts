@@ -9,6 +9,21 @@ import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, Wcli0Settings 
 /** File name for the extension-owned, auto-generated per-shell config. */
 export const MANAGED_CONFIG_FILE = 'managed-config.json';
 
+/**
+ * Whether the server's implicit home config (`~/.win-cli-mcp/config.json`) exists.
+ * `loadConfig` always falls back to it when no `--config` is passed, so a safe-mode
+ * launch with no `configFile` would silently inherit its (possibly unsafe) settings.
+ * `validateLaunchSpec` warns when this is true (see P63). Kept here (not in the pure
+ * argsBuilder module) so the validator stays free of filesystem dependencies.
+ */
+export function homeConfigExists(): boolean {
+  try {
+    return fs.existsSync(path.join(os.homedir(), '.win-cli-mcp', 'config.json'));
+  } catch {
+    return false;
+  }
+}
+
 const SERVER_LABEL = 'wcli0';
 
 /**
@@ -183,7 +198,7 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       }
     }
 
-    const problems = validateLaunchSpec(settings, managed);
+    const problems = validateLaunchSpec(settings, managed, homeConfigExists());
     const blocking = problems.filter((p) => p.blocking);
     if (blocking.length > 0) {
       // Misconfigured launch: log rather than register a broken server.

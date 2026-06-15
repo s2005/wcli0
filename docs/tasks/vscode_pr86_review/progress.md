@@ -78,3 +78,11 @@
 - [x] P56: Reject sub-one global limits in managed mode (fixed - managed `validateLaunchSpec` requires global `commandTimeout`/`maxCommandLength` >= 1, matching the config-file rule)
 - [x] P57: Prevent extraArgs from defeating forced stdio (fixed - `stripTransportArgs` drops a conflicting `--transport` from `extraArgs` whenever the extension emits its own)
 - [x] P58: Preserve portability for dot-dot-prefixed workspace children (fixed - `toPortablePath` checks for an actual `..`/`../` traversal component instead of any `..` prefix)
+
+## Review Feedback (PR #86) - round 8
+
+- [x] P59: Block extra config flags in managed mode (fixed - `stripConfigArgs` drops a conflicting `--config`/`-c` from `extraArgs` whenever the extension emits its own `--config`, so a repeated flag can't make yargs parse `args.config` as an array and bypass the managed/referenced config)
+- [x] P60: Display unset scoped settings as inherited (fixed - `explicitlySetSelectKeys` reports which inheritable enum/boolean keys are set at the scope; the webview posts `setSelectKeys` and forces unset selects to Inherit so an unset `safetyMode` isn't shown as `safe`)
+- [x] P61: Reconcile deferred external changes after saving (fixed - the host re-posts persisted settings after `applySettings` on save/export, so an external change to an untouched field is reflected instead of left stale by the `saved` re-baseline)
+- [x] P62: Preserve monotonic versions when the local date goes backward (fixed - `computeNextVersion` never moves the date slot backward; a backward local date keeps `prevDate` and bumps the build counter)
+- [x] P63: Prevent implicit home configs from overriding safe mode (fixed - `validateLaunchSpec` warns, via a `homeConfigPresent` flag supplied by `homeConfigExists()`, when a safe non-managed launch with no `configFile` would still load `~/.win-cli-mcp/config.json`)

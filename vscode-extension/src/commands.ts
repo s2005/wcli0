@@ -11,7 +11,7 @@ import {
   resolveVariables,
   Wcli0Settings,
 } from './settings';
-import { clientHost, MANAGED_CONFIG_FILE, Wcli0McpProvider } from './mcpProvider';
+import { clientHost, homeConfigExists, MANAGED_CONFIG_FILE, Wcli0McpProvider } from './mcpProvider';
 
 /**
  * Read settings for an export action. When the config form supplies its selected
@@ -275,7 +275,9 @@ export async function showLaunchCommand(
 
   const spec = buildLaunchSpec(settings, managedConfigPath ? { managedConfigPath } : {});
   const line = renderCommandLine(spec);
-  const problems = validateLaunchSpec(settings, managed);
+  // Pass whether the implicit home config exists so a safe launch with no configFile
+  // surfaces the same reduced-protection note the provider logs (see P63).
+  const problems = validateLaunchSpec(settings, managed, homeConfigExists());
 
   output.appendLine('Resolved wcli0 launch command:');
   output.appendLine('');

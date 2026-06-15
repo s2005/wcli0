@@ -9,6 +9,7 @@ const {
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
   hasPerShellConfig,
+  explicitlySetSelectKeys,
   CONFIG_SECTION,
 } = require('../../dist/settings.js');
 
@@ -76,6 +77,20 @@ test('readSettingsForScope falls back to defaults when unset at that scope', () 
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
   // Global has no value -> default, not the workspace value.
   assert.equal(readSettingsForScope('Global').shell, 'all');
+});
+
+test('P60: explicitlySetSelectKeys reports only enum/boolean keys set at the scope', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.safetyMode', 'unsafe');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.allowAllDirs', true);
+  // Workspace: only allowAllDirs is set there; safetyMode is a User-scope override.
+  const ws = explicitlySetSelectKeys('Workspace');
+  assert.ok(ws.includes('allowAllDirs'), 'allowAllDirs reported set at workspace');
+  assert.ok(!ws.includes('safetyMode'), 'User safetyMode not reported as set at workspace');
+  assert.ok(!ws.includes('debug'), 'unset debug not reported');
+  // Global: safetyMode is set there.
+  const gl = explicitlySetSelectKeys('Global');
+  assert.ok(gl.includes('safetyMode'), 'safetyMode reported set at global');
+  assert.ok(!gl.includes('allowAllDirs'), 'workspace allowAllDirs not reported at global');
 });
 
 test('resolveVariables leaves the token intact when no workspace is open', () => {

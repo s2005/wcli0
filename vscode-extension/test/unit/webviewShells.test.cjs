@@ -301,7 +301,15 @@ test('P40: an unset command with blank args leaves executable unset', () => {
 test('P41: triBool Inherit submits null so the host clears the override', () => {
   const h = makeHarness();
   // Start from a non-Inherit state so the Inherit selection counts as a change.
-  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { debug: true } });
+  // debug is set at this scope, so it is reported in setSelectKeys (otherwise the
+  // form would render it as Inherit, per P60).
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { debug: true },
+    setSelectKeys: ['debug'],
+  });
   // Form-side collect(): selecting 'default' (Inherit) must produce null, not a
   // boolean. The host's applySettings turns null into undefined -> clears.
   h.els.get('debug').value = 'default';
@@ -318,6 +326,7 @@ test('P41: enum Inherit submits empty string so the host clears the override', (
     hasWorkspace: true,
     scope: 'Workspace',
     settings: { safetyMode: 'unsafe' },
+    setSelectKeys: ['safetyMode'],
   });
   // Form-side collect(): selecting '' (Inherit) on safetyMode must produce ''.
   h.els.get('safetyMode').value = '';
