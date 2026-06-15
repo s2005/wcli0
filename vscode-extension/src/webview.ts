@@ -23,6 +23,7 @@ const FIELD_KEYS = [
   'configFile',
   'shell',
   'shells',
+  'ignoreInheritedShells',
   'allowedDirectories',
   'initialDir',
   'commandTimeout',
@@ -526,6 +527,14 @@ function renderHtml(webview: vscode.Webview): string {
   <div class="hint" id="shellModeHelp" style="margin:0 0 6px"></div>
   <div class="hint" id="shellModeWarn" style="display:none;margin:0 0 6px;color:var(--vscode-charts-yellow,#d7a930)">Per-shell settings are configured and still override the simple selection. Switch to Per-shell to view or clear them.</div>
 
+  <label>Inherited per-shell config <span class="hint">when set at Workspace scope, ignore per-shell settings (wcli0.shells) inherited from User scope</span></label>
+  <select id="ignoreInheritedShells">
+    <option value="default">Inherit (use per-shell config)</option>
+    <option value="enabled">Ignore inherited per-shell config (use global flags)</option>
+    <option value="disabled">Do not ignore (explicit)</option>
+  </select>
+  <div class="hint" style="margin-top:4px">VS Code merges <code>wcli0.shells</code> across scopes, so a Workspace cannot drop a User-scope shell by clearing it. Choose <strong>Ignore</strong> to opt this workspace out of managed per-shell mode and launch with the global CLI flags instead.</div>
+
   <div id="simplePane">
     <label>Shell <span class="hint">enable one shell, or "all"</span></label>
     <select id="shell">
@@ -630,7 +639,9 @@ function renderHtml(webview: vscode.Webview): string {
   // Booleans rendered as tri-state selects (Inherit / enabled / disabled). Selecting
   // Inherit submits null, which applySettings maps to undefined -> clears the value
   // at the target scope so a previous override can be removed from the form.
-  const triBoolFields = ['allowAllDirs','debug'];
+  // ignoreInheritedShells uses the same value scheme (its options carry the
+  // default/enabled/disabled values) so it round-trips through this machinery.
+  const triBoolFields = ['allowAllDirs','debug','ignoreInheritedShells'];
   const arrayFields = ['allowedDirectories'];
   const stringFields = ['launch.packageSpec','launch.nodeScriptPath','launch.customCommand','launch.cwd','configFile','shell','initialDir','logDirectory','enableTruncation','enableLogResources','safetyMode','launch.method','transport.host','transport.mode'];
   // Optional string settings where an explicit empty value is a meaningful
@@ -651,7 +662,7 @@ function renderHtml(webview: vscode.Webview): string {
   // the control to Inherit so an unset value is not shown as an explicit default.
   // Mirrors INHERITABLE_SELECT_KEYS on the host.
   const inheritSelectFields = ['launch.method','shell','safetyMode','enableTruncation','enableLogResources','transport.mode'];
-  const inheritTriFields = ['allowAllDirs','debug'];
+  const inheritTriFields = ['allowAllDirs','debug','ignoreInheritedShells'];
 
   // Per-shell configuration (wcli0.shells). Mirrors PER_SHELL_DEFS on the host.
   const SHELL_DEFS = [
@@ -1007,13 +1018,22 @@ function renderHtml(webview: vscode.Webview): string {
       // the host reads, keeping a shell only when it carries a user-set field
       // (executable args, security/restriction/path overrides, WSL options included),
       // so it mirrors the host's hasPerShellConfig/isMeaningfulShellConfig (P84).
-      isolated = Object.keys(collectShells()).length > 0;
+      // When "Ignore inherited per-shell config" is enabled the host's
+      // hasPerShellConfig returns false (the launch uses global flags), so the
+      // per-shell config no longer isolates it — mirror that here.
+      const ign = $('ignoreInheritedShells');
+      const masked = !!(ign && ign.value === 'enabled');
+      isolated = !masked && Object.keys(collectShells()).length > 0;
     }
     chip.className = 'statuschip ' + (isolated ? 'sc-ok' : 'sc-warn');
     chip.textContent = isolated ? 'Isolated' : 'Overridable';
   }
   const configFileEl = $('configFile');
   if (configFileEl) configFileEl.addEventListener('input', updateIsolation);
+  // Toggling "Ignore inherited per-shell config" flips whether per-shell config
+  // isolates the launch, so refresh the header chip when it changes.
+  const ignoreShellsEl = $('ignoreInheritedShells');
+  if (ignoreShellsEl) ignoreShellsEl.addEventListener('change', updateIsolation);
   // Refresh the isolation status as the user types in ANY per-shell field, not only
   // the segmented enable buttons and configFile. Without this the chip would lag when
   // an executable command/args, an override or a WSL option is edited (P84). The

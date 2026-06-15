@@ -90,6 +90,27 @@ of the managed file. **Restart the MCP server** (from the MCP view) to apply
 changes. Use `wcli0: Show Resolved Launch Command` to see the managed `--config`
 command and the file's location.
 
+#### Ignoring inherited per-shell configuration (`wcli0.ignoreInheritedShells`)
+
+`wcli0.shells` is an object setting, and VS Code **deep-merges** object settings
+across scopes. That means a per-shell configuration set in **User** settings is
+merged into every workspace's effective value, and a workspace **cannot remove**
+an inherited shell entry by clearing `wcli0.shells` — clearing only drops the
+workspace's own override, leaving the inherited User value in effect, so the
+workspace stays in auto-managed per-shell mode.
+
+To let a single project opt out, enable `wcli0.ignoreInheritedShells` at the
+**Workspace** scope (the **Shells** tab of the Configure panel). It is a separate
+boolean — not part of the merged `wcli0.shells` object — so it cleanly overrides
+the inherited value. When set, the extension ignores per-shell configuration for
+that workspace and launches with the **global CLI flags** (`wcli0.shell` and the
+global limit/restriction/path flags) instead of an auto-managed `--config` file.
+
+Leave it off (the default) to inherit and use per-shell configuration as before.
+Clearing the per-shell fields **without** enabling this flag keeps today's
+inherit behavior. The flag is all-or-nothing for the scope: it disables per-shell
+mode entirely rather than masking individual shells.
+
 ### User vs. workspace
 
 Set machine-wide defaults in **User** settings (e.g. launch method, package

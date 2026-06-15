@@ -125,3 +125,12 @@
 - [x] P88: Strip config aliases inside short-option bundles (fixed - `stripConfigArgs` strips any single-dash bundle containing the `c` alias, e.g. `-dc /other.json` and `-xc/other.json`, consuming a trailing value token when `c` is last)
 - [x] P89: Do not retarget dirty workspace edits to User scope (fixed - a dirty Workspace form keeps its loaded scope on folder removal, the dirty guard runs before the scope-radio switch, and the host refuses a Workspace save with no folder open)
 - [x] P90: Correct the documented default working directory (fixed - the `wcli0.launch.cwd` description documents the private extension-owned default instead of claiming the first workspace folder)
+
+## Review Feedback (PR #86) - round 13 (analyzed, not implemented)
+
+Source: Codex review round 13 (pullrequestreview-4499884537), reviewed commit `b583a78614`. These were
+collected and analyzed on request but deliberately NOT implemented — see the `analysis_91..93` files.
+
+- [ ] P91: Reject non-object JSON configuration files (valid, stashed - `configFileIsLoadable` accepts any parseable JSON, so `null` makes the server crash on `Object.keys(null)` and arrays/scalars silently bypass the P85 pin; proposed fix requires a non-null non-array object)
+- [-] P92: Allow workspaces to mask inherited per-shell settings (valid concern, deferred - re-raise of P87 at the read site `settings.ts:157`; same root cause - VS Code deep-merges `wcli0.shells` - and same blockers needing `inspect()` reads, a UI affordance, and a product decision)
+- [ ] P93: Do not overwrite the provider config when showing scoped commands (valid, stashed - `showLaunchCommand` reuses `writeManagedConfig`, which targets the provider's live managed-config path, so a scoped display overwrites the running server's config; proposed fix writes the display command to a separate file)

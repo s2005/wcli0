@@ -68,6 +68,14 @@ export interface Wcli0Settings {
   configFile: string;
   shell: string;
   shells: ShellsConfig;
+  /**
+   * Whether this scope opts out of per-shell configuration entirely. VS Code
+   * deep-merges object settings, so a Workspace cannot remove a `shells` entry
+   * inherited from User scope by clearing it. This boolean is a separate,
+   * non-merged setting the workspace can flip to escape managed per-shell mode
+   * and return to the global CLI-flag launch path (see hasPerShellConfig).
+   */
+  ignoreInheritedShells: boolean;
   allowedDirectories: string[];
   initialDir: string;
   commandTimeout: number | null;
@@ -155,6 +163,7 @@ function buildSettings(g: Getter): Wcli0Settings {
     configFile: g<string>('configFile', ''),
     shell: g<string>('shell', 'all'),
     shells: g<ShellsConfig>('shells', {}),
+    ignoreInheritedShells: g<boolean>('ignoreInheritedShells', false),
     allowedDirectories: g<string[]>('allowedDirectories', []),
     initialDir: g<string>('initialDir', ''),
     commandTimeout: num(g<number | null>('commandTimeout', null)),
@@ -236,8 +245,16 @@ function isMeaningfulShellConfig(c: PerShellConfig | undefined): boolean {
  * extension launches the server with an auto-managed `--config` file rather than
  * the global CLI flags, because per-shell configuration cannot be expressed via
  * CLI options (see src/index.ts — every flag is global or selects a single shell).
+ *
+ * When `ignoreInheritedShells` is set, the scope has explicitly opted out of
+ * per-shell mode (it cannot remove a User-scope `shells` entry via deep-merge),
+ * so treat `shells` as empty and return false — the single authoritative gate the
+ * provider, showLaunchCommand and writeWorkspaceMcpJson all consult.
  */
 export function hasPerShellConfig(s: Wcli0Settings): boolean {
+  if (s.ignoreInheritedShells) {
+    return false;
+  }
   const shells = s.shells ?? {};
   return SHELL_NAMES.some((name) => isMeaningfulShellConfig(shells[name]));
 }
@@ -305,6 +322,7 @@ export const INHERITABLE_SELECT_KEYS = [
   'transport.mode',
   'allowAllDirs',
   'debug',
+  'ignoreInheritedShells',
 ] as const;
 
 /**

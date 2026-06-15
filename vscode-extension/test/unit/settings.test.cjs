@@ -161,6 +161,30 @@ test('hasPerShellConfig detects any meaningful per-shell field', () => {
   assert.equal(hasPerShellConfig(readSettings()), false);
 });
 
+test('ignoreInheritedShells gates hasPerShellConfig off even with non-empty shells', () => {
+  // A non-empty per-shell config normally selects managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { enabled: true },
+  });
+  assert.equal(hasPerShellConfig(readSettings()), true);
+  // With the opt-out flag set, the scope returns to the CLI-flag path even though
+  // the (deep-merged) shells value is non-empty — the workspace cannot remove the
+  // inherited entry, so this separate boolean is the escape hatch.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', true);
+  assert.equal(hasPerShellConfig(readSettings()), false);
+  // Clearing the flag restores managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', false);
+  assert.equal(hasPerShellConfig(readSettings()), true);
+});
+
+test('ignoreInheritedShells is an inheritable select key reported when set at a scope', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', true);
+  const ws = explicitlySetSelectKeys('Workspace');
+  assert.ok(ws.includes('ignoreInheritedShells'), 'reported set at workspace');
+  // Unset at Global -> not reported, so the form shows Inherit there.
+  assert.ok(!explicitlySetSelectKeys('Global').includes('ignoreInheritedShells'));
+});
+
 test('P23: the LICENSE retains the MIT copyright notice', () => {
   const fs = require('node:fs');
   const path = require('node:path');

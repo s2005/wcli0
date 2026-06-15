@@ -96,7 +96,7 @@ test('writeWorkspaceMcpJson creates a stdio server entry', async () => {
   assert.equal(parsed.servers.wcli0.command, 'npx');
 });
 
-test('P26/P73: showLaunchCommand writes and shows the provider managed-config path', async () => {
+test('P26/P73/P93: showLaunchCommand writes a separate display config, not the live managed one', async () => {
   const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
   const fs = require('node:fs');
   const os = require('node:os');
@@ -110,12 +110,18 @@ test('P26/P73: showLaunchCommand writes and shows the provider managed-config pa
   const provider = new Wcli0McpProvider(() => {}, undefined, dir);
   await showLaunchCommand(output, provider);
   const text = output.lines.join('\n');
-  const cfgPath = path.join(dir, 'managed-config.json');
-  // The --config path uses the provider's resolved dir, not a bare relative name.
-  assert.ok(text.includes(cfgPath));
-  // P73: the file is materialized so a copied command actually resolves it.
-  assert.ok(fs.existsSync(cfgPath), 'managed config written to disk');
-  const written = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  const displayPath = path.join(dir, 'display-config.json');
+  const livePath = path.join(dir, 'managed-config.json');
+  // P93: the shown command points at a display-only file, NOT the live managed
+  // config the registered server launches from — so showing a scoped command
+  // never overwrites the running server's config.
+  assert.ok(text.includes(displayPath), 'shows the display config path');
+  assert.ok(!text.includes(livePath), 'does not reference the live managed config');
+  // P73: the display file is materialized so a copied command actually resolves it.
+  assert.ok(fs.existsSync(displayPath), 'display config written to disk');
+  // The live managed config is left untouched by a display action.
+  assert.ok(!fs.existsSync(livePath), 'live managed config not written by show');
+  const written = JSON.parse(fs.readFileSync(displayPath, 'utf8'));
   assert.equal(written.shells.cmd.enabled, true);
   fs.rmSync(dir, { recursive: true, force: true });
 });

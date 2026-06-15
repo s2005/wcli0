@@ -1,5 +1,9 @@
 const assert = require('assert');
 const vscode = require('vscode');
+// The built extension settings model — exercised here against the REAL VS Code
+// configuration API so the deep-merge semantics the unit stub cannot model
+// (object settings merge across scopes) are covered end-to-end.
+const { readSettings, hasPerShellConfig } = require('../../dist/settings.js');
 
 const EXT_ID = 's2005.wcli0-vscode';
 
@@ -32,6 +36,26 @@ describe('wcli0 extension', function () {
     assert.equal(cfg.get('safetyMode'), 'safe');
     assert.equal(cfg.get('transport.mode'), 'stdio');
     assert.deepEqual(cfg.get('shells'), {});
+    assert.equal(cfg.get('ignoreInheritedShells'), false);
+  });
+
+  it('ignoreInheritedShells opts a workspace out of inherited per-shell mode (deep-merge)', async function () {
+    const cfg = () => vscode.workspace.getConfiguration('wcli0');
+    // A User-scope per-shell config is deep-merged into the workspace's effective
+    // value; the workspace cannot remove it by clearing wcli0.shells.
+    await cfg().update('shells', { cmd: { enabled: true } }, vscode.ConfigurationTarget.Global);
+    try {
+      assert.equal(hasPerShellConfig(readSettings()), true, 'inherits managed per-shell mode');
+      // The separate boolean survives the deep-merge and flips the effective gate.
+      await cfg().update('ignoreInheritedShells', true, vscode.ConfigurationTarget.Workspace);
+      assert.equal(hasPerShellConfig(readSettings()), false, 'masked -> CLI-flag path');
+      // Unsetting the flag restores managed (inherited) per-shell mode.
+      await cfg().update('ignoreInheritedShells', undefined, vscode.ConfigurationTarget.Workspace);
+      assert.equal(hasPerShellConfig(readSettings()), true, 'restored managed mode');
+    } finally {
+      await cfg().update('shells', undefined, vscode.ConfigurationTarget.Global);
+      await cfg().update('ignoreInheritedShells', undefined, vscode.ConfigurationTarget.Workspace);
+    }
   });
 
   it('round-trips a per-shell configuration at the global scope', async function () {

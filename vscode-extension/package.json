@@ -292,6 +292,12 @@
             "additionalProperties": false
           }
         },
+        "wcli0.ignoreInheritedShells": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Ignore per-shell configuration (`#wcli0.shells#`) inherited from a wider scope. VS Code deep-merges object settings, so a Workspace cannot remove a `#wcli0.shells#` entry set at the User scope by clearing it. Enable this at the Workspace scope to opt out of managed per-shell mode entirely and launch with the global CLI flags instead. Leave it off (the default) to inherit and use per-shell configuration as before.",
+          "scope": "resource"
+        },
         "wcli0.allowedDirectories": {
           "type": "array",
           "items": {

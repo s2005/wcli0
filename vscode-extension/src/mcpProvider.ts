@@ -15,6 +15,15 @@ import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, Wcli0Settings 
 export const MANAGED_CONFIG_FILE = 'managed-config.json';
 
 /**
+ * File name for the config materialized only to display a scoped launch command
+ * (showLaunchCommand). Kept distinct from MANAGED_CONFIG_FILE so showing a
+ * command for one scope never overwrites the live config the registered server
+ * launches from (see P93) — the form may show User scope while the workspace's
+ * effective per-shell/safety settings differ.
+ */
+export const MANAGED_DISPLAY_CONFIG_FILE = 'display-config.json';
+
+/**
  * Whether the server's implicit home config (`~/.win-cli-mcp/config.json`) exists.
  * `loadConfig` always falls back to it when no `--config` is passed, so a safe-mode
  * launch with no `configFile` would silently inherit its (possibly unsafe) settings.
@@ -55,14 +64,20 @@ export function cwdConfigExists(cwd: string): boolean {
  * does not masquerade as a pin while the server loads an implicit config (see P85).
  * Injected into the provider (defaulting here) so the decision is deterministic in
  * tests regardless of the host filesystem.
+ *
+ * The parsed value must be a non-null, non-array object: `loadConfig` calls
+ * `Object.keys(loadedConfig)` on it, which throws for `null` (the server then exits
+ * immediately) and yields zero keys for an array/scalar (the server discards the pin
+ * and loads an implicit config instead — the same bypass P85 closes). So `null`,
+ * arrays and scalars are NOT loadable even though they parse as JSON (see P91).
  */
 export function configFileIsLoadable(resolvedPath: string): boolean {
   try {
     if (!fs.statSync(resolvedPath).isFile()) {
       return false;
     }
-    JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
-    return true;
+    const parsed = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
   } catch {
     return false;
   }
@@ -177,29 +192,52 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
   }
 
   /**
-   * Write the auto-managed config file from settings and return its absolute
-   * path, or undefined if it cannot be written (caller then registers no server
-   * rather than launching with no per-shell config silently in effect). Public so
-   * `showLaunchCommand` can materialize the same file before displaying its
-   * `--config` path (see P73), keeping the shown command actually runnable.
+   * Write the auto-managed config file the registered server launches from and
+   * return its absolute path, or undefined if it cannot be written (caller then
+   * registers no server rather than launching with no per-shell config silently in
+   * effect). This is the live config path owned by provideMcpServerDefinitions.
    */
   writeManagedConfig(settings: Wcli0Settings): string | undefined {
-    // Use the same target as managedConfigTargetDir (workspace storage, else a
-    // per-window-unique temp dir) — never the shared global safeCwd, which two
-    // windows would clobber via the fixed managed-config.json filename.
+    return this.writeConfigTo(settings, MANAGED_CONFIG_FILE, 'managed config');
+  }
+
+  /**
+   * Write a display-only config (a SEPARATE file from the live managed config) and
+   * return its absolute path, or undefined if it cannot be written. Used by
+   * `showLaunchCommand` so displaying a scoped command materializes a runnable
+   * `--config` file (the P73 guarantee) WITHOUT overwriting the config the
+   * registered server launches from (see P93).
+   */
+  writeDisplayConfig(settings: Wcli0Settings): string | undefined {
+    return this.writeConfigTo(settings, MANAGED_DISPLAY_CONFIG_FILE, 'display config');
+  }
+
+  /**
+   * Write a generated config file (built from settings) into the private managed
+   * directory under the given file name, returning its absolute path or undefined
+   * if it cannot be written. Shared by writeManagedConfig / writeDisplayConfig so
+   * both apply the same target fallbacks (workspace storage, else a
+   * per-window-unique temp dir) — never the shared global safeCwd, which two
+   * windows would clobber via a fixed filename.
+   */
+  private writeConfigTo(
+    settings: Wcli0Settings,
+    fileName: string,
+    label: string,
+  ): string | undefined {
     const dir = this.managedConfigTargetDir();
     if (!dir) {
-      this.log('no writable private directory available for the managed config; not registering.');
+      this.log(`no writable private directory available for the ${label}; not registering.`);
       return undefined;
     }
-    const target = path.join(dir, MANAGED_CONFIG_FILE);
+    const target = path.join(dir, fileName);
     try {
       fs.mkdirSync(dir, { recursive: true });
       const config = buildConfigFile(settings);
       fs.writeFileSync(target, JSON.stringify(config, null, 2) + '\n', 'utf8');
       return target;
     } catch (err) {
-      this.log(`could not write managed config at ${target}: ${(err as Error).message}`);
+      this.log(`could not write ${label} at ${target}: ${(err as Error).message}`);
       return undefined;
     }
   }

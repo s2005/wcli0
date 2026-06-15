@@ -630,3 +630,57 @@ test('Shells mode: switching to Simple shows no warning when no per-shell config
   h.els.get('mode-simple')._l.click.forEach((cb) => cb());
   assert.equal(h.els.get('shellModeWarn').style.display, 'none');
 });
+
+test('ignoreInheritedShells: populates from init and is collected on save', () => {
+  const h = makeHarness();
+  // Loaded with the flag set at this scope (setSelectKeys marks it explicit, so the
+  // form keeps the loaded value instead of forcing Inherit).
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: {}, ignoreInheritedShells: true },
+    setSelectKeys: ['ignoreInheritedShells'],
+  });
+  assert.equal(h.els.get('ignoreInheritedShells').value, 'enabled');
+
+  // Flip to "Do not ignore" and save -> collected as an explicit boolean false.
+  h.els.get('ignoreInheritedShells').value = 'disabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save message posted');
+  assert.equal(save.values.ignoreInheritedShells, false);
+});
+
+test('ignoreInheritedShells: an unset value renders as Inherit (default)', () => {
+  const h = makeHarness();
+  // Not in setSelectKeys -> the form forces the Inherit state even though the
+  // settings default reads false (mirrors INHERITABLE_SELECT_KEYS handling).
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: {}, ignoreInheritedShells: false },
+    setSelectKeys: [],
+  });
+  assert.equal(h.els.get('ignoreInheritedShells').value, 'default');
+});
+
+test('ignoreInheritedShells: enabling it marks the launch as Overridable despite per-shell config', () => {
+  const h = makeHarness();
+  // A per-shell config would normally isolate the launch (Isolated chip).
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: { cmd: { enabled: true } }, ignoreInheritedShells: false },
+    setSelectKeys: [],
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+  // Enabling the opt-out flips the host to the CLI-flag path, so the chip reflects
+  // that an implicit config.json could override the launch again.
+  const ign = h.els.get('ignoreInheritedShells');
+  ign.value = 'enabled';
+  ign._l.change.forEach((cb) => cb());
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+});

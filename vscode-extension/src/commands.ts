@@ -368,12 +368,14 @@ export async function showLaunchCommand(
   const pinAgainstHomeConfig = pinnable && homeConfigPresent;
   const pinAgainstCwdConfig = pinnable && !!configuredCwd && cwdConfigExists(configuredCwd);
   const managed = perShell || pinAgainstHomeConfig || pinAgainstCwdConfig;
-  // Materialize the managed config now (not just its pathname) so a copied command
-  // actually resolves the file rather than falling back to an implicit config or a
-  // stale provider-generated one (see P73). The provider writes it to its private
-  // dir and returns the absolute path, applying the same fallbacks used at launch;
-  // undefined means it could not be written (handled below).
-  const managedConfigPath = managed && provider ? provider.writeManagedConfig(settings) : undefined;
+  // Materialize the config now (not just its pathname) so a copied command actually
+  // resolves the file rather than falling back to an implicit config or a stale
+  // provider-generated one (see P73). Use a SEPARATE display-only file, never the
+  // live managed config the registered server launches from: the form may show a
+  // scope whose settings differ from the workspace's effective ones, so reusing the
+  // live path here would overwrite the running server's config until the next
+  // provider refresh (see P93). undefined means it could not be written (handled below).
+  const managedConfigPath = managed && provider ? provider.writeDisplayConfig(settings) : undefined;
 
   output.clear();
   // In per-shell mode the provider REQUIRES an auto-managed config file. If no

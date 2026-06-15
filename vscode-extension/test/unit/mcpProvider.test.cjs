@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const os = require('os');
 const vscode = require('../stubs/vscode.cjs');
-const { Wcli0McpProvider, clientHost } = require('../../dist/mcpProvider.js');
+const { Wcli0McpProvider, clientHost, configFileIsLoadable } = require('../../dist/mcpProvider.js');
 
 test.beforeEach(() => {
   vscode.__reset();
@@ -373,6 +373,74 @@ test('P74: a configured launch.cwd with no config.json is not pinned (plain CLI 
   ).provideMcpServerDefinitions();
   assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
   assert.equal(defs[0].cwd.fsPath, '/ws');
+});
+
+test('ignoreInheritedShells launches with CLI flags even when shells are configured', () => {
+  // A non-empty per-shell config would normally launch via a managed --config file.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', true);
+  // No home/cwd config so nothing else pins the launch: the plain CLI-flag path is used.
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => false,
+    () => false,
+  ).provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
+  assert.ok(!defs[0].args.includes('--config'), 'no managed --config in masked mode');
+});
+
+// --- P91: a config file must parse to a non-null, non-array object to be loadable ---
+
+test('P91: configFileIsLoadable rejects null/array/scalar JSON, accepts an object', () => {
+  const dir = managedDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const write = (name, content) => {
+    const p = path.join(dir, name);
+    fs.writeFileSync(p, content, 'utf8');
+    return p;
+  };
+  try {
+    // null parses but loadConfig's Object.keys(null) throws -> server exits.
+    assert.equal(configFileIsLoadable(write('null.json', 'null')), false);
+    // Arrays/scalars parse to zero own keys -> the pin is silently discarded.
+    assert.equal(configFileIsLoadable(write('arr.json', '[]')), false);
+    assert.equal(configFileIsLoadable(write('num.json', '42')), false);
+    assert.equal(configFileIsLoadable(write('str.json', '"x"')), false);
+    // A real config object is loadable; so is an empty object.
+    assert.equal(configFileIsLoadable(write('obj.json', '{"global":{}}')), true);
+    assert.equal(configFileIsLoadable(write('empty.json', '{}')), true);
+    // Malformed JSON and a missing path remain unloadable.
+    assert.equal(configFileIsLoadable(write('bad.json', '{')), false);
+    assert.equal(configFileIsLoadable(path.join(dir, 'missing.json')), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('P91: a configFile containing null registers no server (broken pin)', () => {
+  const dir = managedDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const cfg = path.join(dir, 'wcli0.json');
+  fs.writeFileSync(cfg, 'null', 'utf8');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.configFile', cfg);
+  const logged = [];
+  try {
+    // Use the real configFileIsLoadable (not injected) so the P91 object check runs.
+    const defs = new Wcli0McpProvider(
+      (m) => logged.push(m),
+      '/priv',
+      managedDir(),
+      () => false,
+    ).provideMcpServerDefinitions();
+    assert.deepEqual(defs, []);
+    assert.ok(logged.some((m) => /cannot be read/.test(m)), 'logs the loadability problem');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('P74: no cwd-config check fires when launch.cwd is unset', () => {

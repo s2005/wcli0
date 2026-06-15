@@ -329,6 +329,36 @@ test('P89: a Workspace save with no workspace folder open is refused, not retarg
   assert.equal(panel.webview.posted.some((m) => m.type === 'saved'), false);
 });
 
+test('saving ignoreInheritedShells persists the boolean without clearing wcli0.shells', async () => {
+  // A User-scope per-shell config exists; the workspace opts out via the flag.
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.shells', { cmd: { enabled: true } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { ignoreInheritedShells: true },
+  });
+  // The flag is persisted as a real boolean at the Workspace scope...
+  assert.equal(vscode.__state.configWorkspace.get('wcli0.ignoreInheritedShells'), true);
+  // ...and the inherited per-shell config is untouched (the flag, not a cleared
+  // shells object, is what escapes managed mode).
+  assert.deepEqual(vscode.__state.configGlobal.get('wcli0.shells'), { cmd: { enabled: true } });
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.shells'), false);
+});
+
+test('selecting Inherit (null) for ignoreInheritedShells clears the scope override', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', true);
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { ignoreInheritedShells: null }, // Inherit
+  });
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.ignoreInheritedShells'), false);
+});
+
 test('P45: the logging tri-state selects offer an Inherit option', () => {
   openConfigPanel(makeContext());
   const html = vscode.__state.lastWebviewPanel.webview.html;
