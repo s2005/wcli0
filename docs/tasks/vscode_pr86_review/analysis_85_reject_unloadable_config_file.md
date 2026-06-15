@@ -22,4 +22,4 @@ broken pin rather than registering a silently-overridable server. Verified by th
 `argsBuilder.test.cjs` (validator) and `mcpProvider.test.cjs` (provider registers nothing and logs the
 problem when the file does not load; registers normally when it does).
 
-**Commit:** a31e500 — fix(vscode): address Codex round-12 review feedback for PR #86
+**Commit:** df1378b — fix(vscode): address Codex round-12 review feedback for PR #86

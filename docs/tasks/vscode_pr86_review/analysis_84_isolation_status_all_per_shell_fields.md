@@ -18,4 +18,4 @@ in lockstep, and the new listeners stop the header from misreporting `Overridabl
 or executable command is being edited. Verified by the `P84` tests in `webviewShells.test.cjs`
 (override-only, command typing, allowed-paths-only).
 
-**Commit:** a31e500 — fix(vscode): address Codex round-12 review feedback for PR #86
+**Commit:** df1378b — fix(vscode): address Codex round-12 review feedback for PR #86

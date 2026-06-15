@@ -16,4 +16,4 @@ cwd/home config, bypassing the managed or referenced file. The co-bundled letter
 options (`c` is the sole short alias), so stripping the whole bundle is safe. A single-dash bundle
 without `c` (e.g. `-d`) is preserved. Verified by the `P88` tests in `argsBuilder.test.cjs`.
 
-**Commit:** a31e500 — fix(vscode): address Codex round-12 review feedback for PR #86
+**Commit:** df1378b — fix(vscode): address Codex round-12 review feedback for PR #86

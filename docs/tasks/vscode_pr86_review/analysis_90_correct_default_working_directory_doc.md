@@ -13,4 +13,4 @@ unique temporary directory (`mcpProvider.ts:277-293`), specifically to avoid the
 who expected workspace-relative process behavior or implicit workspace-config loading. Documentation
 only; no code change.
 
-**Commit:** a31e500 — fix(vscode): address Codex round-12 review feedback for PR #86
+**Commit:** df1378b — fix(vscode): address Codex round-12 review feedback for PR #86

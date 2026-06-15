@@ -25,4 +25,4 @@ updated to assert the corrected behavior. Verified by the updated `P44/P89` test
 in `webviewShells.test.cjs` (save targets Workspace) and `webview.test.cjs` (host refuses the
 folderless Workspace save).
 
-**Commit:** a31e500 — fix(vscode): address Codex round-12 review feedback for PR #86
+**Commit:** df1378b — fix(vscode): address Codex round-12 review feedback for PR #86

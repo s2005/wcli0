@@ -15,4 +15,4 @@ turned `extraArgs: ['--config', '--debug']` into neither flag, silently dropping
 conflicting flag. Verified by the `P86` tests in `argsBuilder.test.cjs` (a value-less `--config`/
 `--transport` followed by another option keeps that option).
 
-**Commit:** a31e500 — fix(vscode): address Codex round-12 review feedback for PR #86
+**Commit:** df1378b — fix(vscode): address Codex round-12 review feedback for PR #86
