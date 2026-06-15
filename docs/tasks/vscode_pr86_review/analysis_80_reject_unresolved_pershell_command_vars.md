@@ -12,3 +12,5 @@ Executable ARGS keep the laxer `hasUnresolvedExtensionVariable` check because a 
 expand a `${FOO}` argument, but the command itself cannot. Verified by an added `P80` test in
 `argsBuilder.test.cjs` (an arbitrary `${SHELL_BIN}` token is rejected; a resolvable
 `${workspaceFolder}` command is accepted).
+
+**Commit:** fce0c44 — fix(vscode): address Codex round-11 review feedback for PR #86

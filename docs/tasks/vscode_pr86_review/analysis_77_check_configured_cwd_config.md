@@ -14,3 +14,5 @@ the configured cwd and not merely the workspace root.
 directory the entry uses makes the existence check match the real discovery vector. Verified by added
 `P77` tests in `commands.test.cjs` (warns for `<cwd>/config.json`; a workspace-root `config.json`
 does not warn when `launch.cwd` points elsewhere).
+
+**Commit:** fce0c44 — fix(vscode): address Codex round-11 review feedback for PR #86

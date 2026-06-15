@@ -15,3 +15,5 @@ open). When a relative per-shell command does depend on the cwd, the problem is 
 mis-anchored executable path is still refused. Verified by added `P81` tests in `commands.test.cjs`
 (generation proceeds with a launch-only unresolved cwd; still blocks when a relative per-shell command
 needs it).
+
+**Commit:** fce0c44 — fix(vscode): address Codex round-11 review feedback for PR #86

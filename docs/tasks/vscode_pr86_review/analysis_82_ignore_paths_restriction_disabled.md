@@ -12,3 +12,5 @@ global allowlist — and every OTHER enabled shell inheriting the global restric
 commands with "No allowed paths configured" instead of honoring `allowAllDirs`. Verified by an added
 `P82` test in `configFile.test.cjs` (paths on a `restrictWorkingDirectory: false` shell no longer
 block the lift; a shell that keeps the restriction still does).
+
+**Commit:** fce0c44 — fix(vscode): address Codex round-11 review feedback for PR #86

@@ -12,3 +12,5 @@ converts inherited Windows paths using the `/mnt/` default instead of the config
 commands under a custom mount are rejected. The existing test that asserted bash ignored the mount
 encoded the wrong assumption and was corrected to expect the seeded value (bash still disables
 inheritance by default). Verified by the updated `P83` test in `configFile.test.cjs`.
+
+**Commit:** fce0c44 — fix(vscode): address Codex round-11 review feedback for PR #86

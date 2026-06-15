@@ -9,3 +9,5 @@ alongside the existing `--transport`/`--transport=` handling.
 validation (`src/index.ts`) and exits the process before it can speak stdio. Dropping the flag mirrors
 the `--no-config` handling in `stripConfigArgs`. Verified by an added `P78` test in
 `argsBuilder.test.cjs` (a forced-stdio launch strips `--no-transport` while keeping unrelated extras).
+
+**Commit:** fce0c44 — fix(vscode): address Codex round-11 review feedback for PR #86
