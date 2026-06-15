@@ -156,6 +156,48 @@ test('P39: workspace folder addition re-posts with hasWorkspace=true', async () 
   assert.equal(init.hasWorkspace, true);
 });
 
+test('P96: a Workspace save realigns the host scope after folder removal/re-add', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.shell', 'powershell');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' }); // currentScope = Workspace
+
+  // Remove the only folder: wsSub forces the host currentScope to Global while the
+  // (simulated) dirty Workspace form keeps its scope on the webview side (P89), then
+  // reopen the folder so a Workspace save is allowed again.
+  vscode.__state.workspaceFolders = undefined;
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) cb();
+  vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) cb();
+
+  panel.webview.posted = [];
+  vscode.__state.calls.executedCommands = [];
+  // The retained dirty form still targets Workspace; saving must realign the host
+  // scope so the follow-up post() reloads Workspace values, not the forced Global.
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { commandTimeout: 99 },
+  });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 'settings re-posted after save');
+  assert.equal(init.scope, 'Workspace', 'host scope realigned to the saved Workspace scope');
+  assert.equal(init.settings.shell, 'cmd', 'reloads Workspace values, not Global');
+
+  // A follow-up export now runs against the realigned Workspace scope too.
+  await panel.webview._handler({
+    type: 'generateConfig',
+    target: 'Workspace',
+    values: { commandTimeout: 99 },
+  });
+  const exec = vscode.__state.calls.executedCommands.find(
+    (c) => c.id === 'wcli0.generateConfigFile',
+  );
+  assert.ok(exec, 'export command executed');
+  assert.equal(exec.args[0], 'Workspace', 'export uses the realigned Workspace scope');
+});
+
 test('P41: selecting Inherit (empty string) for an enum clears the scope override', async () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.safetyMode', 'unsafe');
   openConfigPanel(makeContext());

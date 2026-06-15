@@ -330,7 +330,17 @@ function applyPerShellOverrides(
  * for the auto-managed config the extension launches with when any shell is
  * configured individually via `wcli0.shells` (see mcpProvider.ts).
  */
-export function buildConfigFile(s: Wcli0Settings): Record<string, unknown> {
+export function buildConfigFile(sInput: Wcli0Settings): Record<string, unknown> {
+  // When a scope opts out of inherited per-shell config (ignoreInheritedShells),
+  // the generated/pinned config must reflect ONLY the global CLI-flag settings, not
+  // the deep-merged wcli0.shells inherited from another scope. hasPerShellConfig
+  // already gates the launch path off, but a plain launch still gets pinned to a
+  // generated config when an implicit home/cwd config.json exists (P66/P74), and
+  // that pinned config is built here — so without masking, the inherited shell
+  // executables/security overrides would silently take effect despite the opt-out
+  // (P95). Treat shells as empty so every shell entry is built from its defaults
+  // plus the legacy single-shell selector and the global security/limits.
+  const s: Wcli0Settings = sInput.ignoreInheritedShells ? { ...sInput, shells: {} } : sInput;
   // Resolve the path values that will actually be emitted first, so downstream
   // decisions reflect what ends up in the file (an unresolved ${workspaceFolder}
   // entry is dropped and must not count as "configured").

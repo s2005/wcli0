@@ -110,8 +110,12 @@ test('P26/P73/P93: showLaunchCommand writes a separate display config, not the l
   const provider = new Wcli0McpProvider(() => {}, undefined, dir);
   await showLaunchCommand(output, provider);
   const text = output.lines.join('\n');
-  const displayPath = path.join(dir, 'display-config.json');
   const livePath = path.join(dir, 'managed-config.json');
+  // P98: the display file name is content-derived (display-config-<hash>.json), never
+  // the live managed config nor a single shared display path.
+  const displayMatch = text.match(/display-config-[0-9a-f]+\.json/);
+  assert.ok(displayMatch, 'shows a content-specific display config path');
+  const displayPath = path.join(dir, displayMatch[0]);
   // P93: the shown command points at a display-only file, NOT the live managed
   // config the registered server launches from — so showing a scoped command
   // never overwrites the running server's config.
@@ -123,6 +127,45 @@ test('P26/P73/P93: showLaunchCommand writes a separate display config, not the l
   assert.ok(!fs.existsSync(livePath), 'live managed config not written by show');
   const written = JSON.parse(fs.readFileSync(displayPath, 'utf8'));
   assert.equal(written.shells.cmd.enabled, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('P98: showing commands for different settings uses distinct display config files', async () => {
+  const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = path.join(
+    os.tmpdir(),
+    'wcli0-show98-' + process.pid + '-' + Math.random().toString(36).slice(2),
+  );
+  const provider = new Wcli0McpProvider(() => {}, undefined, dir);
+  const displayPathFor = async () => {
+    const output = vscode.window.createOutputChannel('t');
+    await showLaunchCommand(output, provider);
+    const m = output.lines.join('\n').match(/display-config-[0-9a-f]+\.json/);
+    assert.ok(m, 'shows a content-specific display config path');
+    return path.join(dir, m[0]);
+  };
+
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  const first = await displayPathFor();
+  const firstContent = fs.readFileSync(first, 'utf8');
+
+  // Change settings and show again: a DIFFERENT file is written, so the first copied
+  // command still resolves the config it displayed (it was not overwritten in place).
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { enabled: true, executable: { command: 'C:/custom/cmd.exe', args: ['/k'] } },
+  });
+  const second = await displayPathFor();
+  assert.notEqual(first, second, 'distinct settings -> distinct display config files');
+  assert.ok(fs.existsSync(first), 'first display config is still present');
+  assert.equal(fs.readFileSync(first, 'utf8'), firstContent, 'first display config unchanged');
+
+  // Re-showing the original settings reuses the same (content-derived) file name.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', { cmd: { enabled: true } });
+  const third = await displayPathFor();
+  assert.equal(third, first, 'identical settings -> identical display config file');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

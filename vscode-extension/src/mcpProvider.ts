@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -15,13 +16,17 @@ import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, Wcli0Settings 
 export const MANAGED_CONFIG_FILE = 'managed-config.json';
 
 /**
- * File name for the config materialized only to display a scoped launch command
- * (showLaunchCommand). Kept distinct from MANAGED_CONFIG_FILE so showing a
+ * File-name prefix for the configs materialized only to display a scoped launch
+ * command (showLaunchCommand). Kept distinct from MANAGED_CONFIG_FILE so showing a
  * command for one scope never overwrites the live config the registered server
  * launches from (see P93) — the form may show User scope while the workspace's
- * effective per-shell/safety settings differ.
+ * effective per-shell/safety settings differ. The actual file name appends a hash
+ * of the config content (`display-config-<hash>.json`) so showing a command for a
+ * different scope/settings writes a DISTINCT file and a previously shown (and
+ * copied) command keeps resolving the config it displayed instead of being
+ * overwritten by the next invocation (see P98).
  */
-export const MANAGED_DISPLAY_CONFIG_FILE = 'display-config.json';
+export const MANAGED_DISPLAY_CONFIG_PREFIX = 'display-config';
 
 /**
  * Whether the server's implicit home config (`~/.win-cli-mcp/config.json`) exists.
@@ -209,7 +214,13 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
    * registered server launches from (see P93).
    */
   writeDisplayConfig(settings: Wcli0Settings): string | undefined {
-    return this.writeConfigTo(settings, MANAGED_DISPLAY_CONFIG_FILE, 'display config');
+    const content = JSON.stringify(buildConfigFile(settings), null, 2) + '\n';
+    // Derive the file name from the content so a command shown for a different
+    // scope/settings writes a DISTINCT file. A previously shown (and copied) command
+    // therefore keeps pointing at the config that was displayed rather than being
+    // overwritten by the next invocation (see P98); identical content reuses one file.
+    const hash = createHash('sha256').update(content).digest('hex').slice(0, 16);
+    return this.writeConfigContent(`${MANAGED_DISPLAY_CONFIG_PREFIX}-${hash}.json`, content, 'display config');
   }
 
   /**
@@ -225,6 +236,21 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     fileName: string,
     label: string,
   ): string | undefined {
+    const content = JSON.stringify(buildConfigFile(settings), null, 2) + '\n';
+    return this.writeConfigContent(fileName, content, label);
+  }
+
+  /**
+   * Write already-serialized config content into the private managed directory under
+   * the given file name, returning its absolute path or undefined if it cannot be
+   * written. Splitting the write from buildConfigFile lets writeDisplayConfig choose
+   * a content-derived file name (P98) while reusing the same directory fallbacks.
+   */
+  private writeConfigContent(
+    fileName: string,
+    content: string,
+    label: string,
+  ): string | undefined {
     const dir = this.managedConfigTargetDir();
     if (!dir) {
       this.log(`no writable private directory available for the ${label}; not registering.`);
@@ -233,8 +259,7 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     const target = path.join(dir, fileName);
     try {
       fs.mkdirSync(dir, { recursive: true });
-      const config = buildConfigFile(settings);
-      fs.writeFileSync(target, JSON.stringify(config, null, 2) + '\n', 'utf8');
+      fs.writeFileSync(target, content, 'utf8');
       return target;
     } catch (err) {
       this.log(`could not write ${label} at ${target}: ${(err as Error).message}`);

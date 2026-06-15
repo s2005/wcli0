@@ -138,6 +138,12 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       if (!(await applySettings(msg as SavePayload))) {
         return;
       }
+      // Align the host scope with the form's retained scope before re-posting. The
+      // two can diverge: when the last workspace folder was removed, wsSub forced
+      // currentScope to Global while a dirty Workspace form kept its scope and radio
+      // (P89). Without this, the post() below would reload Global settings over the
+      // just-saved Workspace values (P96). msg.target is the scope applySettings wrote.
+      currentScope = msg.target;
       // Re-post the now-persisted settings before the saved indicator re-baselines.
       // A background configuration change that arrived while the form was dirty was
       // skipped (to protect unsaved edits) and never reconciled; without this refresh
@@ -164,6 +170,10 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
         if (!(await applySettings(msg as SavePayload))) {
           return;
         }
+        // Align the host scope with the form's retained scope (see the save path /
+        // P96) so both the refresh below AND the export command run against the scope
+        // the form shows, not a stale currentScope forced to Global by wsSub (P89).
+        currentScope = msg.target;
         // Refresh from the persisted state (reconciling any deferred external change)
         // before re-baselining, matching the save path above.
         post();
@@ -534,6 +544,7 @@ function renderHtml(webview: vscode.Webview): string {
     <option value="disabled">Do not ignore (explicit)</option>
   </select>
   <div class="hint" style="margin-top:4px">VS Code merges <code>wcli0.shells</code> across scopes, so a Workspace cannot drop a User-scope shell by clearing it. Choose <strong>Ignore</strong> to opt this workspace out of managed per-shell mode and launch with the global CLI flags instead.</div>
+  <div class="hint" id="ignoreInheritedShellsUserNote" style="display:none;margin-top:4px;color:var(--vscode-charts-yellow,#d7a930)">This opt-out applies to Workspace scope only. At User scope it would suppress your own per-shell config everywhere, so it is disabled here &mdash; switch to Workspace to use it.</div>
 
   <div id="simplePane">
     <label>Shell <span class="hint">enable one shell, or "all"</span></label>
@@ -1154,6 +1165,20 @@ function renderHtml(webview: vscode.Webview): string {
     }
   }
 
+  // The inherited-shell mask (ignoreInheritedShells) is a Workspace-only opt-out from
+  // User-scope per-shell config. A Global value would suppress the User scope's OWN
+  // wcli0.shells everywhere (hasPerShellConfig treats any effective true as
+  // authoritative), so disable the control while editing User scope and show why,
+  // preventing the form from ever persisting it globally (P97).
+  function applyScopeAvailability(scope) {
+    const ign = $('ignoreInheritedShells');
+    if (!ign) return;
+    const isUser = scope === 'Global';
+    ign.disabled = isUser;
+    const note = $('ignoreInheritedShellsUserNote');
+    if (note) note.style.display = isUser ? '' : 'none';
+  }
+
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'saved') {
@@ -1186,6 +1211,8 @@ function renderHtml(webview: vscode.Webview): string {
       // Record the scope the form now reflects so a cancelled scope switch can
       // revert the radio to it (P70).
       formScope = msg.scope || formScope;
+      // Enable/disable the Workspace-only inherited-shell mask for the loaded scope (P97).
+      applyScopeAvailability(formScope);
     }
   });
   vscode.postMessage({ type: 'ready' });

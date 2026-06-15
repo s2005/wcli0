@@ -666,6 +666,34 @@ test('ignoreInheritedShells: an unset value renders as Inherit (default)', () =>
   assert.equal(h.els.get('ignoreInheritedShells').value, 'default');
 });
 
+test('P97: ignoreInheritedShells is disabled when editing User (Global) scope', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Global',
+    settings: { shells: {}, ignoreInheritedShells: false },
+    setSelectKeys: [],
+  });
+  // The Workspace-only opt-out must not be settable at User scope, where it would
+  // suppress the User scope's own per-shell config everywhere.
+  assert.equal(h.els.get('ignoreInheritedShells').disabled, true);
+  assert.equal(h.els.get('ignoreInheritedShellsUserNote').style.display, '');
+});
+
+test('P97: ignoreInheritedShells is enabled at Workspace scope', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: {}, ignoreInheritedShells: false },
+    setSelectKeys: [],
+  });
+  assert.equal(h.els.get('ignoreInheritedShells').disabled, false);
+  assert.equal(h.els.get('ignoreInheritedShellsUserNote').style.display, 'none');
+});
+
 test('ignoreInheritedShells: enabling it marks the launch as Overridable despite per-shell config', () => {
   const h = makeHarness();
   // A per-shell config would normally isolate the launch (Isolated chip).

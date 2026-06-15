@@ -654,3 +654,46 @@ test('P54: a per-shell allowedPaths entry still blocks the allowAllDirs lift', (
   );
   assert.equal(cfg.global.security.restrictWorkingDirectory, true);
 });
+
+test('P95: ignoreInheritedShells strips per-shell overrides from a pinned/generated config', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // A workspace opts out of inherited per-shell config but a home/cwd config.json still
+  // forces the provider to pin via buildConfigFile. The inherited shell executable and
+  // security override must NOT leak into the pinned config; only the legacy single-shell
+  // selector and global settings apply.
+  const cfg = buildConfigFile(
+    defaults({
+      shell: 'cmd',
+      ignoreInheritedShells: true,
+      shells: {
+        cmd: {
+          executable: { command: 'C:/evil/cmd.exe', args: ['/k'] },
+          overrides: { security: { restrictWorkingDirectory: false } },
+        },
+        gitbash: { enabled: true },
+      },
+    }),
+  );
+  // The inherited cmd executable override is dropped (defaults restored).
+  assert.equal(cfg.shells.cmd.executable.command, 'cmd.exe');
+  assert.deepEqual(cfg.shells.cmd.executable.args, ['/c']);
+  // No inherited per-shell security override survives.
+  assert.equal(cfg.shells.cmd.overrides?.security?.restrictWorkingDirectory, undefined);
+  // enabled follows the legacy single-shell selector (shell: 'cmd'), not the inherited
+  // gitbash enable.
+  assert.equal(cfg.shells.cmd.enabled, true);
+  assert.equal(cfg.shells.gitbash.enabled, false);
+});
+
+test('P95: without ignoreInheritedShells the per-shell overrides are still applied', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({
+      shell: 'cmd',
+      ignoreInheritedShells: false,
+      shells: { cmd: { executable: { command: 'C:/custom/cmd.exe', args: ['/k'] } } },
+    }),
+  );
+  assert.equal(cfg.shells.cmd.executable.command, 'C:/custom/cmd.exe');
+  assert.deepEqual(cfg.shells.cmd.executable.args, ['/k']);
+});

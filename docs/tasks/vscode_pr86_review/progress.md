@@ -134,3 +134,14 @@ collected and analyzed on request but deliberately NOT implemented — see the `
 - [ ] P91: Reject non-object JSON configuration files (valid, stashed - `configFileIsLoadable` accepts any parseable JSON, so `null` makes the server crash on `Object.keys(null)` and arrays/scalars silently bypass the P85 pin; proposed fix requires a non-null non-array object)
 - [-] P92: Allow workspaces to mask inherited per-shell settings (valid concern, deferred - re-raise of P87 at the read site `settings.ts:157`; same root cause - VS Code deep-merges `wcli0.shells` - and same blockers needing `inspect()` reads, a UI affordance, and a product decision)
 - [ ] P93: Do not overwrite the provider config when showing scoped commands (valid, stashed - `showLaunchCommand` reuses `writeManagedConfig`, which targets the provider's live managed-config path, so a scoped display overwrites the running server's config; proposed fix writes the display command to a separate file)
+
+## Review Feedback (PR #86) - round 14
+
+Source: Codex review round 14, reviewed branch commit `bcb8118`. Five unresolved Codex threads,
+follow-ups to the `ignoreInheritedShells` opt-out (P92) and the display-config split (P93).
+
+- [-] P94: Let workspaces mask inherited per-shell settings (rejected - already addressed by the `wcli0.ignoreInheritedShells` opt-out from P87/P92; the `{}`->undefined conversion at `webview.ts:250` is the correct "inherit" action, masking is the separate explicit toggle)
+- [x] P95: Mask inherited shells when writing a pinned config (fixed - `buildConfigFile` treats `shells` as empty when `ignoreInheritedShells` is set, so a pinned/generated config no longer reintroduces the inherited per-shell executables/security overrides the workspace opted out of)
+- [x] P96: Preserve the workspace scope while its dirty form is retained (fixed - the save and export handlers realign the host `currentScope` to `msg.target` after a successful `applySettings`, so the follow-up re-post and export use the scope the form retained, not a Global forced by folder removal)
+- [x] P97: Restrict the inherited-shell mask to Workspace scope (fixed - `applyScopeAvailability` disables the "Ignore inherited per-shell config" control and shows a note when the form edits User scope, so the extension never persists `ignoreInheritedShells` globally)
+- [x] P98: Give displayed managed commands immutable config paths (fixed - `writeDisplayConfig` names the file from a content hash `display-config-<hash>.json`, so showing a command for a different scope/settings writes a distinct file and a previously copied command keeps resolving the config it displayed)

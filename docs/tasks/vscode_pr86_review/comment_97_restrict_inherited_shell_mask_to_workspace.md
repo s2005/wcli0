@@ -1,0 +1,3 @@
+# P97 - Restrict the inherited-shell mask to Workspace scope
+
+The form exposes the "Ignore inherited per-shell config" control unchanged while editing User scope (`vscode-extension/src/webview.ts:535`), so selecting it there persists `ignoreInheritedShells: true` globally. Because `hasPerShellConfig` treats any effective true value as authoritative, a Global value suppresses the User scope's own `wcli0.shells` configuration in every workspace and even when no workspace is open, although the control is documented as a Workspace-only opt-out from inherited User settings. Disable or hide this control for User scope, or otherwise prevent a Global value from masking its own per-shell configuration.
