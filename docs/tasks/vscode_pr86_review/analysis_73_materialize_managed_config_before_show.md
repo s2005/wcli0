@@ -19,4 +19,4 @@ now-inaccurate "on launch" qualifier and to cover both pin vectors (configured c
 Verified by the updated `P26/P73` test in `commands.test.cjs` (asserts the managed config is written to
 disk with the expected per-shell contents, not just that the path string appears).
 
-**Commit:** 12f75fa — fix(vscode): address Codex round-10 review feedback for PR #86
+**Commit:** dac74a5 — fix(vscode): address Codex round-10 review feedback for PR #86

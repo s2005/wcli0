@@ -15,4 +15,4 @@ expands the same token in settings, eliminating the Windows mismatch while prese
 `${userHome}` resolves to `os.homedir()`) and an added Windows-specific test (a Unix-style `HOME` no
 longer leaks into the resolved value on win32).
 
-**Commit:** 12f75fa — fix(vscode): address Codex round-10 review feedback for PR #86
+**Commit:** dac74a5 — fix(vscode): address Codex round-10 review feedback for PR #86

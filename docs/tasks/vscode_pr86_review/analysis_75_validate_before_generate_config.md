@@ -19,4 +19,4 @@ which also refuses to emit an artifact that would silently drop settings. Verifi
 in `commands.test.cjs` (refuses `commandTimeout: 0.5` with a `commandTimeout` error and writes nothing;
 still generates when only a launch-method problem is present).
 
-**Commit:** 12f75fa — fix(vscode): address Codex round-10 review feedback for PR #86
+**Commit:** dac74a5 — fix(vscode): address Codex round-10 review feedback for PR #86

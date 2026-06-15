@@ -19,4 +19,4 @@ surfaced at launch (P63) and pinned by the provider (P66), and gating on it woul
 Verified by added `P72` tests in `commands.test.cjs` (warns and aborts on cancel; writes on "Write
 anyway"; no warning when `wcli0.configFile` is set). A `stat` method was added to the test vscode stub.
 
-**Commit:** 12f75fa — fix(vscode): address Codex round-10 review feedback for PR #86
+**Commit:** dac74a5 — fix(vscode): address Codex round-10 review feedback for PR #86

@@ -18,4 +18,4 @@ exactly that surface so no spelling slips through. The short-bundling branch is 
 touched. Verified by added `P71` tests in `argsBuilder.test.cjs` (managed launch strips `--c`,
 `--c=`, `-c/...`, `--no-config`; a referenced launch strips the alias forms yet keeps `--config-check`).
 
-**Commit:** 12f75fa — fix(vscode): address Codex round-10 review feedback for PR #86
+**Commit:** dac74a5 — fix(vscode): address Codex round-10 review feedback for PR #86

@@ -19,4 +19,4 @@ configured (the fallback dir has no `config.json`). Verified by added `P74` test
 `mcpProvider.test.cjs` (pins and writes a generated `--config` when the configured cwd has a
 `config.json`; plain CLI flags when it does not; the check is not invoked when `launch.cwd` is unset).
 
-**Commit:** 12f75fa — fix(vscode): address Codex round-10 review feedback for PR #86
+**Commit:** dac74a5 — fix(vscode): address Codex round-10 review feedback for PR #86
