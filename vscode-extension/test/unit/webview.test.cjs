@@ -409,3 +409,25 @@ test('P45: the logging tri-state selects offer an Inherit option', () => {
   assert.match(trunc, /<option value="">Inherit<\/option>/);
   assert.match(logres, /<option value="">Inherit<\/option>/);
 });
+
+test('P100: maxOutputLines input carries the server max so HTML validity matches', () => {
+  openConfigPanel(makeContext());
+  const html = vscode.__state.lastWebviewPanel.webview.html;
+  const input = html.match(/<input type="number" id="maxOutputLines"[^>]*>/)[0];
+  // min=1 and max=10000 mirror the server's validateLoggingConfig bound so a value
+  // such as 10001 fails checkValidity() before being posted.
+  assert.match(input, /min="1"/);
+  assert.match(input, /max="10000"/);
+});
+
+test('P100: save and export validate all numeric inputs before posting', () => {
+  openConfigPanel(makeContext());
+  const html = vscode.__state.lastWebviewPanel.webview.html;
+  // The form script defines a shared numeric guard (checkValidity over every number
+  // input) and gates both the save handler and the export actions on it, so an
+  // invalid timeout/length/maxOutputLines/port can no longer be persisted or exported.
+  assert.match(html, /function validateNumbers\(\)/);
+  assert.match(html, /querySelectorAll\('input\[type=number\]'\)/);
+  assert.match(html, /\$\('save'\)\.addEventListener\('click', \(\) => \{\s*if \(!validateNumbers\(\)\) return;/);
+  assert.match(html, /function exportAction\(type\) \{\s*if \(!validateNumbers\(\)\) return;/);
+});

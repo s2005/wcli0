@@ -145,3 +145,13 @@ follow-ups to the `ignoreInheritedShells` opt-out (P92) and the display-config s
 - [x] P96: Preserve the workspace scope while its dirty form is retained (fixed - the save and export handlers realign the host `currentScope` to `msg.target` after a successful `applySettings`, so the follow-up re-post and export use the scope the form retained, not a Global forced by folder removal)
 - [x] P97: Restrict the inherited-shell mask to Workspace scope (fixed - `applyScopeAvailability` disables the "Ignore inherited per-shell config" control and shows a note when the form edits User scope, so the extension never persists `ignoreInheritedShells` globally)
 - [x] P98: Give displayed managed commands immutable config paths (fixed - `writeDisplayConfig` names the file from a content hash `display-config-<hash>.json`, so showing a command for a different scope/settings writes a distinct file and a previously copied command keeps resolving the config it displayed)
+
+## Review Feedback (PR #86) - round 15
+
+Source: Codex review round 15, reviewed branch commit `ee479b7`. Four unresolved Codex threads,
+follow-ups to the `ignoreInheritedShells` opt-out (P95/P97) and the custom-launch/extraArgs handling.
+
+- [x] P99: Skip masked shells during managed validation (fixed - the managed per-shell validation loop is gated on `managed && !s.ignoreInheritedShells`, so an inherited shell with a stale path/limit/command no longer blocks the masked launch or `Generate Config File`, matching the empty `shells` `buildConfigFile` emits)
+- [x] P100: Validate every numeric field before posting form values (fixed - a shared `validateNumbers()` guard runs `checkValidity()` over every number input and gates both save and export, and `maxOutputLines` carries `max="10000"`, so an invalid timeout/length/maxOutputLines/port is no longer persisted or exported)
+- [x] P101: Restrict the inherited-shell mask to Workspace scope (fixed - `readSettings` recomputes `ignoreInheritedShells` from `inspect()` and honors only a Workspace/workspace-folder value, and `readSettingsForScope('Global')` reports it false, so a User/Global value no longer suppresses the user's own `wcli0.shells` everywhere)
+- [x] P102: Prevent custom args from defeating generated config flags (fixed - `validateLaunchSpec` blocks a custom launch whose `customArgs` repeat a reserved `--config`/`--transport` while the extension emits its own, since two scalar values make yargs ignore the managed/pinned config and forced stdio; a plain launch keeps `customArgs` as an escape hatch)

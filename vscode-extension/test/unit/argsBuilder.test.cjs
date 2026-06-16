@@ -1062,3 +1062,67 @@ test('P63: the implicit-home-config warning is suppressed in the cases it does n
   const unsafe = validateLaunchSpec(defaults({ safetyMode: 'unsafe' }), false, true);
   assert.ok(!unsafe.some((p) => /win-cli-mcp/.test(p.message)));
 });
+
+test('P99: ignoreInheritedShells skips per-shell managed validation of masked shells', () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  // An inherited per-shell entry with stale machine-specific values that would
+  // normally block managed validation (unanchorable path, sub-1 limit, unresolved
+  // executable command).
+  const shells = {
+    cmd: {
+      enabled: true,
+      overrides: {
+        paths: { allowedPaths: ['${workspaceFolder:nope}/b'] },
+        security: { commandTimeout: 0.5 },
+      },
+      executable: { command: '${workspaceFolder}/bin/sh' },
+    },
+  };
+  // Without the opt-out, the entry blocks managed validation.
+  assert.ok(
+    validateLaunchSpec(defaults({ shells }), true).some((p) => p.blocking),
+  );
+  // With ignoreInheritedShells the masked shell is never emitted (buildConfigFile
+  // drops it), so it must not block — matching the generated masked config.
+  assert.equal(
+    validateLaunchSpec(defaults({ shells, ignoreInheritedShells: true }), true)
+      .filter((p) => p.blocking).length,
+    0,
+  );
+});
+
+test('P102: custom args repeating a reserved --config/--transport is blocking when the extension emits its own', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const base = { launchMethod: 'custom', customCommand: 'wcli0' };
+  // Managed mode always emits --config <managed> and --transport stdio, so a custom
+  // --config / --transport collides and defeats the managed config / forced stdio.
+  const managedConfig = validateLaunchSpec(
+    defaults({ ...base, customArgs: ['--config', 'other.json'] }), true);
+  assert.ok(managedConfig.some((p) => /customArgs.*--config/.test(p.message) && p.blocking));
+  const managedTransport = validateLaunchSpec(
+    defaults({ ...base, customArgs: ['--transport', 'http'] }), true);
+  assert.ok(managedTransport.some((p) => /customArgs.*--transport/.test(p.message) && p.blocking));
+  // A pinned configFile (non-managed) also emits its own --config (+ --transport stdio).
+  const pinned = validateLaunchSpec(
+    defaults({ ...base, configFile: '/ws/x.json', customArgs: ['-c', 'other.json'] }), false);
+  assert.ok(pinned.some((p) => /customArgs.*--config/.test(p.message) && p.blocking));
+  // http/sse transport emits its own --transport, so a custom --transport collides.
+  const http = validateLaunchSpec(
+    defaults({ ...base, transportMode: 'http', customArgs: ['--transport', 'stdio'] }), false);
+  assert.ok(http.some((p) => /customArgs.*--transport/.test(p.message) && p.blocking));
+});
+
+test('P102: custom args keep --config/--transport as an escape hatch on a plain launch', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  // Plain stdio launch, no managed config and no configFile: the extension emits no
+  // --config and no --transport, so a custom flag is the user's own escape hatch.
+  const s = defaults({
+    launchMethod: 'custom',
+    customCommand: 'my-wrapper',
+    customArgs: ['--config', 'mine.json', '--transport', 'http'],
+  });
+  assert.equal(
+    validateLaunchSpec(s, false).filter((p) => /customArgs.*--(config|transport)/.test(p.message)).length,
+    0,
+  );
+});

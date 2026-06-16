@@ -185,6 +185,25 @@ test('ignoreInheritedShells is an inheritable select key reported when set at a 
   assert.ok(!explicitlySetSelectKeys('Global').includes('ignoreInheritedShells'));
 });
 
+test('P101: a Global-scoped ignoreInheritedShells does not mask per-shell config', () => {
+  // A non-empty per-shell config selects managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { enabled: true },
+  });
+  // The mask set ONLY at User/Global scope (e.g. typed into settings.json, bypassing
+  // the form which disables the control there) must NOT suppress the user's own
+  // shells: the opt-out is Workspace-only.
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.ignoreInheritedShells', true);
+  assert.equal(readSettings().ignoreInheritedShells, false, 'Global value not honored');
+  assert.equal(hasPerShellConfig(readSettings()), true, 'shells still active');
+  // A Global-scope form read also reports it false (a Global export must not mask).
+  assert.equal(readSettingsForScope('Global').ignoreInheritedShells, false);
+  // Setting it at Workspace scope is the supported opt-out and IS honored.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', true);
+  assert.equal(readSettings().ignoreInheritedShells, true);
+  assert.equal(hasPerShellConfig(readSettings()), false);
+});
+
 test('P23: the LICENSE retains the MIT copyright notice', () => {
   const fs = require('node:fs');
   const path = require('node:path');

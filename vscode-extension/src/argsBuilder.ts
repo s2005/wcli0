@@ -738,6 +738,34 @@ export function validateLaunchSpec(
         });
       }
     }
+    // customArgs are prepended verbatim, BEFORE the server flags buildLaunchSpec
+    // appends. When the custom command forwards to wcli0 (directly or via a wrapper
+    // — the only way the appended --config/--transport flags make sense), a reserved
+    // flag in customArgs collides with the extension's own: the server's scalar yargs
+    // `config`/`transport` options parse two values as an array, so loadConfig ignores
+    // the mandatory managed/pinned file (and falls back to an implicit config) and
+    // applyCliTransport applies neither value (defeating forced stdio). Unlike
+    // extraArgs — which are unambiguously wcli0's and get stripped — customArgs belong
+    // to the custom command and cannot be silently rewritten, so refuse instead. Only
+    // flag the conflict when the extension actually emits its own value: a plain
+    // launch with no managed config, no configFile and stdio transport leaves
+    // customArgs as a valid escape hatch. (P102)
+    const emitsConfig = managed || !!s.configFile.trim();
+    const emitsTransport = managed || s.transportMode !== 'stdio' || !!s.configFile.trim();
+    if (emitsConfig && stripConfigArgs(s.customArgs).length !== s.customArgs.length) {
+      problems.push({
+        message:
+          'wcli0.launch.customArgs contains a --config/-c option, but the extension already passes its own --config (the managed per-shell config or wcli0.configFile). Two --config values make the server parse them as an array and ignore the intended file, silently loading an implicit config instead. Remove the --config entry from customArgs.',
+        blocking: true,
+      });
+    }
+    if (emitsTransport && stripTransportArgs(s.customArgs).length !== s.customArgs.length) {
+      problems.push({
+        message:
+          'wcli0.launch.customArgs contains a --transport option, but the extension already passes its own --transport. Two --transport values make the server apply neither and fall back to a different transport (e.g. opening a network listener instead of speaking stdio). Remove the --transport entry from customArgs.',
+        blocking: true,
+      });
+    }
   }
   // A configured cwd or initialDir that doesn't resolve to an absolute path would
   // silently fall back to a different directory than the user chose; refuse
@@ -812,7 +840,12 @@ export function validateLaunchSpec(
   // security limits. Apply the same blocking checks as the global equivalents so
   // an unresolved path or an out-of-range limit is reported rather than silently
   // dropped from the config (and the shell launched with the wrong restriction).
-  if (managed) {
+  // When `ignoreInheritedShells` is set, buildConfigFile masks `shells` to {} and
+  // emits every shell from its defaults, so none of these inherited entries reach
+  // the generated config — validating them would reject the opt-out (and block
+  // Generate Config File) over a shell that will never be emitted. Skip the
+  // per-shell checks in that case. (P99)
+  if (managed && !s.ignoreInheritedShells) {
     for (const name of SHELL_NAMES) {
       const sh = s.shells?.[name];
       if (!sh) {

@@ -585,7 +585,7 @@ function renderHtml(webview: vscode.Webview): string {
   <div class="row">
     <div><label>Command timeout (s)</label><input type="number" id="commandTimeout" min="1" /></div>
     <div><label>Max command length</label><input type="number" id="maxCommandLength" min="1" /></div>
-    <div><label>Max output lines</label><input type="number" id="maxOutputLines" min="1" /></div>
+    <div><label>Max output lines</label><input type="number" id="maxOutputLines" min="1" max="10000" /></div>
   </div>
   <div class="row">
     <div>
@@ -1083,20 +1083,34 @@ function renderHtml(webview: vscode.Webview): string {
     el.addEventListener('input', () => { if (el.value.trim()) cb.checked = false; });
   }
 
-  $('save').addEventListener('click', () => {
-    // Block out-of-range ports (the contributed setting is 1..65535) before
-    // saving; an invalid port makes the provider register no server in http mode.
-    const portEl = $('transport.port');
-    if (portEl && portEl.value !== '' && !portEl.checkValidity()) {
-      portEl.reportValidity();
-      return;
+  // Block any out-of-range numeric input before a save or export posts values. The
+  // port (1..65535), the global/per-shell timeouts and command lengths (>= 1) and
+  // maxOutputLines (1..10000) all carry min/max constraints; without this only the
+  // port was checked, so an invalid value such as commandTimeout=0 or
+  // maxOutputLines=10001 would persist and then make validateLaunchSpec register no
+  // server (and the export handlers would emit a config the server rejects at
+  // startup). Mirror the host-side validateLaunchSpec bounds with native validity UI
+  // so the form fails fast on the first offending control. (P100)
+  function validateNumbers() {
+    for (const el of document.querySelectorAll('input[type=number]')) {
+      if (el.disabled || el.value === '') continue;
+      if (!el.checkValidity()) {
+        el.reportValidity();
+        return false;
+      }
     }
+    return true;
+  }
+
+  $('save').addEventListener('click', () => {
+    if (!validateNumbers()) return;
     const target = document.querySelector('input[name=scope]:checked').value;
     vscode.postMessage({ type: 'save', target, values: collectChanged() });
   });
   // Export actions carry the current form state so the host can persist unsaved
   // edits before generating, keeping the output in sync with what is on screen.
   function exportAction(type) {
+    if (!validateNumbers()) return;
     const target = document.querySelector('input[name=scope]:checked').value;
     vscode.postMessage({ type, target, values: collectChanged() });
   }

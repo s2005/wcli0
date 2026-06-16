@@ -266,7 +266,26 @@ export function hasPerShellConfig(s: Wcli0Settings): boolean {
  */
 export function readSettings(scope?: vscode.Uri): Wcli0Settings {
   const c = vscode.workspace.getConfiguration(CONFIG_SECTION, scope ?? null);
-  return buildSettings((key, def) => c.get(key, def));
+  const s = buildSettings((key, def) => c.get(key, def));
+  // `ignoreInheritedShells` is a Workspace-only opt-out (the config form disables the
+  // control at User scope). The setting is resource-scoped, though, so a user could set
+  // it in User Settings/settings.json; a merged effective read (c.get) would then honor
+  // that Global value and suppress the user's own wcli0.shells in every workspace — and
+  // even with no workspace open — contrary to the documented behavior. Honor it only
+  // when it is explicitly set at Workspace (or workspace-folder) scope. (P101)
+  s.ignoreInheritedShells = ignoreInheritedShellsAtWorkspace(c);
+  return s;
+}
+
+/**
+ * Whether `ignoreInheritedShells` is explicitly opted in at Workspace (or
+ * workspace-folder) scope. A Global/User value is deliberately ignored: the mask is a
+ * Workspace-only affordance, so trusting the merged effective boolean would let a User
+ * setting suppress per-shell config everywhere (see {@link readSettings}, P101).
+ */
+function ignoreInheritedShellsAtWorkspace(c: vscode.WorkspaceConfiguration): boolean {
+  const info = c.inspect<boolean>('ignoreInheritedShells');
+  return !!info && (info.workspaceFolderValue === true || info.workspaceValue === true);
 }
 
 /**
@@ -277,7 +296,7 @@ export function readSettings(scope?: vscode.Uri): Wcli0Settings {
  */
 export function readSettingsForScope(target: ConfigScope, scope?: vscode.Uri): Wcli0Settings {
   const c = vscode.workspace.getConfiguration(CONFIG_SECTION, scope ?? null);
-  return buildSettings(<T>(key: string, def: T): T => {
+  const s = buildSettings(<T>(key: string, def: T): T => {
     const info = c.inspect<T>(key);
     if (!info) {
       return def;
@@ -289,6 +308,13 @@ export function readSettingsForScope(target: ConfigScope, scope?: vscode.Uri): W
     const value = target === 'Global' ? info.globalValue : info.workspaceValue;
     return value === undefined ? def : value;
   });
+  // The inherited-shell mask is Workspace-only, so a Global-scope read (e.g. a Global
+  // export) must never report it true even if a stray globalValue exists — mirrors the
+  // effective read in {@link readSettings}. (P101)
+  if (target === 'Global') {
+    s.ignoreInheritedShells = false;
+  }
+  return s;
 }
 
 /**
