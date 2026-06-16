@@ -15,4 +15,4 @@ launched with global flags instead. Honoring the defined folder value first matc
 VS Code's effective-value semantics; a Global value remains ignored (the mask stays a
 Workspace-only affordance, per P101).
 
-**Commit:** b967450 — fix(vscode): address PR86 round-16 review (P103-P105)
+**Commit:** 5290bad — fix(vscode): address PR86 round-16 review (P103-P105)

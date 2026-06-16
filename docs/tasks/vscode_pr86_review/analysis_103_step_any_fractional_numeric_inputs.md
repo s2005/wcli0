@@ -18,4 +18,4 @@ requirement), and `validateLaunchSpec`/per-shell validation accept any finite
 `step="any"` aligns the client-side validity check with the host/server contract
 without weakening the `min`/`max` bounds.
 
-**Commit:** b967450 — fix(vscode): address PR86 round-16 review (P103-P105)
+**Commit:** 5290bad — fix(vscode): address PR86 round-16 review (P103-P105)

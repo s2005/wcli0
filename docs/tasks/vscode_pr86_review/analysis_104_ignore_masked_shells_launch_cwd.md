@@ -17,4 +17,4 @@ mirrors what `buildConfigFile` will emit and unblocks generation, consistent wit
 P81 rationale that the cwd must not block config generation when it does not appear
 in the file.
 
-**Commit:** b967450 — fix(vscode): address PR86 round-16 review (P103-P105)
+**Commit:** 5290bad — fix(vscode): address PR86 round-16 review (P103-P105)
