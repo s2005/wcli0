@@ -24,7 +24,8 @@ export default {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
-    '/scripts/wsl.sh'
+    '/scripts/wsl.sh',
+    '/vscode-extension/'
   ],
   resolver: undefined,
   globals: {}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="wcli0">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F6FEB"/>
+      <stop offset="1" stop-color="#0D1117"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded-square badge (transparent outside the corners). -->
+  <rect x="16" y="16" width="480" height="480" rx="104" fill="url(#bg)"/>
+  <rect x="16.5" y="16.5" width="479" height="479" rx="103.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="3"/>
+  <!-- Command prompt glyph: chevron + input line, echoing the sidebar icon. -->
+  <path fill="none" stroke="#E6EDF3" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"
+        d="M150 168 L262 256 L150 344 M300 344 H392"/>
+</svg>

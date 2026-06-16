@@ -1,0 +1,3 @@
+# P96 - Preserve the workspace scope while its dirty form is retained
+
+If the last workspace folder is removed while a Workspace-scoped form has unsaved edits, the webview keeps that dirty form and its Workspace radio selected, but the `onDidChangeWorkspaceFolders` listener at `vscode-extension/src/webview.ts:199` changes the host-side `currentScope` to Global. If the folder is reopened and the user saves, `applySettings` writes the message's Workspace target, but the follow-up `post()` then reloads Global settings because `currentScope` no longer matches the retained form; export actions in the same state also run with Global scope. Keep the host scope aligned with the retained dirty form, or restore it from `msg.target` when saving/exporting.

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+# Artifacts written by integration tests into the workspace fixture.
+test/integration/fixtures/**/.vscode/
+test/integration/fixtures/**/wcli0.config.json

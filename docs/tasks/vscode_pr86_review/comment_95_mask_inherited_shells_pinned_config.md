@@ -1,0 +1,3 @@
+# P95 - Mask inherited shells when writing a pinned config
+
+When a workspace sets `ignoreInheritedShells: true`, `hasPerShellConfig` correctly selects the global CLI-flag path, but if a home config or `<launch.cwd>/config.json` exists the provider still pins the launch by calling `buildConfigFile(settings)`. At `vscode-extension/src/configFile.ts:490` this applies the merged, inherited `s.shells` entries to the pinned config, so inherited shell executables and security overrides take effect despite the explicit opt-out. Skip applying `s.shells` when `ignoreInheritedShells` is enabled, including for generated/pinned configs.

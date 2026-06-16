@@ -1,0 +1,35 @@
+name: VS Code Extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vscode-extension/**'
+      - '.github/workflows/vscode-extension.yml'
+  pull_request:
+    paths:
+      - 'vscode-extension/**'
+      - '.github/workflows/vscode-extension.yml'
+
+defaults:
+  run:
+    working-directory: vscode-extension
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - name: Unit tests + coverage
+        run: npm run test:coverage
+      # Provision a VS Code-compatible editor (VSCodium) so the integration tests
+      # run deterministically without the on-demand VS Code download.
+      - name: Provision test editor
+        run: npm run setup:test-editor
+      - name: Integration tests (Extension Host)
+        run: xvfb-run -a npm run test:integration

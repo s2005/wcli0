@@ -79,6 +79,15 @@ See the [API](#api) section for more details on the tools and resources the serv
 
 **Note**: The server will only allow operations within configured directories, with allowed commands.
 
+## VS Code Extension
+
+A companion VS Code extension in [`vscode-extension/`](vscode-extension/) simplifies
+configuring this server. It exposes every CLI option as ordinary VS Code settings
+(scoped per **User** and per **Workspace**) and registers the MCP server with
+VS Code automatically via the MCP Server Definition Provider API — no hand-edited
+`mcp.json` required. It can also generate a `config.json` or a `.vscode/mcp.json`
+on demand. See [vscode-extension/README.md](vscode-extension/README.md).
+
 ## Modular Shell Architecture
 
 WCLI0 now supports a modular architecture that allows you to build specialized versions containing only the shells you need. This results in significantly smaller bundle sizes and faster startup times.

@@ -1,0 +1,3 @@
+# P98 - Give displayed managed commands immutable config paths
+
+Every managed `showLaunchCommand` invocation writes to the same `display-config.json` path (`vscode-extension/src/mcpProvider.ts:212`). If a user copies a command shown for one scope/settings state and later invokes Show Resolved Launch Command for another scope or after changing settings, the second invocation overwrites the first command's referenced config, so running the previously copied command no longer launches the configuration that was displayed. Materialize display configs under a scope/content-specific or unique filename so previously shown commands remain runnable as shown.
