@@ -87,6 +87,22 @@ test('P81: generateConfigFile still blocks when a per-shell relative command nee
   assert.ok(vscode.__state.calls.error.some((m) => /launch\.cwd/.test(m)));
 });
 
+test('P104: a masked per-shell relative command does not block config generation', async () => {
+  // Same setup as the P81 blocking case, but the workspace opts out of inherited
+  // per-shell config. buildConfigFile masks those shells, so the relative command never
+  // reaches the file and the unresolved cwd is irrelevant — generation must proceed.
+  vscode.__state.workspaceFolders = undefined;
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.launch.cwd', '${workspaceFolder}/server');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { enabled: true, executable: { command: 'tools/sh' } },
+  });
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', true);
+  vscode.__state.calls.saveDialog = vscode.Uri.file('/tmp/wcli0.config.json');
+  await generateConfigFile();
+  assert.ok(vscode.__state.files.has('/tmp/wcli0.config.json'), 'config written despite masked relative command');
+  assert.equal(vscode.__state.calls.error.length, 0);
+});
+
 test('writeWorkspaceMcpJson creates a stdio server entry', async () => {
   await writeWorkspaceMcpJson();
   const raw = vscode.__state.files.get('/ws/.vscode/mcp.json');

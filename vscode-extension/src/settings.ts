@@ -285,7 +285,18 @@ export function readSettings(scope?: vscode.Uri): Wcli0Settings {
  */
 function ignoreInheritedShellsAtWorkspace(c: vscode.WorkspaceConfiguration): boolean {
   const info = c.inspect<boolean>('ignoreInheritedShells');
-  return !!info && (info.workspaceFolderValue === true || info.workspaceValue === true);
+  if (!info) {
+    return false;
+  }
+  // A workspace-folder value takes precedence over the workspace value for that
+  // resource (VS Code resource-setting precedence). ORing the two would keep the mask
+  // on for a folder that explicitly opted back into per-shell config (folder=false
+  // over workspace=true). Honor the defined folder value first; a Global value is
+  // still ignored (the mask is a Workspace-only affordance, see P101). (P105)
+  if (info.workspaceFolderValue !== undefined) {
+    return info.workspaceFolderValue === true;
+  }
+  return info.workspaceValue === true;
 }
 
 /**

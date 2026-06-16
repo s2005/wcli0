@@ -204,6 +204,29 @@ test('P101: a Global-scoped ignoreInheritedShells does not mask per-shell config
   assert.equal(hasPerShellConfig(readSettings()), false);
 });
 
+test('P105: a workspace-folder false overrides a workspace-true shell mask', () => {
+  // A non-empty per-shell config selects managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {
+    cmd: { enabled: true },
+  });
+  // Workspace scope opts out of inherited per-shell config...
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', true);
+  assert.equal(readSettings().ignoreInheritedShells, true, 'workspace value honored');
+  // ...but a workspace-folder value explicitly opts BACK IN. VS Code resource
+  // precedence makes the folder value effective, so the mask must be off.
+  vscode.__setConfig(
+    vscode.ConfigurationTarget.WorkspaceFolder,
+    'wcli0.ignoreInheritedShells',
+    false,
+  );
+  assert.equal(readSettings().ignoreInheritedShells, false, 'folder value wins over workspace');
+  assert.equal(hasPerShellConfig(readSettings()), true, 'per-shell config re-enabled for folder');
+  // A workspace-folder true also wins over a workspace false.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedShells', false);
+  vscode.__setConfig(vscode.ConfigurationTarget.WorkspaceFolder, 'wcli0.ignoreInheritedShells', true);
+  assert.equal(readSettings().ignoreInheritedShells, true, 'folder true wins over workspace false');
+});
+
 test('P23: the LICENSE retains the MIT copyright notice', () => {
   const fs = require('node:fs');
   const path = require('node:path');

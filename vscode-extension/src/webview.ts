@@ -305,8 +305,8 @@ function renderShellBlocks(): string {
     <details class="overrides">
       <summary>Overrides <span class="hint">leave blank to inherit global settings</span></summary>
       <div class="row">
-        <div><label>Max command length</label><input type="number" id="sh-${d.name}-sec-maxlen" min="1" /></div>
-        <div><label>Command timeout (s)</label><input type="number" id="sh-${d.name}-sec-timeout" min="1" /></div>
+        <div><label>Max command length</label><input type="number" id="sh-${d.name}-sec-maxlen" min="1" step="any" /></div>
+        <div><label>Command timeout (s)</label><input type="number" id="sh-${d.name}-sec-timeout" min="1" step="any" /></div>
       </div>
       <div class="row">
         <div><label>Injection protection</label>${triSelect(`sh-${d.name}-sec-inject`)}</div>
@@ -583,9 +583,9 @@ function renderHtml(webview: vscode.Webview): string {
   <section>
   <h2>Limits & Safety</h2>
   <div class="row">
-    <div><label>Command timeout (s)</label><input type="number" id="commandTimeout" min="1" /></div>
-    <div><label>Max command length</label><input type="number" id="maxCommandLength" min="1" /></div>
-    <div><label>Max output lines</label><input type="number" id="maxOutputLines" min="1" max="10000" /></div>
+    <div><label>Command timeout (s)</label><input type="number" id="commandTimeout" min="1" step="any" /></div>
+    <div><label>Max command length</label><input type="number" id="maxCommandLength" min="1" step="any" /></div>
+    <div><label>Max output lines</label><input type="number" id="maxOutputLines" min="1" max="10000" step="any" /></div>
   </div>
   <div class="row">
     <div>

@@ -60,6 +60,14 @@ const LAUNCH_METHOD_PROBLEM =
  * not appear in the file, so an unresolved cwd must not block config generation (P81).
  */
 function launchCwdAffectsConfig(s: Wcli0Settings): boolean {
+  // When the scope opts out of inherited per-shell config, buildConfigFile masks
+  // wcli0.shells (writes them as empty), so no per-shell relative executable is
+  // emitted to anchor against the launch cwd. Scanning the unmasked shells here would
+  // let an inherited relative command make an unresolved cwd block config generation
+  // for a file that does not use it. Mirror the mask and report the cwd irrelevant. (P104)
+  if (s.ignoreInheritedShells) {
+    return false;
+  }
   return SHELL_NAMES.some((name) => {
     const sh = s.shells?.[name];
     const cmd = sh?.executable?.command?.trim();

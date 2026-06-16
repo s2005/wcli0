@@ -155,3 +155,12 @@ follow-ups to the `ignoreInheritedShells` opt-out (P95/P97) and the custom-launc
 - [x] P100: Validate every numeric field before posting form values (fixed - a shared `validateNumbers()` guard runs `checkValidity()` over every number input and gates both save and export, and `maxOutputLines` carries `max="10000"`, so an invalid timeout/length/maxOutputLines/port is no longer persisted or exported)
 - [x] P101: Restrict the inherited-shell mask to Workspace scope (fixed - `readSettings` recomputes `ignoreInheritedShells` from `inspect()` and honors only a Workspace/workspace-folder value, and `readSettingsForScope('Global')` reports it false, so a User/Global value no longer suppresses the user's own `wcli0.shells` everywhere)
 - [x] P102: Prevent custom args from defeating generated config flags (fixed - `validateLaunchSpec` blocks a custom launch whose `customArgs` repeat a reserved `--config`/`--transport` while the extension emits its own, since two scalar values make yargs ignore the managed/pinned config and forced stdio; a plain launch keeps `customArgs` as an escape hatch)
+
+## Review Feedback (PR #86) - round 16
+
+Source: Codex review round 16, reviewed branch commit `1355471`. Three unresolved Codex threads,
+follow-ups to the numeric form validation (P100) and the `ignoreInheritedShells` opt-out (P95/P101).
+
+- [x] P103: Allow valid fractional numeric settings in the form (fixed - the fraction-accepting inputs `commandTimeout`, `maxCommandLength`, `maxOutputLines` and their per-shell equivalents set `step="any"`, so a valid persisted value such as `commandTimeout: 1.5` no longer fails `checkValidity()` and blocks save/export; the integer-only transport port keeps `step="1"`)
+- [x] P104: Ignore masked shells when checking launch cwd (fixed - `launchCwdAffectsConfig` short-circuits to false when `ignoreInheritedShells` is set, mirroring the empty `shells` `buildConfigFile` emits, so an inherited relative per-shell command no longer makes an unresolved `launch.cwd` block `Generate Config File`)
+- [x] P105: Respect folder overrides for the shell mask (fixed - `ignoreInheritedShellsAtWorkspace` honors a defined `workspaceFolderValue` before falling back to `workspaceValue`, so a multi-root folder that explicitly sets `ignoreInheritedShells=false` over a Workspace `true` re-enables per-shell config for that folder per VS Code resource precedence)

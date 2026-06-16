@@ -76,6 +76,7 @@ const state = {
   workspaceFolders: undefined,
   configGlobal: new Map(),
   configWorkspace: new Map(),
+  configWorkspaceFolder: new Map(),
   files: new Map(), // fsPath -> Buffer
   readError: undefined, // when set, fs.readFile throws it
   calls: {
@@ -103,6 +104,7 @@ function __reset() {
   state.workspaceFolders = undefined;
   state.configGlobal.clear();
   state.configWorkspace.clear();
+  state.configWorkspaceFolder.clear();
   state.files.clear();
   state.readError = undefined;
   state.calls.info = [];
@@ -125,7 +127,12 @@ function __reset() {
 }
 
 function __setConfig(target, key, value) {
-  const map = target === ConfigurationTarget.Workspace ? state.configWorkspace : state.configGlobal;
+  const map =
+    target === ConfigurationTarget.WorkspaceFolder
+      ? state.configWorkspaceFolder
+      : target === ConfigurationTarget.Workspace
+        ? state.configWorkspace
+        : state.configGlobal;
   if (value === undefined) {
     map.delete(key);
   } else {
@@ -189,7 +196,9 @@ const workspace = {
           defaultValue: undefined,
           globalValue: state.configGlobal.has(k) ? state.configGlobal.get(k) : undefined,
           workspaceValue: state.configWorkspace.has(k) ? state.configWorkspace.get(k) : undefined,
-          workspaceFolderValue: undefined,
+          workspaceFolderValue: state.configWorkspaceFolder.has(k)
+            ? state.configWorkspaceFolder.get(k)
+            : undefined,
         };
       },
     };

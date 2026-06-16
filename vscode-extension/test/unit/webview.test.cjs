@@ -420,6 +420,26 @@ test('P100: maxOutputLines input carries the server max so HTML validity matches
   assert.match(input, /max="10000"/);
 });
 
+test('P103: fraction-accepting numeric inputs set step=any so valid 1.5 values are not blocked', () => {
+  openConfigPanel(makeContext());
+  const html = vscode.__state.lastWebviewPanel.webview.html;
+  // commandTimeout/maxCommandLength/maxOutputLines accept fractional values host-side
+  // (validateLaunchSpec / isValidMaxOutputLines), so without step="any" Chromium's
+  // default step of 1 makes checkValidity() reject e.g. 1.5 and block save/export.
+  for (const id of ['commandTimeout', 'maxCommandLength', 'maxOutputLines']) {
+    const input = html.match(new RegExp(`<input type="number" id="${id}"[^>]*>`))[0];
+    assert.match(input, /step="any"/, `${id} should allow fractions`);
+  }
+  // The per-shell equivalents accept fractions too (built once per shell via a template).
+  for (const suffix of ['sec-timeout', 'sec-maxlen']) {
+    const input = html.match(new RegExp(`<input type="number" id="sh-[^"]*-${suffix}"[^>]*>`))[0];
+    assert.match(input, /step="any"/, `per-shell ${suffix} should allow fractions`);
+  }
+  // The transport port must stay integer-only (isValidPort enforces Number.isInteger).
+  const port = html.match(/<input type="number" id="transport\.port"[^>]*>/)[0];
+  assert.match(port, /step="1"/, 'port stays integer');
+});
+
 test('P100: save and export validate all numeric inputs before posting', () => {
   openConfigPanel(makeContext());
   const html = vscode.__state.lastWebviewPanel.webview.html;
