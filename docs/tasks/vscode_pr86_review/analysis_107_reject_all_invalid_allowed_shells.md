@@ -18,4 +18,4 @@ key remains unrestricted as designed. This also keeps the generated config align
 with the server's `validateProfiles`, which rejects unknown shells in
 `allowedShells` outright.
 
-**Commit:** a98ce72 — fix(vscode): address PR87 round-17 review (P106-P107)
+**Commit:** b8a31d5 — fix(vscode): address PR87 round-17 review (P106-P107)

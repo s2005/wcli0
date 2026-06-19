@@ -21,4 +21,4 @@ check is wrong here because server-owned tokens like `${PATH}` are intentionally
 left for the server to interpolate; the new helper matches only the
 extension-owned token shapes `resolveVariables` knows how to expand.
 
-**Commit:** a98ce72 — fix(vscode): address PR87 round-17 review (P106-P107)
+**Commit:** b8a31d5 — fix(vscode): address PR87 round-17 review (P106-P107)
