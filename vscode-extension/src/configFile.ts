@@ -4,6 +4,7 @@ import {
   hasUnresolvedVariables,
   PerShellConfig,
   primaryWorkspaceFolder,
+  ProfilesConfig,
   resolveVariables,
   ShellName,
   SHELL_NAMES,
@@ -324,6 +325,60 @@ function applyPerShellOverrides(
 }
 
 /**
+ * Build the server's top-level `profiles` map from the `wcli0.profiles` setting,
+ * dropping anything the server's validateProfiles would reject so a generated
+ * config never fails to load:
+ *  - a blank profile name, or a profile that is not an object, is skipped;
+ *  - `env` is kept only for string values under non-blank keys, and a profile
+ *    whose resulting `env` is empty is omitted (the server rejects an empty env);
+ *  - `${workspaceFolder}` / `${userHome}` are resolved in env values (the same
+ *    extension-owned tokens resolved for executable args), while server-resolved
+ *    tokens like `${PATH}` are left intact for the server to interpolate;
+ *  - `description` is emitted only when a non-empty string;
+ *  - `allowedShells` is filtered to known shell names and emitted only when
+ *    non-empty (an empty list would forbid every shell).
+ */
+function buildProfiles(profiles: ProfilesConfig | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!profiles || typeof profiles !== 'object') {
+    return out;
+  }
+  for (const [name, profile] of Object.entries(profiles)) {
+    if (!name.trim() || !profile || typeof profile !== 'object') {
+      continue;
+    }
+    const env: Record<string, string> = {};
+    const rawEnv = profile.env;
+    if (rawEnv && typeof rawEnv === 'object' && !Array.isArray(rawEnv)) {
+      for (const [key, value] of Object.entries(rawEnv)) {
+        if (key.trim() && typeof value === 'string') {
+          env[key] = resolveVariables(value);
+        }
+      }
+    }
+    // The server rejects a profile with an empty env, so drop it rather than emit
+    // a config it refuses to load.
+    if (Object.keys(env).length === 0) {
+      continue;
+    }
+    const entry: Record<string, unknown> = { env };
+    if (typeof profile.description === 'string' && profile.description.trim()) {
+      entry.description = profile.description;
+    }
+    if (Array.isArray(profile.allowedShells)) {
+      const valid = profile.allowedShells.filter((sh): sh is ShellName =>
+        (SHELL_NAMES as readonly string[]).includes(sh),
+      );
+      if (valid.length > 0) {
+        entry.allowedShells = valid;
+      }
+    }
+    out[name] = entry;
+  }
+  return out;
+}
+
+/**
  * Build a wcli0 config.json object from settings. This is a convenience for
  * users who prefer a committed config file over CLI flags; the produced file
  * can be referenced via `wcli0.configFile` / `--config`. It is also the source
@@ -562,6 +617,13 @@ export function buildConfigFile(sInput: Wcli0Settings): Record<string, unknown> 
       transport.sseAllowedOrigins = origins;
     }
     config.transport = transport;
+  }
+
+  // Emit named environment profiles when any survive sanitization. Profiles are
+  // independent of the launch transport, so they are added regardless of mode.
+  const profiles = buildProfiles(s.profiles);
+  if (Object.keys(profiles).length > 0) {
+    config.profiles = profiles;
   }
 
   return config;
