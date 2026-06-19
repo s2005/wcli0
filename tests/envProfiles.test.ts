@@ -4,7 +4,15 @@ import {
   resolveProfileEnv,
   ProfileSelectionError
 } from '../src/utils/envProfiles.js';
-import type { EnvProfileConfig } from '../src/types/config.js';
+import { DEFAULT_CONFIG } from '../src/utils/config.js';
+import * as configModule from '../src/utils/config.js';
+import type { EnvProfileConfig, ServerConfig } from '../src/types/config.js';
+
+const validateConfig = (configModule as any).validateConfig as (cfg: ServerConfig) => void;
+
+function cloneDefault(): ServerConfig {
+  return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+}
 
 describe('interpolateEnvValue', () => {
   const base: NodeJS.ProcessEnv = {
@@ -113,5 +121,66 @@ describe('resolveProfileEnv', () => {
     const resolved = resolveProfileEnv(overriding, 'p', 'bash', base);
     const merged = { ...base, ...resolved };
     expect(merged.PATH).toBe('override-only');
+  });
+});
+
+describe('validateConfig profiles', () => {
+  test('accepts a valid profiles map', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      ora19: {
+        description: 'Oracle 19',
+        allowedShells: ['cmd', 'powershell'],
+        env: { ORACLE_HOME: 'C:/oracle/19', PATH: 'C:/oracle/19/bin;${PATH}' }
+      }
+    };
+    expect(() => validateConfig(cfg)).not.toThrow();
+  });
+
+  test('passes when profiles is absent', () => {
+    const cfg = cloneDefault();
+    delete cfg.profiles;
+    expect(() => validateConfig(cfg)).not.toThrow();
+  });
+
+  test('rejects an unknown shell in allowedShells', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      bad: { allowedShells: ['fish' as any], env: { FOO: 'bar' } }
+    };
+    expect(() => validateConfig(cfg)).toThrow(/Invalid profile 'bad'/);
+    expect(() => validateConfig(cfg)).toThrow(/unknown shell 'fish'/);
+  });
+
+  test('rejects a non-string env value', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      bad: { env: { FOO: 123 as any } }
+    };
+    expect(() => validateConfig(cfg)).toThrow(/env value for 'FOO' must be a string/);
+  });
+
+  test('rejects an empty env object', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      bad: { env: {} }
+    };
+    expect(() => validateConfig(cfg)).toThrow(/must contain at least one variable/);
+  });
+
+  test('rejects a missing env object', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      bad: {} as any
+    };
+    expect(() => validateConfig(cfg)).toThrow(/env must be an object/);
+  });
+
+  test('rejects allowedShells that is not an array', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      bad: { allowedShells: 'cmd' as any, env: { FOO: 'bar' } }
+    };
+    expect(() => validateConfig(cfg)).toThrow(/allowedShells must be an array/);
   });
 });

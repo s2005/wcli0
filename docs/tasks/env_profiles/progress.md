@@ -30,11 +30,11 @@
 
 ## Phase 2: Config validation
 
-- [ ] Default `profiles` to `{}` when absent in src/utils/config.ts
-- [ ] Validate `env` is non-empty string-to-string map
-- [ ] Validate `allowedShells` entries are valid ShellType
-- [ ] Add config validation test cases
-- [ ] Verify unit tests pass
+- [x] Default `profiles` to `{}` when absent in src/utils/config.ts
+- [x] Validate `env` is non-empty string-to-string map
+- [x] Validate `allowedShells` entries are valid ShellType
+- [x] Add config validation test cases
+- [x] Verify unit tests pass
 
 ## Phase 3: Runtime wiring
 
