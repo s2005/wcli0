@@ -236,6 +236,32 @@ export interface WslShellConfig extends BaseShellConfig {
 }
 
 /**
+ * A named environment profile that can be selected per call on execute_command.
+ * The profile's `env` map is interpolated and merged into the spawned child
+ * process environment, allowing the same CLI tool to run under different
+ * environment variable sets (for example a per-version `PATH`).
+ */
+export interface EnvProfileConfig {
+  /**
+   * Optional human-readable description surfaced in the tool description.
+   */
+  description?: string;
+
+  /**
+   * Optional list of shells this profile may be used with. When set, selecting
+   * the profile for any other shell is rejected. When omitted, the profile is
+   * allowed for every shell.
+   */
+  allowedShells?: ShellType[];
+
+  /**
+   * Environment variables applied when this profile is selected. Values support
+   * `${VAR}` interpolation resolved against the server's `process.env`.
+   */
+  env: Record<string, string>;
+}
+
+/**
  * Transport protocol configuration for the MCP server.
  * Controls how clients connect to the server (stdio or HTTP/SSE).
  */
@@ -305,6 +331,13 @@ export interface ServerConfig {
    * Transport protocol configuration (default: stdio)
    */
   transport?: TransportConfig;
+
+  /**
+   * Named environment profiles selectable per call via the `profile` parameter
+   * on execute_command. Absence preserves current behavior (no profile env is
+   * injected).
+   */
+  profiles?: Record<string, EnvProfileConfig>;
 }
 
 /**

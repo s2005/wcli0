@@ -21,12 +21,12 @@
 
 ## Phase 1: Types and resolver
 
-- [ ] Add `EnvProfileConfig` interface to src/types/config.ts
-- [ ] Add `profiles?` to `ServerConfig`
-- [ ] Create src/utils/envProfiles.ts with `interpolateEnvValue`
-- [ ] Add `resolveProfileEnv` with typed `ProfileSelectionError`
-- [ ] Create tests/envProfiles.test.ts (interpolation and resolution)
-- [ ] Verify build and unit tests pass
+- [x] Add `EnvProfileConfig` interface to src/types/config.ts
+- [x] Add `profiles?` to `ServerConfig`
+- [x] Create src/utils/envProfiles.ts with `interpolateEnvValue`
+- [x] Add `resolveProfileEnv` with typed `ProfileSelectionError`
+- [x] Create tests/envProfiles.test.ts (interpolation and resolution)
+- [x] Verify build and unit tests pass
 
 ## Phase 2: Config validation
 
