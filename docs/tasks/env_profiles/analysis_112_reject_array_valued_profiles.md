@@ -16,3 +16,5 @@ startup validation (which is meant to surface malformed profile configuration up
 front). Rejecting non-object/array values here reports the error at load. Added
 validateConfig tests for the array form and a non-object string form, plus an
 acceptance test for the now-valid `allowedShells: []` case.
+
+**Commit:** df26e28 — fix(profiles): address PR87 round-18 review (P108-P112)

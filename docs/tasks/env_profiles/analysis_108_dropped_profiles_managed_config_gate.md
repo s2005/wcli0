@@ -22,3 +22,5 @@ managed mode when it will actually appear in the config. The mirror follows the
 existing pattern documented on `isMeaningfulProfile`/`isMeaningfulShellConfig`
 rather than importing `buildProfiles` (which would create a settings↔configFile
 import cycle).
+
+**Commit:** df26e28 — fix(profiles): address PR87 round-18 review (P108-P112)

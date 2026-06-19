@@ -15,3 +15,5 @@ empty-array form appeared (including configs the extension generates). Enforcing
 the restriction only when the list has entries makes runtime behavior match both
 the documented semantics and the validator. Added a unit test for selection from
 multiple shells with `allowedShells: []`, plus a validateConfig acceptance test.
+
+**Commit:** df26e28 — fix(profiles): address PR87 round-18 review (P108-P112)

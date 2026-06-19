@@ -17,3 +17,5 @@ intended `ProfileSelectionError` → `McpError(InvalidParams)`. The own-property
 check routes these names through the proper validation error. Added a unit test
 asserting `toString`/`constructor`/`hasOwnProperty` throw `ProfileSelectionError`
 with the "Unknown profile" message.
+
+**Commit:** df26e28 — fix(profiles): address PR87 round-18 review (P108-P112)
