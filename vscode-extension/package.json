@@ -298,6 +298,47 @@
           "markdownDescription": "Ignore per-shell configuration (`#wcli0.shells#`) inherited from a wider scope. VS Code deep-merges object settings, so a Workspace cannot remove a `#wcli0.shells#` entry set at the User scope by clearing it. Enable this at the Workspace scope to opt out of managed per-shell mode entirely and launch with the global CLI flags instead. Leave it off (the default) to inherit and use per-shell configuration as before.",
           "scope": "resource"
         },
+        "wcli0.profiles": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Named environment profiles, keyed by profile name (the server's top-level `profiles` map). Each profile's `env` is merged into a command's environment when selected via the `profile` parameter on `execute_command`. When any profile is configured, the extension writes an auto-managed config file and launches the server with `--config` (profiles cannot be passed as CLI flags). Edit this from the wcli0 Configuration view. Restart the MCP server to apply changes.",
+          "scope": "resource",
+          "additionalProperties": {
+            "type": "object",
+            "markdownDescription": "A single environment profile.",
+            "properties": {
+              "description": {
+                "type": "string",
+                "markdownDescription": "Human-readable summary shown in the execute_command tool description."
+              },
+              "allowedShells": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "powershell",
+                    "cmd",
+                    "gitbash",
+                    "wsl",
+                    "bash"
+                  ]
+                },
+                "markdownDescription": "Shells this profile may be used with. Omit or leave empty to allow every shell."
+              },
+              "env": {
+                "type": "object",
+                "markdownDescription": "Environment variables applied when this profile is selected. Values support `${VAR}` interpolation resolved by the server against its own environment (e.g. `C:/oracle/19/bin;${PATH}`).",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "env"
+            ],
+            "additionalProperties": false
+          }
+        },
         "wcli0.allowedDirectories": {
           "type": "array",
           "items": {
