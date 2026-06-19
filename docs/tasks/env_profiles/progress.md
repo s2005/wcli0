@@ -38,12 +38,12 @@
 
 ## Phase 3: Runtime wiring
 
-- [ ] Add `profile?` parameter to `executeShellCommand`
-- [ ] Pass `args.profile` at the handler call site (src/index.ts:1103)
-- [ ] Merge `resolveProfileEnv(...)` into `envVars`
-- [ ] Convert `ProfileSelectionError` to `McpError(InvalidParams)`
-- [ ] Add integration tests (env value, PATH prepend, unknown profile, no-profile baseline)
-- [ ] Verify integration tests pass
+- [x] Add `profile?` parameter to `executeShellCommand`
+- [x] Pass `args.profile` at the handler call site (src/index.ts:1103)
+- [x] Merge `resolveProfileEnv(...)` into `envVars`
+- [x] Convert `ProfileSelectionError` to `McpError(InvalidParams)`
+- [x] Add integration tests (env value, PATH prepend, unknown profile, no-profile baseline)
+- [x] Verify integration tests pass
 
 ## Phase 4: Schema and description
 

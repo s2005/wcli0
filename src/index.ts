@@ -36,6 +36,7 @@ import { buildExecuteCommandSchema, buildValidateDirectoriesSchema, buildGetComm
 import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription, buildGetCommandOutputDescription } from './utils/toolDescription.js';
 import { loadConfig, createDefaultConfig, getResolvedShellConfig, applyCliInitialDir, applyCliShellAndAllowedDirs, applyCliSecurityOverrides, applyCliWslMountPoint, applyCliRestrictions, applyCliLogging, applyCliUnsafeMode, applyDebugLogDirectory, applyCliTransport } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
+import { resolveProfileEnv, ProfileSelectionError } from './utils/envProfiles.js';
 import type { ServerConfig, ResolvedShellConfig, GlobalConfig, LoggingConfig } from './types/config.js';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
@@ -480,8 +481,27 @@ class CLIServer {
     command: string,
     workingDir: string,
     maxOutputLines?: number,
-    timeout?: number
+    timeout?: number,
+    profile?: string
   ): Promise<CallToolResult> {
+    // Resolve the selected profile's environment before spawning so an invalid
+    // selection surfaces as an InvalidParams error to the client. An omitted or
+    // empty profile resolves to {} and preserves the pre-feature environment.
+    let profileEnv: Record<string, string>;
+    try {
+      profileEnv = resolveProfileEnv(
+        this.config.profiles,
+        profile,
+        shellConfig.type,
+        process.env
+      );
+    } catch (err) {
+      if (err instanceof ProfileSelectionError) {
+        throw new McpError(ErrorCode.InvalidParams, err.message);
+      }
+      throw err;
+    }
+
     return new Promise((resolve, reject) => {
       let shellProcess: ReturnType<typeof spawn>;
       let spawnArgs: string[];
@@ -496,7 +516,7 @@ class CLIServer {
       try {
         // For WSL, convert WSL paths back to Windows paths for spawn cwd
         let spawnCwd = workingDir;
-        let envVars = { ...process.env };
+        let envVars = { ...process.env, ...profileEnv };
         if (shellConfig.type === 'wsl') {
           // Convert paths when on native Windows or when the executable is a
           // Windows binary (.exe). On WSL2 (Linux Node), only .exe-suffixed
@@ -990,7 +1010,8 @@ class CLIServer {
             command: z.string(),
             workingDir: z.string().optional(),
             maxOutputLines: z.number().optional(),
-            timeout: z.number().optional()
+            timeout: z.number().optional(),
+            profile: z.string().optional()
           }).parse(toolParams.arguments);
 
           // Validate maxOutputLines if provided
@@ -1100,7 +1121,7 @@ class CLIServer {
             throw error;
           }
 
-          return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir, args.maxOutputLines, args.timeout);
+          return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir, args.maxOutputLines, args.timeout, args.profile);
         }
 
         case "get_current_directory": {

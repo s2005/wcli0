@@ -124,13 +124,14 @@ export class TestCLIServer {
           ...(overrides.global?.restrictions || {})
         }
       },
-      shells: mergedShells
+      shells: mergedShells,
+      profiles: overrides.profiles
     } as ServerConfig;
 
     this.server = new CLIServer(config);
   }
 
-  async executeCommand(options: { shell: keyof ServerConfig['shells']; command: string; workingDir?: string; maxOutputLines?: number; timeout?: number }) {
+  async executeCommand(options: { shell: keyof ServerConfig['shells']; command: string; workingDir?: string; maxOutputLines?: number; timeout?: number; profile?: string }) {
     const result = await this.server._executeTool({
       name: 'execute_command',
       arguments: {
@@ -138,7 +139,8 @@ export class TestCLIServer {
         command: options.command,
         workingDir: options.workingDir,
         maxOutputLines: options.maxOutputLines,
-        timeout: options.timeout
+        timeout: options.timeout,
+        profile: options.profile
       }
     });
 

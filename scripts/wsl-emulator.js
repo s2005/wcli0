@@ -95,6 +95,14 @@ switch (command) {
     console.log(commandArgs.join(' '));
     process.exit(0);
     break;
+  case 'printenv': {
+    // Print the value of the named environment variable from the emulator's
+    // inherited environment (which is the env the server passed to spawn).
+    const name = commandArgs[0];
+    console.log(name ? (process.env[name] ?? '') : '');
+    process.exit(0);
+    break;
+  }
   case 'exit': {
     const exitCode = commandArgs.length === 1 ? Number.parseInt(commandArgs[0], 10) : 0;
     process.exit(Number.isNaN(exitCode) ? 0 : exitCode);
