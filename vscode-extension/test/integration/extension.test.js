@@ -3,7 +3,7 @@ const vscode = require('vscode');
 // The built extension settings model — exercised here against the REAL VS Code
 // configuration API so the deep-merge semantics the unit stub cannot model
 // (object settings merge across scopes) are covered end-to-end.
-const { readSettings, hasPerShellConfig } = require('../../dist/settings.js');
+const { readSettings, hasPerShellConfig, hasProfilesConfig } = require('../../dist/settings.js');
 
 const EXT_ID = 's2005.wcli0-vscode';
 
@@ -37,6 +37,33 @@ describe('wcli0 extension', function () {
     assert.equal(cfg.get('transport.mode'), 'stdio');
     assert.deepEqual(cfg.get('shells'), {});
     assert.equal(cfg.get('ignoreInheritedShells'), false);
+    assert.deepEqual(cfg.get('profiles'), {});
+  });
+
+  it('round-trips an environment profile and gates the managed launch', async function () {
+    const profiles = {
+      ora19: {
+        description: 'Oracle 19c',
+        allowedShells: ['cmd', 'powershell'],
+        env: { ORACLE_HOME: 'C:/oracle/19', PATH: 'C:/oracle/19/bin;${PATH}' },
+      },
+    };
+    await vscode.workspace
+      .getConfiguration('wcli0')
+      .update('profiles', profiles, vscode.ConfigurationTarget.Global);
+    try {
+      const updated = vscode.workspace.getConfiguration('wcli0').get('profiles');
+      assert.deepEqual(updated, profiles);
+      // A configured profile flips the effective gate to the managed --config path.
+      assert.equal(hasProfilesConfig(readSettings()), true, 'profiles select managed mode');
+      // showLaunchCommand should reflect managed mode without throwing.
+      await vscode.commands.executeCommand('wcli0.showLaunchCommand');
+    } finally {
+      await vscode.workspace
+        .getConfiguration('wcli0')
+        .update('profiles', undefined, vscode.ConfigurationTarget.Global);
+    }
+    assert.equal(hasProfilesConfig(readSettings()), false, 'cleared -> CLI-flag path');
   });
 
   it('ignoreInheritedShells opts a workspace out of inherited per-shell mode (deep-merge)', async function () {
