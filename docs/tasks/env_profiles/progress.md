@@ -54,11 +54,11 @@
 
 ## Phase 5: Docs and examples
 
-- [ ] Create config.examples/profiles.json
-- [ ] Update README.md
-- [ ] Update docs/CONFIGURATION_EXAMPLES.md
-- [ ] Update docs/defaults.md
-- [ ] Verify markdown lint and `npm run lint` clean
+- [x] Create config.examples/profiles.json
+- [x] Update README.md
+- [x] Update docs/CONFIGURATION_EXAMPLES.md
+- [x] Update docs/defaults.md
+- [x] Verify markdown lint and `npm run lint` clean
 
 ## Review Feedback
 

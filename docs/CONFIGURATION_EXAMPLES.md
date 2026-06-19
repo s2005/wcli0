@@ -530,6 +530,56 @@ Demonstrates using empty arrays to remove all default command, argument, and ope
 }
 ```
 
+## Named Environment Profiles
+
+Named environment profiles let a single server instance run the same CLI tool under different environment variable sets, selected per call via the optional `profile` parameter on `execute_command`. This is useful, for example, when testing the same SQL against different `sqlplus` versions where each version needs its own `ORACLE_HOME`, `TNS_ADMIN`, and `PATH`.
+
+Each profile entry accepts:
+
+| Field | Required | Description |
+| ------------- | -------- | ------------------------------------------------------------------- |
+| `env` | Yes | Map of environment variable names to string values. Values support `${VAR}` interpolation resolved against the server's environment. |
+| `description` | No | Human-readable summary surfaced in the `execute_command` tool description. |
+| `allowedShells` | No | Shells this profile may be used with (`cmd`, `powershell`, `gitbash`, `wsl`, `bash`). When omitted, the profile is allowed for every shell. |
+
+When a profile is selected, its `env` map is merged over the server's environment (`{ ...process.env, ...profileEnv }`) before the command runs. The `${VAR}` form is replaced with the corresponding server environment value; an undefined reference resolves to an empty string. A complete example is provided in `config.examples/profiles.json`.
+
+### Oracle Client Profiles
+
+```json
+{
+  "shells": {
+    "cmd": {
+      "type": "cmd",
+      "enabled": true,
+      "executable": { "command": "cmd.exe", "args": ["/c"] }
+    }
+  },
+  "profiles": {
+    "ora11": {
+      "description": "Oracle 11g sqlplus client",
+      "allowedShells": ["cmd", "powershell"],
+      "env": {
+        "ORACLE_HOME": "C:\\oracle\\product\\11.2.0\\client",
+        "TNS_ADMIN": "C:\\oracle\\product\\11.2.0\\client\\network\\admin",
+        "PATH": "C:\\oracle\\product\\11.2.0\\client\\bin;${PATH}"
+      }
+    },
+    "ora19": {
+      "description": "Oracle 19c sqlplus client",
+      "allowedShells": ["cmd", "powershell"],
+      "env": {
+        "ORACLE_HOME": "C:\\oracle\\product\\19.0.0\\client",
+        "TNS_ADMIN": "C:\\oracle\\product\\19.0.0\\client\\network\\admin",
+        "PATH": "C:\\oracle\\product\\19.0.0\\client\\bin;${PATH}"
+      }
+    }
+  }
+}
+```
+
+With this configuration, `execute_command` with `"profile": "ora19"` prepends the Oracle 19c `bin` directory to `PATH` and sets the matching `ORACLE_HOME` and `TNS_ADMIN`, while `"profile": "ora11"` selects the 11g client. Selecting a profile for a shell not listed in its `allowedShells` returns an `InvalidParams` error.
+
 ## Configuration Validation
 
 ### Valid Configuration Checklist

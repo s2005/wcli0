@@ -74,3 +74,12 @@ This document lists the default settings applied when no custom configuration is
   - Args: `-e`
   - Path validation: `/mnt/<drive>/` or POSIX root paths
   - WSL config: mount point `/mnt/`, inherits global allowed paths
+
+## Environment Profile Defaults
+
+- `profiles`: `{}` (empty set)
+
+When no `profiles` map is configured, no environment profile is available and
+`execute_command` runs with the server's default environment. See the
+`profiles` section in [Configuration Examples](CONFIGURATION_EXAMPLES.md) and
+the README for how to define named profiles.

@@ -1,0 +1,53 @@
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 2000,
+      "commandTimeout": 60,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "paths": {
+      "allowedPaths": [
+        "C:\\Work\\sql"
+      ]
+    }
+  },
+  "shells": {
+    "cmd": {
+      "type": "cmd",
+      "enabled": true,
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      }
+    },
+    "powershell": {
+      "type": "powershell",
+      "enabled": true,
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      }
+    }
+  },
+  "profiles": {
+    "ora11": {
+      "description": "Oracle 11g sqlplus client",
+      "allowedShells": ["cmd", "powershell"],
+      "env": {
+        "ORACLE_HOME": "C:\\oracle\\product\\11.2.0\\client",
+        "TNS_ADMIN": "C:\\oracle\\product\\11.2.0\\client\\network\\admin",
+        "PATH": "C:\\oracle\\product\\11.2.0\\client\\bin;${PATH}"
+      }
+    },
+    "ora19": {
+      "description": "Oracle 19c sqlplus client",
+      "allowedShells": ["cmd", "powershell"],
+      "env": {
+        "ORACLE_HOME": "C:\\oracle\\product\\19.0.0\\client",
+        "TNS_ADMIN": "C:\\oracle\\product\\19.0.0\\client\\network\\admin",
+        "PATH": "C:\\oracle\\product\\19.0.0\\client\\bin;${PATH}"
+      }
+    }
+  }
+}
