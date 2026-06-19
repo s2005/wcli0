@@ -23,6 +23,7 @@ const FIELD_KEYS = [
   'configFile',
   'shell',
   'shells',
+  'profiles',
   'ignoreInheritedShells',
   'allowedDirectories',
   'initialDir',
@@ -484,6 +485,7 @@ function renderHtml(webview: vscode.Webview): string {
       <button type="button" class="tab active" data-tab="config">Config source</button>
       <button type="button" class="tab" data-tab="launch">Launch</button>
       <button type="button" class="tab" data-tab="shells">Shells</button>
+      <button type="button" class="tab" data-tab="profiles">Profiles</button>
       <button type="button" class="tab" data-tab="safety">Limits &amp; Safety</button>
       <button type="button" class="tab" data-tab="transport">Transport</button>
       <button type="button" class="tab" data-tab="export">Export</button>
@@ -576,6 +578,37 @@ function renderHtml(webview: vscode.Webview): string {
   </div>
   <div class="shell-summary" id="shellSummary"><span class="lbl">Enabled shells:</span>${renderShellSummary()}</div>
   ${renderShellBlocks()}
+  </section>
+  </div>
+
+  <div class="tabpanel" data-tab="profiles">
+  <section>
+  <h2>Environment Profiles</h2>
+  <div class="hint" style="margin-bottom:10px">
+    Named environment profiles (the server's <code>profiles</code> map). Each profile's
+    <code>env</code> is merged into a command's environment when selected via the
+    <code>profile</code> parameter on <code>execute_command</code>. When any profile is configured the
+    extension writes an auto-managed config file and launches the server with <code>--config</code>
+    (profiles cannot be passed as CLI flags). Restart the MCP server to apply changes.
+  </div>
+  <label>Profiles <span class="hint">JSON object keyed by profile name</span></label>
+  <textarea id="profilesJson" spellcheck="false" style="min-height:200px" placeholder='{
+  "ora19": {
+    "description": "Oracle 19c client",
+    "allowedShells": ["cmd", "powershell"],
+    "env": {
+      "ORACLE_HOME": "C:/oracle/19",
+      "PATH": "C:/oracle/19/bin;\${PATH}"
+    }
+  }
+}'></textarea>
+  <div class="hint" id="profilesError" style="display:none;margin-top:6px;color:var(--vscode-errorForeground)"></div>
+  <div class="hint" style="margin-top:6px">
+    Each profile requires a non-empty <code>env</code> map of string values. <code>\${VAR}</code> in a
+    value is interpolated by the server against its own environment (e.g. <code>\${PATH}</code>);
+    <code>\${workspaceFolder}</code> and <code>\${userHome}</code> are resolved when the config is
+    generated. <code>allowedShells</code> is optional (omit to allow every shell).
+  </div>
   </section>
   </div>
 
@@ -792,6 +825,55 @@ function renderHtml(webview: vscode.Webview): string {
     syncAllSegs();
   }
 
+  // ---- Environment profiles (wcli0.profiles) ----
+  // The profiles map is edited as JSON: arbitrary profile names and arbitrary env
+  // keys do not map onto fixed form controls. parseProfiles returns the parsed
+  // object, or null when the text is present but not a JSON object; an empty
+  // textarea means {} (no profiles configured).
+  function parseProfiles() {
+    const el = $('profilesJson');
+    const raw = el ? el.value.trim() : '';
+    if (raw === '') return {};
+    try {
+      const v = JSON.parse(raw);
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+  // Whether a parsed profiles object has at least one profile with a non-empty env
+  // of string values under a non-blank key. Mirrors the host's isMeaningfulProfile
+  // so the isolation chip matches the provider's managed-launch decision.
+  function hasMeaningfulProfiles(p) {
+    if (!p || typeof p !== 'object') return false;
+    return Object.keys(p).some((name) => {
+      if (!name.trim()) return false;
+      const env = p[name] && p[name].env;
+      if (!env || typeof env !== 'object' || Array.isArray(env)) return false;
+      return Object.keys(env).some((k) => k.trim() !== '' && typeof env[k] === 'string');
+    });
+  }
+  // Refresh the inline parse-error message; returns true when the JSON is valid.
+  // Used as a save/export guard (mirrors validateNumbers) so an invalid profiles
+  // edit cannot be persisted.
+  function validateProfiles() {
+    const err = $('profilesError');
+    const ok = parseProfiles() !== null;
+    if (err) {
+      err.style.display = ok ? 'none' : '';
+      if (!ok) err.textContent = 'Profiles must be a valid JSON object keyed by profile name.';
+    }
+    return ok;
+  }
+  function setProfilesVal(profiles) {
+    profiles = profiles || {};
+    const el = $('profilesJson');
+    if (!el) return;
+    el.value = Object.keys(profiles).length ? JSON.stringify(profiles, null, 2) : '';
+    validateProfiles();
+  }
+
   function setVal(s, setKeys, setSelectKeys, setArrayKeys) {
     setKeys = setKeys || [];
     setSelectKeys = setSelectKeys || [];
@@ -801,6 +883,7 @@ function renderHtml(webview: vscode.Webview): string {
     for (const f of triBoolFields) if ($(f)) $(f).value = boolToTri(s[mapKey(f)]);
     for (const f of arrayFields) if ($(f)) $(f).value = (s[mapKey(f)] || []).join('\\n');
     setShellsVal(s.shells);
+    setProfilesVal(s.profiles);
     // Default the shells editor to whichever mode the loaded config implies: the
     // per-shell cards when any shell is configured (wcli0.shells), otherwise the
     // simple single-shell selector. The two are mutually-exclusive views.
@@ -887,6 +970,17 @@ function renderHtml(webview: vscode.Webview): string {
       values[f] = lines.length ? lines : (cb.checked ? null : []);
     }
     values['shells'] = collectShells();
+    // Profiles are edited as JSON. A parse failure keeps the loaded baseline so an
+    // in-progress invalid edit is never submitted as a change (collectChanged sees
+    // no diff); the save/export guards block an invalid edit outright via
+    // validateProfiles. Valid text submits the object; {} clears the setting.
+    const parsedProfiles = parseProfiles();
+    values['profiles'] =
+      parsedProfiles !== null
+        ? parsedProfiles
+        : initial && initial['profiles'] !== undefined
+          ? initial['profiles']
+          : {};
     return values;
   }
 
@@ -1036,11 +1130,26 @@ function renderHtml(webview: vscode.Webview): string {
       const masked = !!(ign && ign.value === 'enabled');
       isolated = !masked && Object.keys(collectShells()).length > 0;
     }
+    // Any meaningful environment profile also isolates the launch: the provider
+    // writes a managed --config when profiles are configured (they are not subject
+    // to the inherited-shell mask). Mirror the host's hasProfilesConfig.
+    if (!isolated) {
+      isolated = hasMeaningfulProfiles(parseProfiles());
+    }
     chip.className = 'statuschip ' + (isolated ? 'sc-ok' : 'sc-warn');
     chip.textContent = isolated ? 'Isolated' : 'Overridable';
   }
   const configFileEl = $('configFile');
   if (configFileEl) configFileEl.addEventListener('input', updateIsolation);
+  // Editing the profiles JSON re-validates it inline and refreshes the isolation
+  // chip (a meaningful profile flips the launch to managed/isolated, like shells).
+  const profilesEl = $('profilesJson');
+  if (profilesEl) {
+    profilesEl.addEventListener('input', () => {
+      validateProfiles();
+      updateIsolation();
+    });
+  }
   // Toggling "Ignore inherited per-shell config" flips whether per-shell config
   // isolates the launch, so refresh the header chip when it changes.
   const ignoreShellsEl = $('ignoreInheritedShells');
@@ -1103,14 +1212,14 @@ function renderHtml(webview: vscode.Webview): string {
   }
 
   $('save').addEventListener('click', () => {
-    if (!validateNumbers()) return;
+    if (!validateNumbers() || !validateProfiles()) return;
     const target = document.querySelector('input[name=scope]:checked').value;
     vscode.postMessage({ type: 'save', target, values: collectChanged() });
   });
   // Export actions carry the current form state so the host can persist unsaved
   // edits before generating, keeping the output in sync with what is on screen.
   function exportAction(type) {
-    if (!validateNumbers()) return;
+    if (!validateNumbers() || !validateProfiles()) return;
     const target = document.querySelector('input[name=scope]:checked').value;
     vscode.postMessage({ type, target, values: collectChanged() });
   }
