@@ -12,6 +12,7 @@ import { buildConfigFile } from './configFile';
 import {
   ConfigScope,
   hasPerShellConfig,
+  hasProfilesConfig,
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
   readSettings,
@@ -183,16 +184,17 @@ export async function writeWorkspaceMcpJson(
   // launch settings (method, allowed dirs) are irrelevant and only the port
   // matters — otherwise a valid external endpoint couldn't be written.
   if (settings.transportMode === 'stdio') {
-    // Per-shell settings (wcli0.shells) cannot be expressed as the CLI flags a
-    // committed mcp.json carries; the auto-provider launches them via a managed
-    // --config file instead. Writing a stdio entry here would silently ignore
-    // every per-shell setting (different enabled shells / weaker restrictions),
-    // so refuse rather than emit a mismatched entry.
-    if (hasPerShellConfig(settings)) {
+    // Per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles)
+    // cannot be expressed as the CLI flags a committed mcp.json carries; the
+    // auto-provider launches them via a managed --config file instead. Writing a
+    // stdio entry here would silently ignore them (different enabled shells /
+    // weaker restrictions / missing profiles), so refuse rather than emit a
+    // mismatched entry.
+    if (hasPerShellConfig(settings) || hasProfilesConfig(settings)) {
       void vscode.window.showErrorMessage(
-        'wcli0: per-shell settings (wcli0.shells) cannot be represented in .vscode/mcp.json. ' +
-          'Generate a config file (wcli0: Generate Config File) and reference it via wcli0.configFile, ' +
-          'or clear wcli0.shells before exporting.',
+        'wcli0: per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles) cannot be ' +
+          'represented in .vscode/mcp.json. Generate a config file (wcli0: Generate Config File) and ' +
+          'reference it via wcli0.configFile, or clear wcli0.shells / wcli0.profiles before exporting.',
       );
       return;
     }
@@ -362,9 +364,12 @@ export async function showLaunchCommand(
 ): Promise<void> {
   const scope = primaryWorkspaceFolder()?.uri;
   const settings = readExportSettings(asScope(formScopeArg), scope);
-  // Mirror the provider: when shells are configured individually the server is
-  // launched against an auto-managed config file, not the global CLI flags.
-  const perShell = hasPerShellConfig(settings) && settings.transportMode === 'stdio';
+  // Mirror the provider: when shells are configured individually OR environment
+  // profiles are defined, the server is launched against an auto-managed config
+  // file, not the global CLI flags.
+  const perShell =
+    (hasPerShellConfig(settings) || hasProfilesConfig(settings)) &&
+    settings.transportMode === 'stdio';
   // Also mirror the provider's pinning: a plain stdio launch with no per-shell
   // config and no wcli0.configFile is launched against a generated config when the
   // server would otherwise discover an implicit config that overrides the displayed
@@ -397,15 +402,17 @@ export async function showLaunchCommand(
     output.appendLine('No wcli0 launch command available.');
     output.appendLine('');
     output.appendLine(
-      'Shells are configured individually (wcli0.shells), so the server must launch with an',
+      'Shells (wcli0.shells) or environment profiles (wcli0.profiles) are configured, so the',
     );
     output.appendLine(
-      'auto-managed config file, but no private directory is available to write it. The MCP',
+      'server must launch with an auto-managed config file, but no private directory is available',
     );
     output.appendLine(
-      'provider registers no server in this state. Set wcli0.launch.cwd, free up extension',
+      'to write it. The MCP provider registers no server in this state. Set wcli0.launch.cwd, free',
     );
-    output.appendLine('storage, or clear wcli0.shells to use the global launch flags.');
+    output.appendLine(
+      'up extension storage, or clear wcli0.shells / wcli0.profiles to use the global launch flags.',
+    );
     output.show(true);
     return;
   }
@@ -436,9 +443,11 @@ export async function showLaunchCommand(
     output.appendLine('');
     if (perShell) {
       output.appendLine(
-        'Note: shells are configured individually (wcli0.shells), so the server is launched',
+        'Note: shells (wcli0.shells) or environment profiles (wcli0.profiles) are configured, so',
       );
-      output.appendLine(`with an auto-managed config file (written to ${managedConfigPath}).`);
+      output.appendLine(
+        `the server is launched with an auto-managed config file (written to ${managedConfigPath}).`,
+      );
     } else {
       output.appendLine(
         'Note: the server is launched with an auto-managed config file (written to',

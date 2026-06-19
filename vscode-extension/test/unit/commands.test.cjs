@@ -196,6 +196,17 @@ test('P6: writeWorkspaceMcpJson refuses to export when shells are configured ind
   assert.ok(vscode.__state.calls.error.some((m) => /per-shell settings/i.test(m)));
 });
 
+test('writeWorkspaceMcpJson refuses to export when environment profiles are configured', async () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  await writeWorkspaceMcpJson();
+  // Profiles cannot be expressed as CLI flags, so no mcp.json is written and the
+  // error explains why.
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+  assert.ok(vscode.__state.calls.error.some((m) => /wcli0\.profiles/i.test(m)));
+});
+
 test('P72: writeWorkspaceMcpJson warns before exporting over a workspace config.json', async () => {
   // A committed <workspace>/config.json would override the exported (configFile-less)
   // stdio entry; the export must warn and respect a cancel.
