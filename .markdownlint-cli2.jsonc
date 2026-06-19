@@ -1,6 +1,12 @@
 {
   "config": {
-    "MD013": false
+    "MD013": false,
+    // Allow repeated section headings (e.g. "Added"/"Changed"/"Fixed") across
+    // different version sections in changelogs, as the Keep a Changelog format
+    // requires. Duplicates are still flagged among direct siblings.
+    "MD024": {
+      "siblings_only": true
+    }
   },
   "ignores": [
     "node_modules/**",
