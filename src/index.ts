@@ -917,8 +917,8 @@ class CLIServer {
       // Add execute_command tool with dynamic description and schema
       if (enabledShells.length > 0) {
         const maxOutputLines = this.config.global.logging?.maxOutputLines ?? 20;
-        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs, maxOutputLines);
-        const executeCommandSchema = buildExecuteCommandSchema(enabledShells, this.resolvedConfigs);
+        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs, maxOutputLines, this.config.profiles);
+        const executeCommandSchema = buildExecuteCommandSchema(enabledShells, this.resolvedConfigs, this.config.profiles);
         
         debugLog(`[tool: execute_command] Description:\n${executeCommandDescription}`);
         

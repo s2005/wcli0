@@ -1,6 +1,6 @@
 import { describe, test, expect } from '@jest/globals';
 import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from '../../src/utils/toolSchemas.js';
-import type { ResolvedShellConfig } from '../../src/types/config.js';
+import type { ResolvedShellConfig, EnvProfileConfig } from '../../src/types/config.js';
 
 describe('Tool Schema Builders', () => {
   // Helper to create mock resolved shell configs
@@ -72,6 +72,31 @@ describe('Tool Schema Builders', () => {
       expect(() => {
         buildExecuteCommandSchema([], new Map());
       }).toThrow('No shells enabled');
+    });
+
+    test('omits the profile parameter when no profiles are configured', () => {
+      const configs = new Map<string, ResolvedShellConfig>([['cmd', createMockConfig('cmd')]]);
+
+      const withoutProfiles = buildExecuteCommandSchema(['cmd'], configs);
+      const withEmptyProfiles = buildExecuteCommandSchema(['cmd'], configs, {});
+
+      expect(withoutProfiles.properties.profile).toBeUndefined();
+      expect(withEmptyProfiles.properties.profile).toBeUndefined();
+    });
+
+    test('exposes the profile parameter with an enum of configured names', () => {
+      const configs = new Map<string, ResolvedShellConfig>([['cmd', createMockConfig('cmd')]]);
+      const profiles: Record<string, EnvProfileConfig> = {
+        ora11: { env: { ORACLE_HOME: 'C:/oracle/11' } },
+        ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } }
+      };
+
+      const schema = buildExecuteCommandSchema(['cmd'], configs, profiles);
+
+      expect(schema.properties.profile).toBeDefined();
+      expect(schema.properties.profile.type).toBe('string');
+      expect(schema.properties.profile.enum).toEqual(['ora11', 'ora19']);
+      expect(schema.required).not.toContain('profile');
     });
   });
   

@@ -47,10 +47,10 @@
 
 ## Phase 4: Schema and description
 
-- [ ] Add optional `profile` to `buildExecuteCommandSchema`
-- [ ] List configured profiles in tool description
-- [ ] Add schema/description unit tests
-- [ ] Verify unit tests pass
+- [x] Add optional `profile` to `buildExecuteCommandSchema`
+- [x] List configured profiles in tool description
+- [x] Add schema/description unit tests
+- [x] Verify unit tests pass
 
 ## Phase 5: Docs and examples
 
