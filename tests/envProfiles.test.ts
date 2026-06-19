@@ -114,6 +114,25 @@ describe('resolveProfileEnv', () => {
     expect(resolved).toEqual({ FOO: 'bar' });
   });
 
+  test('P109: an empty allowedShells is treated as unrestricted (usable from any shell)', () => {
+    const withEmpty: Record<string, EnvProfileConfig> = {
+      anyShell: { allowedShells: [], env: { FOO: 'bar' } }
+    };
+    expect(resolveProfileEnv(withEmpty, 'anyShell', 'bash', base)).toEqual({ FOO: 'bar' });
+    expect(resolveProfileEnv(withEmpty, 'anyShell', 'cmd', base)).toEqual({ FOO: 'bar' });
+  });
+
+  test('P111: an inherited Object.prototype name throws ProfileSelectionError, not TypeError', () => {
+    for (const name of ['toString', 'constructor', 'hasOwnProperty']) {
+      expect(() => resolveProfileEnv(profiles, name, 'bash', base)).toThrow(
+        ProfileSelectionError
+      );
+      expect(() => resolveProfileEnv(profiles, name, 'bash', base)).toThrow(
+        /Unknown profile/
+      );
+    }
+  });
+
   test('profile value overrides base when merged by caller', () => {
     const overriding: Record<string, EnvProfileConfig> = {
       p: { env: { PATH: 'override-only' } }
@@ -182,5 +201,25 @@ describe('validateConfig profiles', () => {
       bad: { allowedShells: 'cmd' as any, env: { FOO: 'bar' } }
     };
     expect(() => validateConfig(cfg)).toThrow(/allowedShells must be an array/);
+  });
+
+  test('P112: rejects an array-valued profiles map', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = [] as any;
+    expect(() => validateConfig(cfg)).toThrow(/profiles: must be an object/);
+  });
+
+  test('P112: rejects a non-object profiles value', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = 'oops' as any;
+    expect(() => validateConfig(cfg)).toThrow(/profiles: must be an object/);
+  });
+
+  test('P109: accepts a profile with an empty allowedShells array', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      anyShell: { allowedShells: [], env: { FOO: 'bar' } }
+    };
+    expect(() => validateConfig(cfg)).not.toThrow();
   });
 });

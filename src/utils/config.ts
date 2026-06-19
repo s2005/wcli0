@@ -682,7 +682,15 @@ function validateTransportConfig(transport?: TransportConfig): void {
 const VALID_SHELL_TYPES: ShellType[] = ['cmd', 'powershell', 'gitbash', 'wsl', 'bash'];
 
 function validateProfiles(profiles?: Record<string, EnvProfileConfig>): void {
-  if (!profiles) return;
+  if (profiles === undefined || profiles === null) return;
+
+  // Reject a non-object or array `profiles` value before iterating. A direct
+  // config typo such as `"profiles": []` is truthy with no entries, so the loop
+  // below would silently accept it and the server would start with no profiles
+  // instead of reporting the malformed config.
+  if (typeof profiles !== 'object' || Array.isArray(profiles)) {
+    throw new Error('Invalid profiles: must be an object mapping profile names to definitions');
+  }
 
   for (const [name, profile] of Object.entries(profiles)) {
     if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {

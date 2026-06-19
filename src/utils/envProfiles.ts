@@ -57,7 +57,14 @@ export function resolveProfileEnv(
   }
 
   const available = profiles ?? {};
-  const profile = available[profileName];
+  // Use an own-property check: the input schema's profile enum is advisory, so a
+  // client can pass an inherited Object.prototype name like 'toString' or
+  // 'constructor'. A plain `available[profileName]` would then return the built-in
+  // function instead of undefined, skip the unknown-profile branch, and later throw
+  // a TypeError reading `.env` instead of the intended ProfileSelectionError.
+  const profile = Object.prototype.hasOwnProperty.call(available, profileName)
+    ? available[profileName]
+    : undefined;
   if (!profile) {
     const names = Object.keys(available);
     const validList = names.length > 0 ? names.join(', ') : '(none configured)';
@@ -66,7 +73,11 @@ export function resolveProfileEnv(
     );
   }
 
-  if (profile.allowedShells && !profile.allowedShells.includes(shellType)) {
+  // An empty `allowedShells` ([]) means "all shells" (matching the setting's
+  // documented semantics), so only enforce the restriction when the list has
+  // entries — otherwise `[].includes(shellType)` is always false and would reject
+  // the profile for every shell, making the empty-array form unusable.
+  if (profile.allowedShells && profile.allowedShells.length > 0 && !profile.allowedShells.includes(shellType)) {
     throw new ProfileSelectionError(
       `Profile '${profileName}' is not allowed for shell '${shellType}'. ` +
         `Allowed shells: ${profile.allowedShells.join(', ')}`

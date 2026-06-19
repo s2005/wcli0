@@ -304,21 +304,40 @@ export function hasPerShellConfig(s: Wcli0Settings): boolean {
 }
 
 /**
- * Whether a single profile entry carries an emittable environment: a non-empty
- * `env` object with at least one string-valued, non-empty key. Mirrors the
- * server's validateProfiles (which rejects an empty `env`) and the extension's
- * buildProfiles, so a profile that would be dropped from the generated config
- * never trips the managed-config launch gate.
+ * Whether a single profile entry would survive `buildProfiles` and be emitted into
+ * the generated config. This is the launch-mode gate's view of a profile, so it
+ * must mirror every drop condition buildProfiles applies — otherwise a profile that
+ * is silently dropped from the generated config would still force the managed
+ * `--config` launch (overriding `wcli0.configFile`) while the config carries no
+ * `profiles`, removing both the selected profile and the referenced config:
+ *  - a non-empty `allowedShells` with no valid shell names drops the profile (P107);
+ *  - `env` must hold at least one non-empty, string-valued key whose value still
+ *    resolves after extension-owned-token expansion — a value left with an
+ *    unresolved `${workspaceFolder}`/`${userHome}` token is dropped (P106), so it
+ *    does not count toward an emittable env (the server rejects an empty `env`).
  */
 function isMeaningfulProfile(p: ProfileConfig | undefined): boolean {
   if (!p || typeof p !== 'object') {
     return false;
   }
+  if (Array.isArray(p.allowedShells) && p.allowedShells.length > 0) {
+    const anyValid = p.allowedShells.some((sh) =>
+      (SHELL_NAMES as readonly string[]).includes(sh),
+    );
+    if (!anyValid) {
+      return false;
+    }
+  }
   const env = p.env;
   if (!env || typeof env !== 'object' || Array.isArray(env)) {
     return false;
   }
-  return Object.keys(env).some((k) => k.trim() !== '' && typeof env[k] === 'string');
+  return Object.keys(env).some(
+    (k) =>
+      k.trim() !== '' &&
+      typeof env[k] === 'string' &&
+      !hasUnresolvedExtensionVariables(resolveVariables(env[k])),
+  );
 }
 
 /**

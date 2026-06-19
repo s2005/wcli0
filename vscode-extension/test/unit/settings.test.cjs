@@ -204,6 +204,29 @@ test('hasProfilesConfig is true only for a profile with a non-empty env', () => 
   assert.equal(hasProfilesConfig(readSettings()), false);
 });
 
+test('P108: a profile dropped by buildProfiles does not gate managed config', () => {
+  // P107 drop: a non-empty allowedShells with no valid entries removes the whole
+  // profile from the generated config, so it must not force managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    p: { allowedShells: ['powershel'], env: { A: 'b' } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), false);
+
+  // P106 drop: an env whose only value carries an unresolvable ${workspaceFolder}
+  // token (no workspace open) is dropped, leaving an empty env the server rejects.
+  vscode.__state.workspaceFolders = undefined;
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    p: { env: { ONLY: '${workspaceFolder}/bin' } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), false);
+
+  // But a profile keeping at least one resolvable env value still gates on.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    p: { env: { ONLY: '${workspaceFolder}/bin', KEEP: 'x;${PATH}' } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), true);
+});
+
 test('ignoreInheritedShells gates hasPerShellConfig off even with non-empty shells', () => {
   // A non-empty per-shell config normally selects managed mode.
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {

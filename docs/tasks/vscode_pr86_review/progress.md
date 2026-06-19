@@ -165,10 +165,4 @@ follow-ups to the numeric form validation (P100) and the `ignoreInheritedShells`
 - [x] P104: Ignore masked shells when checking launch cwd (fixed - `launchCwdAffectsConfig` short-circuits to false when `ignoreInheritedShells` is set, mirroring the empty `shells` `buildConfigFile` emits, so an inherited relative per-shell command no longer makes an unresolved `launch.cwd` block `Generate Config File`)
 - [x] P105: Respect folder overrides for the shell mask (fixed - `ignoreInheritedShellsAtWorkspace` honors a defined `workspaceFolderValue` before falling back to `workspaceValue`, so a multi-root folder that explicitly sets `ignoreInheritedShells=false` over a Workspace `true` re-enables per-shell config for that folder per VS Code resource precedence)
 
-## Review Feedback (PR #87) - round 17
-
-Source: Codex review round 17 on PR #87 (named environment profiles), reviewed branch commit `f6bcf57`.
-Two unresolved Codex threads in `vscode-extension/src/configFile.ts` `buildProfiles`.
-
-- [x] P106: Reject unresolved workspace tokens in profiles (fixed - new `hasUnresolvedExtensionVariables` helper detects leftover `${workspaceFolder}`/`${workspaceFolder:name}`/`${userHome}` tokens, and `buildProfiles` drops an env value that still carries one instead of emitting it; server-owned tokens like `${PATH}` are still preserved, so the server can no longer expand an unresolved `${workspaceFolder}` to an empty string)
-- [x] P107: Avoid broadening invalid allowedShells to every shell (fixed - `buildProfiles` drops a profile whose `allowedShells` was provided with entries but none valid, instead of omitting the field and letting the server treat it as unrestricted across every shell)
+> PR #87 (env profiles) review feedback now lives in `docs/tasks/env_profiles/progress.md`.
