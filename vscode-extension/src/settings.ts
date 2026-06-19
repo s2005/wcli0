@@ -168,6 +168,20 @@ export function hasUnresolvedVariables(value: string): boolean {
   return /\$\{[^}]+\}/.test(value);
 }
 
+/**
+ * Whether a string still contains an unresolved EXTENSION-owned token — one of
+ * the `${workspaceFolder}` / `${workspaceFolder:name}` / `${userHome}` forms that
+ * `resolveVariables` is responsible for expanding. Unlike `hasUnresolvedVariables`
+ * this deliberately ignores arbitrary `${VAR}` tokens (e.g. `${PATH}`), which are
+ * server-owned and meant to be interpolated by the server at spawn time. Callers
+ * that emit values the server later interpolates (profile env) use this to refuse
+ * a value whose extension-owned token could not be resolved, since the server
+ * would otherwise expand the leftover token to an empty string.
+ */
+export function hasUnresolvedExtensionVariables(value: string): boolean {
+  return /\$\{workspaceFolder(?::[^}]+)?\}|\$\{userHome\}/.test(value);
+}
+
 function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }

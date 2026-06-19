@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { isAbsolutePath, isServerInvalidLogPath, isValidPort } from './argsBuilder';
 import {
+  hasUnresolvedExtensionVariables,
   hasUnresolvedVariables,
   PerShellConfig,
   primaryWorkspaceFolder,
@@ -333,10 +334,16 @@ function applyPerShellOverrides(
  *    whose resulting `env` is empty is omitted (the server rejects an empty env);
  *  - `${workspaceFolder}` / `${userHome}` are resolved in env values (the same
  *    extension-owned tokens resolved for executable args), while server-resolved
- *    tokens like `${PATH}` are left intact for the server to interpolate;
+ *    tokens like `${PATH}` are left intact for the server to interpolate; an env
+ *    value whose extension-owned token cannot be resolved (e.g. no workspace open)
+ *    is dropped rather than emitted, since the server would expand the leftover
+ *    `${workspaceFolder}` to an empty string and silently rewrite the value;
  *  - `description` is emitted only when a non-empty string;
  *  - `allowedShells` is filtered to known shell names and emitted only when
- *    non-empty (an empty list would forbid every shell).
+ *    non-empty; a profile whose `allowedShells` was provided with entries but
+ *    none valid is dropped entirely (omitting the field would make the server
+ *    treat it as unrestricted, broadening it to every shell — the opposite of the
+ *    intended restriction).
  */
 function buildProfiles(profiles: ProfilesConfig | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -352,7 +359,15 @@ function buildProfiles(profiles: ProfilesConfig | undefined): Record<string, unk
     if (rawEnv && typeof rawEnv === 'object' && !Array.isArray(rawEnv)) {
       for (const [key, value] of Object.entries(rawEnv)) {
         if (key.trim() && typeof value === 'string') {
-          env[key] = resolveVariables(value);
+          const resolved = resolveVariables(value);
+          // Drop an env value whose extension-owned token (${workspaceFolder} /
+          // ${userHome}) could not be resolved: emitting it would let the server
+          // expand the leftover token to an empty string and silently rewrite the
+          // value. Server-owned tokens like ${PATH} are intentionally preserved.
+          if (hasUnresolvedExtensionVariables(resolved)) {
+            continue;
+          }
+          env[key] = resolved;
         }
       }
     }
@@ -369,6 +384,14 @@ function buildProfiles(profiles: ProfilesConfig | undefined): Record<string, unk
       const valid = profile.allowedShells.filter((sh): sh is ShellName =>
         (SHELL_NAMES as readonly string[]).includes(sh),
       );
+      // A non-empty allowedShells with no valid entries (e.g. a typo like
+      // ['powershel']) must not collapse to an omitted field: the server treats an
+      // absent allowedShells as unrestricted, so the profile would be selectable
+      // from EVERY shell — the opposite of the restriction the user expressed.
+      // Drop the profile entirely so it fails closed.
+      if (profile.allowedShells.length > 0 && valid.length === 0) {
+        continue;
+      }
       if (valid.length > 0) {
         entry.allowedShells = valid;
       }

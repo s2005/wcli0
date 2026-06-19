@@ -762,11 +762,63 @@ test('profiles: an unknown shell in allowedShells is filtered out', () => {
   assert.deepEqual(cfg.profiles.p.allowedShells, ['cmd']);
 });
 
-test('profiles: an all-invalid allowedShells is omitted (treated as all shells)', () => {
+test('P107: a profile whose allowedShells are all invalid is dropped (not broadened to all shells)', () => {
+  // A typo like ['powershel'] filters to an empty list; omitting the field would
+  // make the server treat the profile as unrestricted (every shell), the opposite
+  // of the intended restriction. Drop the profile so it fails closed.
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: {
+        p: { allowedShells: ['powershel'], env: { A: 'b' } },
+        ok: { allowedShells: ['cmd'], env: { C: 'd' } },
+      },
+    }),
+  );
+  assert.equal('p' in cfg.profiles, false);
+  assert.deepEqual(cfg.profiles.ok, { env: { C: 'd' }, allowedShells: ['cmd'] });
+});
+
+test('P107: when every profile is dropped for invalid allowedShells no profiles key is emitted', () => {
   const cfg = buildConfigFile(
     defaults({ profiles: { p: { allowedShells: ['fish'], env: { A: 'b' } } } }),
   );
-  assert.equal('allowedShells' in cfg.profiles.p, false);
+  assert.equal('profiles' in cfg, false);
+});
+
+test('P106: an env value with an unresolvable ${workspaceFolder} is dropped (no workspace open)', () => {
+  // No workspace folder, so ${workspaceFolder} stays unresolved. Emitting it would
+  // let the server expand the leftover token to '' and rewrite the value.
+  vscodeStub.workspace.workspaceFolders = [];
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: {
+        p: { env: { PATHX: '${workspaceFolder}/bin;${PATH}', KEEP: 'literal;${PATH}' } },
+      },
+    }),
+  );
+  assert.equal('PATHX' in cfg.profiles.p.env, false);
+  // A value with only a server-owned token (${PATH}) is preserved untouched.
+  assert.equal(cfg.profiles.p.env.KEEP, 'literal;${PATH}');
+});
+
+test('P106: a profile left with no env after dropping unresolved tokens is omitted', () => {
+  vscodeStub.workspace.workspaceFolders = [];
+  const cfg = buildConfigFile(
+    defaults({ profiles: { p: { env: { ONLY: '${workspaceFolder}/bin' } } } }),
+  );
+  assert.equal('profiles' in cfg, false);
+});
+
+test('P106: an unresolvable ${workspaceFolder:name} env value is dropped', () => {
+  // The named workspace-folder form stays unresolved when no folder matches.
+  vscodeStub.workspace.workspaceFolders = [];
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: { p: { env: { D: '${workspaceFolder:missing}/x', OK: 'v' } } },
+    }),
+  );
+  assert.equal('D' in cfg.profiles.p.env, false);
+  assert.equal(cfg.profiles.p.env.OK, 'v');
 });
 
 test('profiles: a blank profile name is skipped', () => {
