@@ -190,6 +190,11 @@ const parseArgs = async () => {
       type: 'string',
       description: 'Comma-separated browser origins allowed to use the Streamable HTTP transport, in addition to loopback hosts and the bind host (e.g. "https://app.example.com,192.168.1.10"). Required for browser clients when binding to 0.0.0.0.'
     })
+    // Pin --version to the resolved package version (the same robustly-loaded
+    // package.json used for the MCP server info) instead of relying on yargs'
+    // implicit package.json discovery, which is unreliable for a globally
+    // installed or bundled CLI.
+    .version(packageJson.version)
     .help()
     .parse();
 };
