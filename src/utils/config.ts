@@ -129,7 +129,8 @@ export const DEFAULT_CONFIG: ServerConfig = {
     httpHost: '127.0.0.1',
     httpPort: 9444,
     httpAllowedOrigins: []
-  }
+  },
+  profiles: {}
 };
 
 export function loadConfig(configPath?: string, disableIfEmpty = false): ServerConfig {
