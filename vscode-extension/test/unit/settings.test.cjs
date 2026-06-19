@@ -9,6 +9,7 @@ const {
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
   hasPerShellConfig,
+  hasProfilesConfig,
   explicitlySetSelectKeys,
   CONFIG_SECTION,
 } = require('../../dist/settings.js');
@@ -159,6 +160,48 @@ test('hasPerShellConfig detects any meaningful per-shell field', () => {
     cmd: { executable: { command: '   ' } },
   });
   assert.equal(hasPerShellConfig(readSettings()), false);
+});
+
+test('readSettings reads the profiles map', () => {
+  assert.deepEqual(readSettings().profiles, {});
+  const profiles = {
+    ora19: {
+      description: 'Oracle 19c',
+      allowedShells: ['cmd', 'powershell'],
+      env: { ORACLE_HOME: 'C:/oracle/19', PATH: 'C:/oracle/19/bin;${PATH}' },
+    },
+  };
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', profiles);
+  assert.deepEqual(readSettings().profiles, profiles);
+});
+
+test('hasProfilesConfig is true only for a profile with a non-empty env', () => {
+  assert.equal(hasProfilesConfig(readSettings()), false);
+
+  // A profile with at least one string env var triggers managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), true);
+
+  // An empty env is not meaningful (the server rejects it), so it must not gate.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    empty: { env: {} },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), false);
+
+  // A profile whose only env key is blank, or whose value is not a string, is
+  // not emittable and must not gate.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    bad: { env: { '  ': 'x', N: 123 } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), false);
+
+  // A blank profile name with an otherwise valid env does not count.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    '   ': { env: { N: 'v' } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), false);
 });
 
 test('ignoreInheritedShells gates hasPerShellConfig off even with non-empty shells', () => {
