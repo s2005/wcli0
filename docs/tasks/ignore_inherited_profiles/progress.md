@@ -40,36 +40,43 @@ feature (`docs/tasks/mask_inherited_per_shell_config/`).
 
 ## Phase 1: Setting and settings model
 
-- [ ] Add `wcli0.ignoreInheritedProfiles` to package.json
-- [ ] Add flag to `Wcli0Settings` and `buildSettings`
-- [ ] Workspace-only recompute in `readSettings` (folder value precedence)
-- [ ] Force false for Global in `readSettingsForScope`
-- [ ] Add to `INHERITABLE_SELECT_KEYS`
-- [ ] Gate `hasProfilesConfig` on the flag
-- [ ] settings.test.cjs gate + Workspace-only recompute tests
-- [ ] Verify tsc + settings unit test
+- [x] Add `wcli0.ignoreInheritedProfiles` to package.json
+- [x] Add flag to `Wcli0Settings` and `buildSettings`
+- [x] Workspace-only recompute in `readSettings` (folder value precedence)
+- [x] Force false for Global in `readSettingsForScope`
+- [x] Add to `INHERITABLE_SELECT_KEYS`
+- [x] Gate `hasProfilesConfig` on the flag
+- [x] settings.test.cjs gate + Workspace-only recompute tests (gate, set-key,
+  P101 Global-not-honored, P105 folder precedence)
+- [x] Verify tsc + settings unit test
 
 ## Phase 2: Config masking and gate
 
-- [ ] Mask `profiles` to `{}` in `buildConfigFile` when the flag is set
-- [ ] Confirm provider / show / export branch on `hasProfilesConfig`
-- [ ] configFile.test.cjs: generated config omits `profiles` when flag set
-- [ ] commands.test.cjs: export not blocked by inherited profiles when flag set
-- [ ] Verify config/commands unit tests
+- [x] Mask `profiles` to `{}` in `buildConfigFile` when the flag is set
+- [x] Confirm provider / show / export branch on `hasProfilesConfig` (no direct
+  `s.profiles` inspection — gating in `hasProfilesConfig` suffices)
+- [x] configFile.test.cjs: generated config omits `profiles` when flag set
+- [x] commands.test.cjs: export not blocked by inherited profiles when flag set
+- [x] Verify config/commands unit tests
 
 ## Phase 3: Form control
 
-- [ ] Add `ignoreInheritedProfiles` to the form field model
-- [ ] Render the toggle with hint text on the Profiles tab (Workspace-relevant)
-- [ ] Wire collect/populate; drive the Profiles isolation chip
-- [ ] webviewProfiles.test.cjs round-trip; save does not clear `wcli0.profiles`
-- [ ] Verify unit suite
+- [x] Add `ignoreInheritedProfiles` to the form field model (`FIELD_KEYS`,
+  `triBoolFields`, `inheritTriFields`)
+- [x] Render the toggle with hint text on the Profiles tab (Workspace-relevant)
+- [x] Wire collect/populate (generic tri-bool machinery); drive the Profiles
+  isolation chip; Workspace-only scope availability + user note
+- [x] webviewProfiles.test.cjs round-trip; save does not clear `wcli0.profiles`;
+  isolation + scope-availability
+- [x] Verify unit suite (392 pass)
 
 ## Phase 4: Integration test and documentation
 
-- [ ] README inherit-vs-mask section for profiles
-- [ ] extension.test.js deep-merge end-to-end test
-- [ ] Verify tsc + unit + integration + markdownlint
+- [x] README inherit-vs-mask section for profiles
+- [x] CHANGELOG entry; extension version date-bumped to `0.20260620.1`
+- [x] extension.test.js deep-merge end-to-end test (added; runs in CI — the
+  sandbox cannot download the VS Code test host)
+- [~] Verify tsc + unit + markdownlint locally; integration deferred to CI
 
 ## Review Feedback
 

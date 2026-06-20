@@ -194,3 +194,73 @@ test('an empty profiles object clears the setting rather than persisting {}', as
   const cfg = vscode.workspace.getConfiguration('wcli0');
   assert.deepEqual(cfg.get('profiles', 'CLEARED'), 'CLEARED');
 });
+
+// ---- ignoreInheritedProfiles mask control (P110) ----
+
+test('turning on the ignoreInheritedProfiles toggle persists it without touching profiles', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { profiles: PROFILES },
+  });
+  // The control starts at Inherit; the user enables the mask.
+  assert.equal(h.els.get('ignoreInheritedProfiles').value, 'default');
+  h.els.get('ignoreInheritedProfiles').value = 'enabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.equal(save.values.ignoreInheritedProfiles, true, 'mask persisted');
+  // Only the changed field is submitted: the untouched profiles are NOT re-written
+  // (so enabling the mask never clears the inherited profiles setting).
+  assert.equal('profiles' in save.values, false, 'profiles left untouched');
+});
+
+test('an unset ignoreInheritedProfiles renders as Inherit, and switching back clears it', () => {
+  const h = makeHarness();
+  // Loaded with the mask explicitly enabled at this scope...
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { profiles: {}, ignoreInheritedProfiles: true },
+    setSelectKeys: ['ignoreInheritedProfiles'],
+  });
+  assert.equal(h.els.get('ignoreInheritedProfiles').value, 'enabled');
+  // ...the user switches it back to Inherit, which clears the override on save.
+  h.els.get('ignoreInheritedProfiles').value = 'default';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.equal(save.values.ignoreInheritedProfiles, null, 'Inherit emits null (clears the override)');
+});
+
+test('an unset ignoreInheritedProfiles is forced to the Inherit state on load', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { profiles: {} } });
+  // Not in setSelectKeys -> rendered as Inherit ('default'), not an explicit value.
+  assert.equal(h.els.get('ignoreInheritedProfiles').value, 'default');
+});
+
+test('enabling the mask makes a configured profile no longer isolate the launch', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('profilesJson').value = JSON.stringify(PROFILES);
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated', 'profile isolates by default');
+  // Turning on the mask flips the launch back to overridable (mirrors hasProfilesConfig).
+  h.els.get('ignoreInheritedProfiles').value = 'enabled';
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+});
+
+test('the mask control is Workspace-only (disabled with a note at User scope)', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Global', settings: { profiles: {} } });
+  assert.equal(h.els.get('ignoreInheritedProfiles').disabled, true, 'disabled at User scope');
+  assert.equal(h.els.get('ignoreInheritedProfilesUserNote').style.display, '', 'note shown');
+  // Reloading at Workspace scope re-enables it and hides the note.
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { profiles: {} } });
+  assert.equal(h.els.get('ignoreInheritedProfiles').disabled, false, 'enabled at Workspace scope');
+  assert.equal(h.els.get('ignoreInheritedProfilesUserNote').style.display, 'none', 'note hidden');
+});

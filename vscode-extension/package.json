@@ -2,7 +2,7 @@
   "name": "wcli0-vscode",
   "displayName": "wcli0 — MCP Server",
   "description": "Configure and run the wcli0 MCP server with simple user- and workspace-level settings.",
-  "version": "0.20260619.1",
+  "version": "0.20260620.1",
   "publisher": "s2005",
   "license": "MIT",
   "engines": {
@@ -338,6 +338,12 @@
             ],
             "additionalProperties": false
           }
+        },
+        "wcli0.ignoreInheritedProfiles": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Ignore environment profiles (`#wcli0.profiles#`) inherited from a wider scope. VS Code deep-merges object settings, so a Workspace cannot remove a `#wcli0.profiles#` entry set at the User scope by clearing the Profiles editor. Enable this at the Workspace scope to opt out of inherited profiles entirely: they no longer force the auto-managed `--config` launch or block the `.vscode/mcp.json` export. Leave it off (the default) to inherit and use profiles as before.",
+          "scope": "resource"
         },
         "wcli0.allowedDirectories": {
           "type": "array",

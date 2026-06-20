@@ -304,6 +304,70 @@ test('P105: a workspace-folder false overrides a workspace-true shell mask', () 
   assert.equal(readSettings().ignoreInheritedShells, true, 'folder true wins over workspace false');
 });
 
+// ---- ignoreInheritedProfiles (the profiles twin of the shell mask, P110) ----
+
+test('ignoreInheritedProfiles gates hasProfilesConfig off even with non-empty profiles', () => {
+  // A meaningful profile normally selects managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    p: { env: { A: 'b' } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), true);
+  // With the opt-out flag set, the scope drops out of profiles mode even though the
+  // (deep-merged) profiles value is non-empty — the workspace cannot remove the
+  // inherited entry, so this separate boolean is the escape hatch.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedProfiles', true);
+  assert.equal(hasProfilesConfig(readSettings()), false);
+  // Clearing the flag restores managed mode.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedProfiles', false);
+  assert.equal(hasProfilesConfig(readSettings()), true);
+});
+
+test('ignoreInheritedProfiles is an inheritable select key reported when set at a scope', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedProfiles', true);
+  const ws = explicitlySetSelectKeys('Workspace');
+  assert.ok(ws.includes('ignoreInheritedProfiles'), 'reported set at workspace');
+  // Unset at Global -> not reported, so the form shows Inherit there.
+  assert.ok(!explicitlySetSelectKeys('Global').includes('ignoreInheritedProfiles'));
+});
+
+test('P101: a Global-scoped ignoreInheritedProfiles does not mask profiles', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    p: { env: { A: 'b' } },
+  });
+  // The mask set ONLY at User/Global scope (e.g. typed into settings.json, bypassing
+  // the form which disables the control there) must NOT suppress the user's own
+  // profiles: the opt-out is Workspace-only.
+  vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.ignoreInheritedProfiles', true);
+  assert.equal(readSettings().ignoreInheritedProfiles, false, 'Global value not honored');
+  assert.equal(hasProfilesConfig(readSettings()), true, 'profiles still active');
+  // A Global-scope form read also reports it false (a Global export must not mask).
+  assert.equal(readSettingsForScope('Global').ignoreInheritedProfiles, false);
+  // Setting it at Workspace scope is the supported opt-out and IS honored.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedProfiles', true);
+  assert.equal(readSettings().ignoreInheritedProfiles, true);
+  assert.equal(hasProfilesConfig(readSettings()), false);
+});
+
+test('P105: a workspace-folder false overrides a workspace-true profiles mask', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    p: { env: { A: 'b' } },
+  });
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedProfiles', true);
+  assert.equal(readSettings().ignoreInheritedProfiles, true, 'workspace value honored');
+  // A workspace-folder value explicitly opts BACK IN; resource precedence wins.
+  vscode.__setConfig(
+    vscode.ConfigurationTarget.WorkspaceFolder,
+    'wcli0.ignoreInheritedProfiles',
+    false,
+  );
+  assert.equal(readSettings().ignoreInheritedProfiles, false, 'folder value wins over workspace');
+  assert.equal(hasProfilesConfig(readSettings()), true, 'profiles re-enabled for folder');
+  // A workspace-folder true also wins over a workspace false.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedProfiles', false);
+  vscode.__setConfig(vscode.ConfigurationTarget.WorkspaceFolder, 'wcli0.ignoreInheritedProfiles', true);
+  assert.equal(readSettings().ignoreInheritedProfiles, true, 'folder true wins over workspace false');
+});
+
 test('P23: the LICENSE retains the MIT copyright notice', () => {
   const fs = require('node:fs');
   const path = require('node:path');
