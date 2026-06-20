@@ -25,6 +25,7 @@ const FIELD_KEYS = [
   'shells',
   'profiles',
   'ignoreInheritedShells',
+  'ignoreInheritedProfiles',
   'allowedDirectories',
   'initialDir',
   'commandTimeout',
@@ -94,6 +95,9 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       type: 'init',
       external,
       hasWorkspace: !!primaryWorkspaceFolder(),
+      // The open folder names, so the form can resolve ${workspaceFolder:name} tokens
+      // exactly as the host does when deciding whether a profile isolates (P110).
+      workspaceFolderNames: (vscode.workspace.workspaceFolders ?? []).map((f) => f.name),
       scope: currentScope,
       settings: readSettingsForScope(currentScope, scope),
       // Which optional-string keys are explicitly set at this scope, so the form
@@ -591,6 +595,15 @@ function renderHtml(webview: vscode.Webview): string {
     extension writes an auto-managed config file and launches the server with <code>--config</code>
     (profiles cannot be passed as CLI flags). Restart the MCP server to apply changes.
   </div>
+
+  <label>Inherited profiles <span class="hint">when set at Workspace scope, ignore environment profiles (wcli0.profiles) inherited from User scope</span></label>
+  <select id="ignoreInheritedProfiles">
+    <option value="default">Inherit (use profiles)</option>
+    <option value="enabled">Ignore inherited profiles</option>
+    <option value="disabled">Do not ignore (explicit)</option>
+  </select>
+  <div class="hint" style="margin-top:4px">VS Code merges <code>wcli0.profiles</code> across scopes, so a Workspace cannot drop a User-scope profile by clearing it. Choose <strong>Ignore</strong> to opt this workspace out of inherited profiles &mdash; they no longer force the managed <code>--config</code> launch or block the <code>.vscode/mcp.json</code> export.</div>
+  <div class="hint" id="ignoreInheritedProfilesUserNote" style="display:none;margin-top:4px;color:var(--vscode-charts-yellow,#d7a930)">This opt-out applies to Workspace scope only. At User scope it would suppress your own profiles everywhere, so it is disabled here &mdash; switch to Workspace to use it.</div>
   <label>Profiles <span class="hint">JSON object keyed by profile name</span></label>
   <textarea id="profilesJson" spellcheck="false" style="min-height:200px" placeholder='{
   "ora19": {
@@ -679,13 +692,19 @@ function renderHtml(webview: vscode.Webview): string {
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
+  // Whether a workspace folder is open, and the open folder names (sent on every
+  // init). Used to resolve workspaceFolder tokens the way the host does when deciding
+  // if a profile isolates (P110).
+  let currentHasWorkspace = true;
+  let currentWorkspaceFolderNames = [];
   const numberFields = ['commandTimeout','maxCommandLength','maxOutputLines','transport.port'];
   // Booleans rendered as tri-state selects (Inherit / enabled / disabled). Selecting
   // Inherit submits null, which applySettings maps to undefined -> clears the value
   // at the target scope so a previous override can be removed from the form.
-  // ignoreInheritedShells uses the same value scheme (its options carry the
-  // default/enabled/disabled values) so it round-trips through this machinery.
-  const triBoolFields = ['allowAllDirs','debug','ignoreInheritedShells'];
+  // ignoreInheritedShells / ignoreInheritedProfiles use the same value scheme (their
+  // options carry the default/enabled/disabled values) so they round-trip through
+  // this machinery.
+  const triBoolFields = ['allowAllDirs','debug','ignoreInheritedShells','ignoreInheritedProfiles'];
   const arrayFields = ['allowedDirectories'];
   const stringFields = ['launch.packageSpec','launch.nodeScriptPath','launch.customCommand','launch.cwd','configFile','shell','initialDir','logDirectory','enableTruncation','enableLogResources','safetyMode','launch.method','transport.host','transport.mode'];
   // Optional string settings where an explicit empty value is a meaningful
@@ -706,7 +725,7 @@ function renderHtml(webview: vscode.Webview): string {
   // the control to Inherit so an unset value is not shown as an explicit default.
   // Mirrors INHERITABLE_SELECT_KEYS on the host.
   const inheritSelectFields = ['launch.method','shell','safetyMode','enableTruncation','enableLogResources','transport.mode'];
-  const inheritTriFields = ['allowAllDirs','debug','ignoreInheritedShells'];
+  const inheritTriFields = ['allowAllDirs','debug','ignoreInheritedShells','ignoreInheritedProfiles'];
 
   // Per-shell configuration (wcli0.shells). Mirrors PER_SHELL_DEFS on the host.
   const SHELL_DEFS = [
@@ -842,16 +861,50 @@ function renderHtml(webview: vscode.Webview): string {
       return null;
     }
   }
-  // Whether a parsed profiles object has at least one profile with a non-empty env
-  // of string values under a non-blank key. Mirrors the host's isMeaningfulProfile
-  // so the isolation chip matches the provider's managed-launch decision.
+  // Whether a parsed profiles object has at least one profile the host would emit.
+  // Mirrors the host's isMeaningfulProfile/buildProfiles so the isolation chip matches
+  // the provider's managed-launch decision, including the drop conditions that make a
+  // profile non-isolating: a present-but-non-array allowedShells, a non-empty
+  // allowedShells with no valid shell name, and an env value whose extension-owned
+  // token cannot resolve.
+  const PROFILE_SHELL_NAMES = SHELL_DEFS.map((d) => d.name);
+  // The host drops an env value when, after resolving the extension-owned tokens, one
+  // is still unresolved (the server would expand the leftover to empty). Mirror the
+  // host's resolveVariables exactly: a named workspaceFolder:NAME token resolves only
+  // when a folder of that name is open, a plain workspaceFolder token resolves when any
+  // folder is open, and userHome always resolves. Then drop the value if any
+  // extension-owned token remains. (Regex sources are built from escaped strings so
+  // the surrounding template literal never sees a literal dollar-brace to interpolate.)
+  function profileEnvValueUsable(v) {
+    if (typeof v !== 'string') return false;
+    var resolved = v
+      .replace(/\\$\\{workspaceFolder:([^}]+)\\}/g, function (m, name) {
+        return currentWorkspaceFolderNames.indexOf(name) !== -1 ? 'x' : m;
+      })
+      .replace(/\\$\\{workspaceFolder\\}/g, function (m) {
+        return currentHasWorkspace ? 'x' : m;
+      })
+      .replace(/\\$\\{userHome\\}/g, 'x');
+    return !/\\$\\{workspaceFolder(?::[^}]+)?\\}|\\$\\{userHome\\}/.test(resolved);
+  }
   function hasMeaningfulProfiles(p) {
     if (!p || typeof p !== 'object') return false;
     return Object.keys(p).some((name) => {
       if (!name.trim()) return false;
-      const env = p[name] && p[name].env;
+      const prof = p[name];
+      if (!prof || typeof prof !== 'object') return false;
+      // Mirror buildProfiles' allowedShells drops (P107): a present-but-non-array
+      // value, or a non-empty array with no valid shell, drops the whole profile.
+      const allowed = prof.allowedShells;
+      if (allowed !== undefined) {
+        if (!Array.isArray(allowed)) return false;
+        if (allowed.length > 0 && !allowed.some((sh) => PROFILE_SHELL_NAMES.includes(sh))) {
+          return false;
+        }
+      }
+      const env = prof.env;
       if (!env || typeof env !== 'object' || Array.isArray(env)) return false;
-      return Object.keys(env).some((k) => k.trim() !== '' && typeof env[k] === 'string');
+      return Object.keys(env).some((k) => k.trim() !== '' && profileEnvValueUsable(env[k]));
     });
   }
   // Refresh the inline parse-error message; returns true when the JSON is valid.
@@ -1131,10 +1184,14 @@ function renderHtml(webview: vscode.Webview): string {
       isolated = !masked && Object.keys(collectShells()).length > 0;
     }
     // Any meaningful environment profile also isolates the launch: the provider
-    // writes a managed --config when profiles are configured (they are not subject
-    // to the inherited-shell mask). Mirror the host's hasProfilesConfig.
+    // writes a managed --config when profiles are configured. Mirror the host's
+    // hasProfilesConfig — including the inherited-profiles mask: when "Ignore
+    // inherited profiles" is enabled the host returns false (profiles no longer
+    // force the managed launch), so they must not isolate here either.
     if (!isolated) {
-      isolated = hasMeaningfulProfiles(parseProfiles());
+      const ignProf = $('ignoreInheritedProfiles');
+      const profMasked = !!(ignProf && ignProf.value === 'enabled');
+      isolated = !profMasked && hasMeaningfulProfiles(parseProfiles());
     }
     chip.className = 'statuschip ' + (isolated ? 'sc-ok' : 'sc-warn');
     chip.textContent = isolated ? 'Isolated' : 'Overridable';
@@ -1154,6 +1211,10 @@ function renderHtml(webview: vscode.Webview): string {
   // isolates the launch, so refresh the header chip when it changes.
   const ignoreShellsEl = $('ignoreInheritedShells');
   if (ignoreShellsEl) ignoreShellsEl.addEventListener('change', updateIsolation);
+  // Toggling "Ignore inherited profiles" flips whether profiles isolate the launch,
+  // so refresh the header chip when it changes (mirrors the shells mask above).
+  const ignoreProfilesEl = $('ignoreInheritedProfiles');
+  if (ignoreProfilesEl) ignoreProfilesEl.addEventListener('change', updateIsolation);
   // Refresh the isolation status as the user types in ANY per-shell field, not only
   // the segmented enable buttons and configFile. Without this the chip would lag when
   // an executable command/args, an override or a WSL option is edited (P84). The
@@ -1261,6 +1322,7 @@ function renderHtml(webview: vscode.Webview): string {
   // no-workspace hint. When the folder is gone, force the Global radio so the form
   // never keeps Workspace selected against a non-existent target.
   function applyWorkspaceAvailability(hasWorkspace) {
+    currentHasWorkspace = !!hasWorkspace;
     const ws = document.querySelector('input[name=scope][value=Workspace]');
     const gl = document.querySelector('input[name=scope][value=Global]');
     if (hasWorkspace) {
@@ -1288,18 +1350,29 @@ function renderHtml(webview: vscode.Webview): string {
     }
   }
 
-  // The inherited-shell mask (ignoreInheritedShells) is a Workspace-only opt-out from
-  // User-scope per-shell config. A Global value would suppress the User scope's OWN
-  // wcli0.shells everywhere (hasPerShellConfig treats any effective true as
-  // authoritative), so disable the control while editing User scope and show why,
-  // preventing the form from ever persisting it globally (P97).
+  // The inherited-config masks (ignoreInheritedShells / ignoreInheritedProfiles) are
+  // Workspace-only opt-outs from User-scope shells/profiles. A Global value would
+  // suppress the User scope's OWN wcli0.shells / wcli0.profiles everywhere (the
+  // has*Config gates treat any effective true as authoritative), so disable each
+  // control while editing User scope and show why, preventing the form from ever
+  // persisting them globally (P97).
   function applyScopeAvailability(scope) {
-    const ign = $('ignoreInheritedShells');
-    if (!ign) return;
     const isUser = scope === 'Global';
-    ign.disabled = isUser;
-    const note = $('ignoreInheritedShellsUserNote');
-    if (note) note.style.display = isUser ? '' : 'none';
+    const ign = $('ignoreInheritedShells');
+    if (ign) {
+      ign.disabled = isUser;
+      const note = $('ignoreInheritedShellsUserNote');
+      if (note) note.style.display = isUser ? '' : 'none';
+    }
+    // The inherited-profiles mask is Workspace-only for the same reason (a Global
+    // value would suppress the user's own profiles everywhere), so disable it while
+    // editing User scope and show why.
+    const ignProf = $('ignoreInheritedProfiles');
+    if (ignProf) {
+      ignProf.disabled = isUser;
+      const noteProf = $('ignoreInheritedProfilesUserNote');
+      if (noteProf) noteProf.style.display = isUser ? '' : 'none';
+    }
   }
 
   window.addEventListener('message', (e) => {
@@ -1315,6 +1388,9 @@ function renderHtml(webview: vscode.Webview): string {
       // controls. It deliberately does NOT switch a dirty form's selected scope (see
       // applyWorkspaceAvailability, P89), so apply it before the dirty guard.
       applyWorkspaceAvailability(msg.hasWorkspace);
+      currentWorkspaceFolderNames = Array.isArray(msg.workspaceFolderNames)
+        ? msg.workspaceFolderNames
+        : [];
       // A background configuration change must not discard unsaved edits, nor silently
       // retarget the save scope. While the form is dirty, skip BOTH the field refresh
       // and the scope-radio switch on an external reload, so the loaded scope

@@ -105,6 +105,15 @@ export interface Wcli0Settings {
    * and return to the global CLI-flag launch path (see hasPerShellConfig).
    */
   ignoreInheritedShells: boolean;
+  /**
+   * Whether this scope opts out of inherited environment profiles entirely. Like
+   * {@link ignoreInheritedShells}, VS Code deep-merges object settings, so a
+   * Workspace cannot remove a `profiles` entry inherited from User scope by
+   * clearing the Profiles textarea. This separate, non-merged boolean lets the
+   * workspace mask the inherited profiles so they no longer force managed
+   * `--config` mode or block the mcp.json export (see hasProfilesConfig).
+   */
+  ignoreInheritedProfiles: boolean;
   allowedDirectories: string[];
   initialDir: string;
   commandTimeout: number | null;
@@ -208,6 +217,7 @@ function buildSettings(g: Getter): Wcli0Settings {
     shells: g<ShellsConfig>('shells', {}),
     profiles: g<ProfilesConfig>('profiles', {}),
     ignoreInheritedShells: g<boolean>('ignoreInheritedShells', false),
+    ignoreInheritedProfiles: g<boolean>('ignoreInheritedProfiles', false),
     allowedDirectories: g<string[]>('allowedDirectories', []),
     initialDir: g<string>('initialDir', ''),
     commandTimeout: num(g<number | null>('commandTimeout', null)),
@@ -354,8 +364,16 @@ function isMeaningfulProfile(p: ProfileConfig | undefined): boolean {
  * {@link hasPerShellConfig}, a true result forces the extension to launch the
  * server with an auto-managed `--config` file: profiles are a config-file-only
  * concept with no CLI flag, so they cannot be expressed via launch flags.
+ *
+ * When `ignoreInheritedProfiles` is set, the scope has explicitly opted out of
+ * profiles (it cannot remove a User-scope `profiles` entry via deep-merge), so
+ * treat `profiles` as empty and return false — the single authoritative gate the
+ * provider, showLaunchCommand and writeWorkspaceMcpJson all consult.
  */
 export function hasProfilesConfig(s: Wcli0Settings): boolean {
+  if (s.ignoreInheritedProfiles) {
+    return false;
+  }
   const profiles = s.profiles ?? {};
   return Object.keys(profiles).some((name) => name.trim() !== '' && isMeaningfulProfile(profiles[name]));
 }
@@ -375,6 +393,10 @@ export function readSettings(scope?: vscode.Uri): Wcli0Settings {
   // even with no workspace open — contrary to the documented behavior. Honor it only
   // when it is explicitly set at Workspace (or workspace-folder) scope. (P101)
   s.ignoreInheritedShells = ignoreInheritedShellsAtWorkspace(c);
+  // The inherited-profiles mask is Workspace-only for the same reason (P101): a
+  // resource-scoped boolean set in User Settings would otherwise suppress the user's
+  // own wcli0.profiles in every workspace via the merged effective read.
+  s.ignoreInheritedProfiles = ignoreInheritedProfilesAtWorkspace(c);
   return s;
 }
 
@@ -394,6 +416,25 @@ function ignoreInheritedShellsAtWorkspace(c: vscode.WorkspaceConfiguration): boo
   // on for a folder that explicitly opted back into per-shell config (folder=false
   // over workspace=true). Honor the defined folder value first; a Global value is
   // still ignored (the mask is a Workspace-only affordance, see P101). (P105)
+  if (info.workspaceFolderValue !== undefined) {
+    return info.workspaceFolderValue === true;
+  }
+  return info.workspaceValue === true;
+}
+
+/**
+ * Whether `ignoreInheritedProfiles` is explicitly opted in at Workspace (or
+ * workspace-folder) scope. The profiles twin of {@link ignoreInheritedShellsAtWorkspace}:
+ * a Global/User value is deliberately ignored so a User setting cannot suppress
+ * profiles everywhere (the mask is a Workspace-only affordance, see {@link readSettings}).
+ */
+function ignoreInheritedProfilesAtWorkspace(c: vscode.WorkspaceConfiguration): boolean {
+  const info = c.inspect<boolean>('ignoreInheritedProfiles');
+  if (!info) {
+    return false;
+  }
+  // A workspace-folder value takes precedence over the workspace value for that
+  // resource (mirrors P105 for the shells mask); a Global value is still ignored.
   if (info.workspaceFolderValue !== undefined) {
     return info.workspaceFolderValue === true;
   }
@@ -425,6 +466,7 @@ export function readSettingsForScope(target: ConfigScope, scope?: vscode.Uri): W
   // effective read in {@link readSettings}. (P101)
   if (target === 'Global') {
     s.ignoreInheritedShells = false;
+    s.ignoreInheritedProfiles = false;
   }
   return s;
 }
@@ -461,6 +503,7 @@ export const INHERITABLE_SELECT_KEYS = [
   'allowAllDirs',
   'debug',
   'ignoreInheritedShells',
+  'ignoreInheritedProfiles',
 ] as const;
 
 /**

@@ -7,6 +7,23 @@
   `config.json`, and an auto-managed `--config` launch whenever any profile is
   configured (profiles cannot be passed as CLI flags). `.vscode/mcp.json` export
   refuses while profiles are configured, mirroring per-shell settings.
+- Added `wcli0.ignoreInheritedProfiles`: a Workspace-only opt-out that masks
+  environment profiles inherited from User scope (which VS Code deep-merges and a
+  workspace cannot otherwise remove). When enabled, inherited profiles no longer
+  force the auto-managed `--config` launch or block the `.vscode/mcp.json` export.
+  Mirrors `wcli0.ignoreInheritedShells`; exposed on the **Profiles** tab.
+- `.vscode/mcp.json` export now succeeds for a profiles/shells workspace when a
+  loadable `wcli0.configFile` is referenced (the entry pins it as `--config`,
+  carrying the settings), after a confirmation warning that the file is not
+  verified against the current settings; it still refuses when nothing can
+  represent them.
+- `Show Resolved Launch Command` now states explicitly that an http/sse command
+  cannot carry shells/profiles (the auto-managed config is stdio-only) instead of
+  printing a command that silently omits them.
+- The configuration form's isolation indicator now mirrors the server's profile
+  drop rules — invalid/non-array `allowedShells`, and env values whose
+  `${workspaceFolder}` / `${workspaceFolder:name}` token cannot resolve against the
+  actually-open folders — so it no longer over-reports "Isolated".
 - The configuration form now loads and compares values per selected scope (User
   vs Workspace) via `inspect`, so editing one scope never surfaces or re-writes
   the other scope's values.

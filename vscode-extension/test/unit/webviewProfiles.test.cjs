@@ -172,6 +172,69 @@ test('a profile with an empty env does not isolate the launch', () => {
   assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
 });
 
+test('a profile the host drops (all-invalid allowedShells) does not isolate', () => {
+  // buildProfiles drops a profile whose non-empty allowedShells has no valid shell,
+  // so the chip must not report Isolated for it (it would mislead about pinning).
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('profilesJson').value = JSON.stringify({ p: { allowedShells: ['fish'], env: { A: 'b' } } });
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+});
+
+test('a profile with a non-array allowedShells does not isolate', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('profilesJson').value = JSON.stringify({ p: { allowedShells: 'cmd', env: { A: 'b' } } });
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+});
+
+test('a profile whose only env value needs an unavailable ${workspaceFolder} does not isolate', () => {
+  // With no workspace open the host drops the ${workspaceFolder} value (it cannot
+  // resolve), leaving an empty env the server rejects — so it must not isolate.
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: false,
+    scope: 'Global',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+  // The same profile DOES isolate once a workspace is open (the token resolves).
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
+
+test('a named ${workspaceFolder:name} value only isolates when a folder of that name is open', () => {
+  // The host resolves ${workspaceFolder:name} only against a folder of that exact name,
+  // so a window with other folders open still drops the value (and the profile). The
+  // chip must check the actual folder names, not merely that some workspace is open.
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    workspaceFolderNames: ['app'],
+    scope: 'Workspace',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder:client}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+  // Once a folder named "client" is open the token resolves and the profile isolates.
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    workspaceFolderNames: ['app', 'client'],
+    scope: 'Workspace',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder:client}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
+
 test('a profiles round-trip through save persists into settings', async () => {
   vscode.__reset();
   vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
@@ -193,4 +256,74 @@ test('an empty profiles object clears the setting rather than persisting {}', as
   await view.webview._handler({ type: 'save', target: 'Workspace', values: { profiles: {} } });
   const cfg = vscode.workspace.getConfiguration('wcli0');
   assert.deepEqual(cfg.get('profiles', 'CLEARED'), 'CLEARED');
+});
+
+// ---- ignoreInheritedProfiles mask control (P110) ----
+
+test('turning on the ignoreInheritedProfiles toggle persists it without touching profiles', () => {
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { profiles: PROFILES },
+  });
+  // The control starts at Inherit; the user enables the mask.
+  assert.equal(h.els.get('ignoreInheritedProfiles').value, 'default');
+  h.els.get('ignoreInheritedProfiles').value = 'enabled';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.ok(save, 'save posted');
+  assert.equal(save.values.ignoreInheritedProfiles, true, 'mask persisted');
+  // Only the changed field is submitted: the untouched profiles are NOT re-written
+  // (so enabling the mask never clears the inherited profiles setting).
+  assert.equal('profiles' in save.values, false, 'profiles left untouched');
+});
+
+test('an unset ignoreInheritedProfiles renders as Inherit, and switching back clears it', () => {
+  const h = makeHarness();
+  // Loaded with the mask explicitly enabled at this scope...
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { profiles: {}, ignoreInheritedProfiles: true },
+    setSelectKeys: ['ignoreInheritedProfiles'],
+  });
+  assert.equal(h.els.get('ignoreInheritedProfiles').value, 'enabled');
+  // ...the user switches it back to Inherit, which clears the override on save.
+  h.els.get('ignoreInheritedProfiles').value = 'default';
+  h.clickSave();
+  const save = h.captured.find((m) => m.type === 'save');
+  assert.equal(save.values.ignoreInheritedProfiles, null, 'Inherit emits null (clears the override)');
+});
+
+test('an unset ignoreInheritedProfiles is forced to the Inherit state on load', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { profiles: {} } });
+  // Not in setSelectKeys -> rendered as Inherit ('default'), not an explicit value.
+  assert.equal(h.els.get('ignoreInheritedProfiles').value, 'default');
+});
+
+test('enabling the mask makes a configured profile no longer isolate the launch', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('profilesJson').value = JSON.stringify(PROFILES);
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated', 'profile isolates by default');
+  // Turning on the mask flips the launch back to overridable (mirrors hasProfilesConfig).
+  h.els.get('ignoreInheritedProfiles').value = 'enabled';
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+});
+
+test('the mask control is Workspace-only (disabled with a note at User scope)', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Global', settings: { profiles: {} } });
+  assert.equal(h.els.get('ignoreInheritedProfiles').disabled, true, 'disabled at User scope');
+  assert.equal(h.els.get('ignoreInheritedProfilesUserNote').style.display, '', 'note shown');
+  // Reloading at Workspace scope re-enables it and hides the note.
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { profiles: {} } });
+  assert.equal(h.els.get('ignoreInheritedProfiles').disabled, false, 'enabled at Workspace scope');
+  assert.equal(h.els.get('ignoreInheritedProfilesUserNote').style.display, 'none', 'note hidden');
 });

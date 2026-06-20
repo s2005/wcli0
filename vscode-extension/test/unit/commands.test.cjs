@@ -146,6 +146,20 @@ test('P26/P73/P93: showLaunchCommand writes a separate display config, not the l
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('showLaunchCommand notes that http mode cannot carry profiles instead of omitting them silently', async () => {
+  // The auto-managed config is stdio-only, so an http command can't include profiles.
+  // showLaunchCommand must say so explicitly rather than show a profile-less command.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.transport.mode', 'http');
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  const output = vscode.window.createOutputChannel('t');
+  await showLaunchCommand(output);
+  const text = output.lines.join('\n');
+  assert.match(text, /cannot be expressed in a http launch command/);
+  assert.match(text, /wcli0\.profiles/);
+});
+
 test('P98: showing commands for different settings uses distinct display config files', async () => {
   const { Wcli0McpProvider } = require('../../dist/mcpProvider.js');
   const fs = require('node:fs');
@@ -203,6 +217,72 @@ test('writeWorkspaceMcpJson refuses to export when environment profiles are conf
   await writeWorkspaceMcpJson();
   // Profiles cannot be expressed as CLI flags, so no mcp.json is written and the
   // error explains why.
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+  assert.ok(vscode.__state.calls.error.some((m) => /wcli0\.profiles/i.test(m)));
+});
+
+test('P110: ignoreInheritedProfiles unblocks the mcp.json export', async () => {
+  // Inherited profiles would normally block the export, but the Workspace opt-out
+  // masks them (hasProfilesConfig is false), so a plain stdio entry can be written.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.ignoreInheritedProfiles', true);
+  await writeWorkspaceMcpJson();
+  assert.ok(vscode.__state.files.has('/ws/.vscode/mcp.json'), 'export written with profiles masked');
+  assert.equal(vscode.__state.calls.error.length, 0);
+});
+
+test('writeWorkspaceMcpJson exports profiles via a referenced loadable configFile after confirmation', async () => {
+  // Profiles in settings normally block the export, but a referenced loadable
+  // wcli0.configFile is pinned as --config and carries them. The export warns that the
+  // file is not verified against settings, then proceeds once the user confirms.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  vscode.__setConfig(
+    vscode.ConfigurationTarget.Workspace,
+    'wcli0.configFile',
+    '${workspaceFolder}/wcli0.json',
+  );
+  vscode.__state.calls.warnReturn = 'Write anyway';
+  // Inject a loadable check so the referenced file counts as loadable (P85).
+  await writeWorkspaceMcpJson(undefined, () => true);
+  assert.equal(vscode.__state.calls.error.length, 0, 'not refused');
+  assert.ok(
+    vscode.__state.calls.warn.some((w) => /does not verify that file matches/.test(w.message)),
+    'warns the configFile is not verified against settings',
+  );
+  assert.ok(vscode.__state.files.has('/ws/.vscode/mcp.json'), 'entry written');
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.ok(
+    parsed.servers.wcli0.args.includes('--config'),
+    'entry pins --config carrying the profiles',
+  );
+});
+
+test('writeWorkspaceMcpJson aborts the profiles+configFile export when the warning is dismissed', async () => {
+  // Declining the stale-file warning must not write a possibly-divergent entry.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  vscode.__setConfig(
+    vscode.ConfigurationTarget.Workspace,
+    'wcli0.configFile',
+    '${workspaceFolder}/wcli0.json',
+  );
+  vscode.__state.calls.warnReturn = undefined; // user cancels the modal
+  await writeWorkspaceMcpJson(undefined, () => true);
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
+});
+
+test('writeWorkspaceMcpJson still refuses profiles export when no configFile is referenced', async () => {
+  // Without a config file to carry them, a plain stdio entry would drop the profiles,
+  // so the export must still refuse.
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  await writeWorkspaceMcpJson(undefined, () => true);
   assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
   assert.ok(vscode.__state.calls.error.some((m) => /wcli0\.profiles/i.test(m)));
 });

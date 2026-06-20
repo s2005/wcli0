@@ -428,7 +428,17 @@ export function buildConfigFile(sInput: Wcli0Settings): Record<string, unknown> 
   // executables/security overrides would silently take effect despite the opt-out
   // (P95). Treat shells as empty so every shell entry is built from its defaults
   // plus the legacy single-shell selector and the global security/limits.
-  const s: Wcli0Settings = sInput.ignoreInheritedShells ? { ...sInput, shells: {} } : sInput;
+  //
+  // The inherited-profiles mask (ignoreInheritedProfiles) is the profiles twin:
+  // when set, the generated/pinned config must emit NO `profiles`, otherwise an
+  // inherited User-scope profile would silently survive into the workspace config
+  // even though hasProfilesConfig has opted the launch out. Treat profiles as empty
+  // for the same reason (mirrors the shells masking).
+  const s: Wcli0Settings = {
+    ...sInput,
+    ...(sInput.ignoreInheritedShells ? { shells: {} } : {}),
+    ...(sInput.ignoreInheritedProfiles ? { profiles: {} } : {}),
+  };
   // Resolve the path values that will actually be emitted first, so downstream
   // decisions reflect what ends up in the file (an unresolved ${workspaceFolder}
   // entry is dropped and must not count as "configured").

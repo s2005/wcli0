@@ -698,6 +698,29 @@ test('P95: without ignoreInheritedShells the per-shell overrides are still appli
   assert.deepEqual(cfg.shells.cmd.executable.args, ['/k']);
 });
 
+test('P110: ignoreInheritedProfiles strips profiles from a pinned/generated config', () => {
+  // A workspace opts out of inherited profiles, but a home/cwd config.json still forces
+  // the provider to pin via buildConfigFile. The inherited profile must NOT leak into
+  // the pinned config, mirroring the ignoreInheritedShells masking.
+  const cfg = buildConfigFile(
+    defaults({
+      ignoreInheritedProfiles: true,
+      profiles: { ora19: { env: { ORACLE_HOME: '/opt/oracle/19' } } },
+    }),
+  );
+  assert.equal('profiles' in cfg, false);
+});
+
+test('P110: without ignoreInheritedProfiles the profile is still emitted', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      ignoreInheritedProfiles: false,
+      profiles: { ora19: { env: { ORACLE_HOME: '/opt/oracle/19' } } },
+    }),
+  );
+  assert.deepEqual(cfg.profiles.ora19, { env: { ORACLE_HOME: '/opt/oracle/19' } });
+});
+
 test('profiles: no profiles key emitted when none configured', () => {
   const cfg = buildConfigFile(defaults());
   assert.equal('profiles' in cfg, false);

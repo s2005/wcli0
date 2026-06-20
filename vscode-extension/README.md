@@ -151,6 +151,27 @@ rejects it). `${workspaceFolder}` and `${userHome}` in a value are resolved when
 the config is generated; server-resolved tokens such as `${PATH}` are left intact.
 **Restart the MCP server** to apply changes.
 
+#### Ignoring inherited profiles (`wcli0.ignoreInheritedProfiles`)
+
+`wcli0.profiles` is an object setting, so VS Code **deep-merges** it across scopes
+just like `wcli0.shells`. A profile set in **User** settings is merged into every
+workspace's effective value, and a workspace **cannot remove** an inherited
+profile by clearing the Profiles editor — clearing only drops the workspace's own
+override, leaving the inherited User profile in effect (so the workspace stays in
+auto-managed mode and `.vscode/mcp.json` export stays blocked).
+
+To let a single project opt out, enable `wcli0.ignoreInheritedProfiles` at the
+**Workspace** scope (the **Profiles** tab of the Configure panel). It is a
+separate boolean — not part of the merged `wcli0.profiles` object — so it cleanly
+overrides the inherited value. When set, the extension ignores profiles for that
+workspace: they no longer force the auto-managed `--config` launch and no longer
+block the `.vscode/mcp.json` export.
+
+Leave it off (the default) to inherit and use profiles as before. The flag is
+all-or-nothing for the scope, and is honored only at the Workspace scope (a User
+value would suppress your own profiles everywhere, so the form disables the
+control there).
+
 ### User vs. workspace
 
 Set machine-wide defaults in **User** settings (e.g. launch method, package

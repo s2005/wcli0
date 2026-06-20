@@ -85,6 +85,29 @@ describe('wcli0 extension', function () {
     }
   });
 
+  it('ignoreInheritedProfiles opts a workspace out of inherited profiles (deep-merge)', async function () {
+    const cfg = () => vscode.workspace.getConfiguration('wcli0');
+    // A User-scope profile is deep-merged into the workspace's effective value; the
+    // workspace cannot remove it by clearing wcli0.profiles.
+    await cfg().update(
+      'profiles',
+      { ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } } },
+      vscode.ConfigurationTarget.Global,
+    );
+    try {
+      assert.equal(hasProfilesConfig(readSettings()), true, 'inherits managed profiles mode');
+      // The separate boolean survives the deep-merge and flips the effective gate.
+      await cfg().update('ignoreInheritedProfiles', true, vscode.ConfigurationTarget.Workspace);
+      assert.equal(hasProfilesConfig(readSettings()), false, 'masked -> CLI-flag path');
+      // Unsetting the flag restores managed (inherited) profiles mode.
+      await cfg().update('ignoreInheritedProfiles', undefined, vscode.ConfigurationTarget.Workspace);
+      assert.equal(hasProfilesConfig(readSettings()), true, 'restored managed mode');
+    } finally {
+      await cfg().update('profiles', undefined, vscode.ConfigurationTarget.Global);
+      await cfg().update('ignoreInheritedProfiles', undefined, vscode.ConfigurationTarget.Workspace);
+    }
+  });
+
   it('round-trips a per-shell configuration at the global scope', async function () {
     const shells = {
       cmd: { enabled: true },
