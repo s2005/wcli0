@@ -785,6 +785,22 @@ test('P107: when every profile is dropped for invalid allowedShells no profiles 
   assert.equal('profiles' in cfg, false);
 });
 
+test('a profile whose allowedShells is a non-array value is dropped (fails closed)', () => {
+  // A hand-edited `"allowedShells": "cmd"` is not an array. Emitting the profile
+  // without the field would make the server treat it as unrestricted (every shell),
+  // the opposite of the single-shell limit the user expressed. Drop it instead.
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: {
+        bad: { allowedShells: 'cmd', env: { A: 'b' } },
+        ok: { allowedShells: ['cmd'], env: { C: 'd' } },
+      },
+    }),
+  );
+  assert.equal('bad' in cfg.profiles, false);
+  assert.deepEqual(cfg.profiles.ok, { env: { C: 'd' }, allowedShells: ['cmd'] });
+});
+
 test('P106: an env value with an unresolvable ${workspaceFolder} is dropped (no workspace open)', () => {
   // No workspace folder, so ${workspaceFolder} stays unresolved. Emitting it would
   // let the server expand the leftover token to '' and rewrite the value.

@@ -160,6 +160,15 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
   // Use defaults if no config was loaded or merge with loaded config
   const userProvidedConfig = Object.keys(loadedConfig).length > 0;
 
+  // Validate the raw `profiles` value before merging. `mergeConfigs` object-spreads
+  // `userConfig.profiles` into the merged map, which coerces a malformed top-level
+  // value such as `[]` or `123` into `{}` — so a later `validateProfiles` on the
+  // merged config would never see the bad value and the server would start with
+  // profiles silently dropped instead of rejecting the typo.
+  if (userProvidedConfig) {
+    validateProfiles(loadedConfig.profiles);
+  }
+
   const config = userProvidedConfig
     ? mergeConfigs(DEFAULT_CONFIG, loadedConfig)
     : { ...DEFAULT_CONFIG };
@@ -693,6 +702,14 @@ function validateProfiles(profiles?: Record<string, EnvProfileConfig>): void {
   }
 
   for (const [name, profile] of Object.entries(profiles)) {
+    // Reject a blank profile name. An empty key such as `"": { ... }` would be
+    // advertised by the tools, but `resolveProfileEnv` treats an empty `profile`
+    // argument as "no selection" and returns `{}`, so selecting the advertised
+    // profile would silently run without its environment instead of applying it.
+    if (name.trim() === '') {
+      throw new Error('Invalid profile: profile name must be a non-empty string');
+    }
+
     if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
       throw new Error(`Invalid profile '${name}': must be an object`);
     }

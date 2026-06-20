@@ -341,9 +341,10 @@ function applyPerShellOverrides(
  *  - `description` is emitted only when a non-empty string;
  *  - `allowedShells` is filtered to known shell names and emitted only when
  *    non-empty; a profile whose `allowedShells` was provided with entries but
- *    none valid is dropped entirely (omitting the field would make the server
- *    treat it as unrestricted, broadening it to every shell — the opposite of the
- *    intended restriction).
+ *    none valid — or is present but not an array (e.g. a hand-edited `"cmd"`) — is
+ *    dropped entirely (omitting the field would make the server treat it as
+ *    unrestricted, broadening it to every shell — the opposite of the intended
+ *    restriction).
  */
 function buildProfiles(profiles: ProfilesConfig | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -380,8 +381,17 @@ function buildProfiles(profiles: ProfilesConfig | undefined): Record<string, unk
     if (typeof profile.description === 'string' && profile.description.trim()) {
       entry.description = profile.description;
     }
-    if (Array.isArray(profile.allowedShells)) {
-      const valid = profile.allowedShells.filter((sh): sh is ShellName =>
+    const rawAllowedShells = profile.allowedShells as unknown;
+    if (rawAllowedShells !== undefined) {
+      // Fail closed on a present-but-non-array allowedShells (e.g. a hand-edited
+      // `"allowedShells": "cmd"`). Skipping it would emit the profile without the
+      // field, and the server treats an absent allowedShells as unrestricted, so a
+      // profile the user tried to limit to one shell would become selectable from
+      // EVERY shell. Drop the profile entirely instead.
+      if (!Array.isArray(rawAllowedShells)) {
+        continue;
+      }
+      const valid = rawAllowedShells.filter((sh): sh is ShellName =>
         (SHELL_NAMES as readonly string[]).includes(sh),
       );
       // A non-empty allowedShells with no valid entries (e.g. a typo like
@@ -389,7 +399,7 @@ function buildProfiles(profiles: ProfilesConfig | undefined): Record<string, unk
       // absent allowedShells as unrestricted, so the profile would be selectable
       // from EVERY shell — the opposite of the restriction the user expressed.
       // Drop the profile entirely so it fails closed.
-      if (profile.allowedShells.length > 0 && valid.length === 0) {
+      if (rawAllowedShells.length > 0 && valid.length === 0) {
         continue;
       }
       if (valid.length > 0) {

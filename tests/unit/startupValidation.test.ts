@@ -140,6 +140,52 @@ describe('Default Config - logRetentionMinutes not shadowed', () => {
   });
 });
 
+describe('Startup Validation - malformed top-level profiles', () => {
+  let tempDir: string;
+  let configPath: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wcli-profiles-test-'));
+    configPath = path.join(tempDir, 'config.json');
+  });
+
+  afterEach(() => {
+    try {
+      fs.rmSync(tempDir, { recursive: true });
+    } catch {}
+  });
+
+  // mergeConfigs object-spreads userConfig.profiles, which would coerce a
+  // malformed top-level value into {} and hide it from validateProfiles. loadConfig
+  // must validate the raw value before merging so the typo is reported, not
+  // silently dropped (leaving the server running with no profiles).
+  test('loadConfig rejects an array-valued profiles map', () => {
+    fs.writeFileSync(configPath, JSON.stringify({ shells: {}, profiles: [] }));
+    expect(() => loadConfig(configPath)).toThrow(/profiles: must be an object/);
+  });
+
+  test('loadConfig rejects a number-valued profiles map', () => {
+    fs.writeFileSync(configPath, JSON.stringify({ shells: {}, profiles: 123 }));
+    expect(() => loadConfig(configPath)).toThrow(/profiles: must be an object/);
+  });
+
+  test('loadConfig rejects a profile with a blank name', () => {
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ shells: {}, profiles: { '': { env: { FOO: 'bar' } } } })
+    );
+    expect(() => loadConfig(configPath)).toThrow(/profile name must be a non-empty string/);
+  });
+
+  test('loadConfig accepts a valid profiles map', () => {
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ shells: {}, profiles: { ora19: { env: { ORACLE_HOME: '/opt' } } } })
+    );
+    expect(() => loadConfig(configPath)).not.toThrow();
+  });
+});
+
 describe('Default Config - limit naming clarity', () => {
   test('maxTotalStorageSize (memory) and maxTotalLogSize (disk) are distinct', () => {
     const logging = DEFAULT_CONFIG.global.logging!;

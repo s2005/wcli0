@@ -227,6 +227,17 @@ test('P108: a profile dropped by buildProfiles does not gate managed config', ()
   assert.equal(hasProfilesConfig(readSettings()), true);
 });
 
+test('a profile with a non-array allowedShells does not gate managed config', () => {
+  // buildProfiles drops a profile whose allowedShells is present but not an array
+  // (e.g. a hand-edited "cmd"); the launch-mode gate must mirror that so the dropped
+  // profile does not force managed --config over wcli0.configFile.
+  vscode.__state.workspaceFolders = undefined;
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    p: { allowedShells: 'cmd', env: { A: 'b' } },
+  });
+  assert.equal(hasProfilesConfig(readSettings()), false);
+});
+
 test('ignoreInheritedShells gates hasPerShellConfig off even with non-empty shells', () => {
   // A non-empty per-shell config normally selects managed mode.
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shells', {

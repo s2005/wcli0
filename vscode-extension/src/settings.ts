@@ -310,7 +310,8 @@ export function hasPerShellConfig(s: Wcli0Settings): boolean {
  * is silently dropped from the generated config would still force the managed
  * `--config` launch (overriding `wcli0.configFile`) while the config carries no
  * `profiles`, removing both the selected profile and the referenced config:
- *  - a non-empty `allowedShells` with no valid shell names drops the profile (P107);
+ *  - a non-empty `allowedShells` with no valid shell names — or a present-but-non-array
+ *    `allowedShells` value — drops the profile (P107);
  *  - `env` must hold at least one non-empty, string-valued key whose value still
  *    resolves after extension-owned-token expansion — a value left with an
  *    unresolved `${workspaceFolder}`/`${userHome}` token is dropped (P106), so it
@@ -320,12 +321,20 @@ function isMeaningfulProfile(p: ProfileConfig | undefined): boolean {
   if (!p || typeof p !== 'object') {
     return false;
   }
-  if (Array.isArray(p.allowedShells) && p.allowedShells.length > 0) {
-    const anyValid = p.allowedShells.some((sh) =>
-      (SHELL_NAMES as readonly string[]).includes(sh),
-    );
-    if (!anyValid) {
+  const rawAllowedShells = p.allowedShells as unknown;
+  if (rawAllowedShells !== undefined) {
+    // Mirror buildProfiles: a present-but-non-array allowedShells fails closed and
+    // drops the profile, so it must not count as an emittable profile here either.
+    if (!Array.isArray(rawAllowedShells)) {
       return false;
+    }
+    if (rawAllowedShells.length > 0) {
+      const anyValid = rawAllowedShells.some((sh) =>
+        (SHELL_NAMES as readonly string[]).includes(sh),
+      );
+      if (!anyValid) {
+        return false;
+      }
     }
   }
   const env = p.env;

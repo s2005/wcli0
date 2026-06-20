@@ -222,4 +222,12 @@ describe('validateConfig profiles', () => {
     };
     expect(() => validateConfig(cfg)).not.toThrow();
   });
+
+  test('rejects a profile with a blank name', () => {
+    const cfg = cloneDefault();
+    cfg.profiles = {
+      '': { env: { FOO: 'bar' } }
+    } as any;
+    expect(() => validateConfig(cfg)).toThrow(/profile name must be a non-empty string/);
+  });
 });
