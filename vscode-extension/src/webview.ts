@@ -95,6 +95,9 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       type: 'init',
       external,
       hasWorkspace: !!primaryWorkspaceFolder(),
+      // The open folder names, so the form can resolve ${workspaceFolder:name} tokens
+      // exactly as the host does when deciding whether a profile isolates (P110).
+      workspaceFolderNames: (vscode.workspace.workspaceFolders ?? []).map((f) => f.name),
       scope: currentScope,
       settings: readSettingsForScope(currentScope, scope),
       // Which optional-string keys are explicitly set at this scope, so the form
@@ -689,9 +692,11 @@ function renderHtml(webview: vscode.Webview): string {
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
-  // Whether a workspace folder is open (sent on every init). Used to approximate the
-  // host's workspaceFolder-token resolution when deciding if a profile isolates (P110).
+  // Whether a workspace folder is open, and the open folder names (sent on every
+  // init). Used to resolve workspaceFolder tokens the way the host does when deciding
+  // if a profile isolates (P110).
   let currentHasWorkspace = true;
+  let currentWorkspaceFolderNames = [];
   const numberFields = ['commandTimeout','maxCommandLength','maxOutputLines','transport.port'];
   // Booleans rendered as tri-state selects (Inherit / enabled / disabled). Selecting
   // Inherit submits null, which applySettings maps to undefined -> clears the value
@@ -863,17 +868,24 @@ function renderHtml(webview: vscode.Webview): string {
   // allowedShells with no valid shell name, and an env value whose extension-owned
   // token cannot resolve.
   const PROFILE_SHELL_NAMES = SHELL_DEFS.map((d) => d.name);
-  // The host drops an env value when, after resolving the extension-owned tokens
-  // (workspaceFolder / userHome), one is still unresolved. The webview has no resolver,
-  // so approximate from the known workspace state: a userHome token always resolves,
-  // while a workspaceFolder token (plain or named) resolves only when a workspace
-  // folder is open. This keeps the chip from OVER-reporting isolation for a value the
-  // host drops. (The token literal is written escaped so the surrounding template
-  // string does not interpolate it.)
+  // The host drops an env value when, after resolving the extension-owned tokens, one
+  // is still unresolved (the server would expand the leftover to empty). Mirror the
+  // host's resolveVariables exactly: a named workspaceFolder:NAME token resolves only
+  // when a folder of that name is open, a plain workspaceFolder token resolves when any
+  // folder is open, and userHome always resolves. Then drop the value if any
+  // extension-owned token remains. (Regex sources are built from escaped strings so
+  // the surrounding template literal never sees a literal dollar-brace to interpolate.)
   function profileEnvValueUsable(v) {
     if (typeof v !== 'string') return false;
-    if (!currentHasWorkspace && v.indexOf('\${workspaceFolder') !== -1) return false;
-    return true;
+    var resolved = v
+      .replace(/\\$\\{workspaceFolder:([^}]+)\\}/g, function (m, name) {
+        return currentWorkspaceFolderNames.indexOf(name) !== -1 ? 'x' : m;
+      })
+      .replace(/\\$\\{workspaceFolder\\}/g, function (m) {
+        return currentHasWorkspace ? 'x' : m;
+      })
+      .replace(/\\$\\{userHome\\}/g, 'x');
+    return !/\\$\\{workspaceFolder(?::[^}]+)?\\}|\\$\\{userHome\\}/.test(resolved);
   }
   function hasMeaningfulProfiles(p) {
     if (!p || typeof p !== 'object') return false;
@@ -1376,6 +1388,9 @@ function renderHtml(webview: vscode.Webview): string {
       // controls. It deliberately does NOT switch a dirty form's selected scope (see
       // applyWorkspaceAvailability, P89), so apply it before the dirty guard.
       applyWorkspaceAvailability(msg.hasWorkspace);
+      currentWorkspaceFolderNames = Array.isArray(msg.workspaceFolderNames)
+        ? msg.workspaceFolderNames
+        : [];
       // A background configuration change must not discard unsaved edits, nor silently
       // retarget the save scope. While the form is dirty, skip BOTH the field refresh
       // and the scope-radio switch on an external reload, so the loaded scope

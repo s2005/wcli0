@@ -211,6 +211,30 @@ test('a profile whose only env value needs an unavailable ${workspaceFolder} doe
   assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
 });
 
+test('a named ${workspaceFolder:name} value only isolates when a folder of that name is open', () => {
+  // The host resolves ${workspaceFolder:name} only against a folder of that exact name,
+  // so a window with other folders open still drops the value (and the profile). The
+  // chip must check the actual folder names, not merely that some workspace is open.
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    workspaceFolderNames: ['app'],
+    scope: 'Workspace',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder:client}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+  // Once a folder named "client" is open the token resolves and the profile isolates.
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    workspaceFolderNames: ['app', 'client'],
+    scope: 'Workspace',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder:client}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
+
 test('a profiles round-trip through save persists into settings', async () => {
   vscode.__reset();
   vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];

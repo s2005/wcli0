@@ -214,6 +214,25 @@ export async function writeWorkspaceMcpJson(
       void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
       return;
     }
+    // When shells/profiles are configured the entry relies entirely on the referenced
+    // configFile to carry them, but the export cannot confirm that file is in sync with
+    // the current settings (it may be stale or hand-written) and the provider would
+    // launch from its own settings-derived auto-managed config. Warn so a stale/divergent
+    // file is a deliberate choice, not a silent loss of profiles/per-shell restrictions.
+    if (hasPerShellConfig(settings) || hasProfilesConfig(settings)) {
+      const pick = await vscode.window.showWarningMessage(
+        `wcli0: the exported entry pins wcli0.configFile (${cfgPath}) to carry wcli0.shells / ` +
+          'wcli0.profiles, but the extension does not verify that file matches your current ' +
+          'settings. If it is stale, the committed entry will launch with different ' +
+          'shells/profiles than the form shows (the provider builds its own config from ' +
+          'settings). Regenerate it via "wcli0: Generate Config File" if unsure.',
+        { modal: true },
+        'Write anyway',
+      );
+      if (pick !== 'Write anyway') {
+        return;
+      }
+    }
     // A stdio entry with no explicit wcli0.configFile carries plain CLI flags but no
     // --config, so the server's loadConfig still discovers <cwd>/config.json — where
     // <cwd> is the configured wcli0.launch.cwd if set, otherwise the workspace folder
