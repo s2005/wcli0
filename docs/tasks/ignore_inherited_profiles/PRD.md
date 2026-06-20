@@ -1,59 +1,114 @@
-# PRD: Mask inherited environment profiles (`wcli0.ignoreInheritedProfiles`)
+# PRD: Let a workspace opt out of inherited environment profiles
 
-## Problem
+## Objective
 
-`wcli0.profiles` is read through VS Code's merged object setting, so User and
-Workspace profile maps are deep-merged the same way `wcli0.shells` is. As a result:
+Give the wcli0 configuration form (and the underlying settings model) an explicit way for a
+Workspace scope to ignore the environment profiles (`wcli0.profiles`) inherited from User scope, so a
+project can fully control its effective profile set instead of being permanently stuck with User
+profiles merged in. This mirrors the `ignoreInheritedShells` opt-out and is the deferred P110 review
+item from PR #87.
 
-- A workspace that clears the Profiles textarea cannot remove a profile inherited
-  from User settings — the inherited profile still appears in `readSettings()`.
-- Redefining an inherited profile at Workspace scope with only replacement env keys
-  leaves the inherited env entries in place (deep object merge).
+## Background
 
-These stale, inherited entries are written into the workspace managed config and
-keep the mcp.json export blocked, contradicting the user's intent.
+`wcli0.profiles` is an object-valued setting. When any meaningful profile is configured, the provider
+stops emitting global CLI flags and instead launches the server against an auto-managed `--config`
+file (`hasProfilesConfig` in `vscode-extension/src/settings.ts`), and `.vscode/mcp.json` export is
+blocked. VS Code deep-merges object settings across scopes, so a User-scope `wcli0.profiles` is merged
+into every workspace's effective value.
+
+Today the form cannot express "this workspace wants no inherited profiles":
+
+- Clearing the Profiles textarea produces `{}`, which the host converts to an unset key, removing the
+  Workspace value. VS Code then re-merges the inherited User profiles, so the effective
+  `wcli0.profiles` is unchanged and `hasProfilesConfig` stays true.
+- Redefining an inherited profile at Workspace scope with only replacement env keys leaves the
+  inherited env entries in place (deep object merge), so stale variables survive into the generated
+  managed config.
+
+These stale, inherited entries are written into the workspace managed config and keep the mcp.json
+export blocked, contradicting the user's intent. The empty-textarea state is ambiguous: it could mean
+"inherit from User" (today's behavior) or "do not use profiles here". This task introduces an explicit
+control to disambiguate, plus the host logic to honor the "mask" intent.
 
 Source: Codex review on PR #87, comment P110
-(`vscode-extension/src/settings.ts` around line 209).
+(`vscode-extension/src/settings.ts` around line 209;
+analysis in `docs/tasks/env_profiles/analysis_110_mask_inherited_profiles.md`).
 
-## Goal
+## Requirements
 
-Give profiles the same opt-out / replacement semantics already provided for
-per-shell settings via `ignoreInheritedShells`, so a workspace can fully control
-its effective profile set.
+### REQ-1: Explicit "ignore inherited profiles" control
 
-## Approach (mirror `ignoreInheritedShells`)
+The configuration form exposes a single, discoverable control (form-level toggle,
+`ignoreInheritedProfiles`) that, when enabled at Workspace scope, declares that the workspace must not
+use any environment profile regardless of what User scope defines. The control is only meaningful at
+Workspace scope (User scope has nothing to inherit from), matching the `ignoreInheritedShells` control.
 
-Use the existing `ignoreInheritedShells` implementation as the template. Touch
-points to mirror:
+### REQ-2: Masking representation persisted at Workspace scope
 
-- `vscode-extension/package.json` — add a `wcli0.ignoreInheritedProfiles` boolean
-  setting (resource-scoped), documented as a Workspace-only affordance.
-- `vscode-extension/src/settings.ts` — add `ignoreInheritedProfiles` to
-  `Wcli0Settings` and `buildSettings`; recompute it Workspace-only in
-  `readSettings` (mirror `ignoreInheritedShellsAtWorkspace`, honoring a defined
-  workspace-folder value first per P105); force false for Global in
-  `readSettingsForScope` (P101); add it to `INHERITABLE_SELECT_KEYS`; make
-  `hasProfilesConfig` return false when set.
-- `vscode-extension/src/configFile.ts` — in `buildConfigFile`, treat `profiles` as
-  empty when `ignoreInheritedProfiles` is set (mirror the `shells: {}` masking).
-- `vscode-extension/src/mcpProvider.ts` / `commands.ts` — ensure the
-  managed-config gate and show/export paths respect the opt-out.
-- `vscode-extension/src/webview.ts` — add the form control + scope availability /
-  note (Workspace-only), mirroring the shells control.
-- Tests across `settings.test.cjs`, `configFile.test.cjs`, `webview*.test.cjs`,
-  `commands.test.cjs`, `mcpProvider.test.cjs`, plus integration coverage.
-- `vscode-extension/README.md` — document the new setting.
+When the control is enabled and saved at Workspace scope, the host persists an explicit Workspace-level
+boolean that neutralizes the inherited profiles so the effective (merged) settings the provider reads
+no longer satisfy `hasProfilesConfig`. The representation survives VS Code's deep-merge of
+`wcli0.profiles` (i.e. it cannot rely on clearing or persisting `{}`).
 
-## Out of scope
+### REQ-3: Provider and export honor the mask
 
-- Per-profile (rather than whole-map) masking. The shells precedent is a single
-  opt-out toggle; match it unless review feedback asks for finer control.
+With the mask active, `hasProfilesConfig` evaluates to false for the workspace, so:
 
-## Acceptance
+- the provider (`vscode-extension/src/mcpProvider.ts`) does not force managed `--config` on account of
+  profiles, and
+- the `.vscode/mcp.json` export path (`commands.ts`) is no longer blocked by inherited profiles.
 
-- With `wcli0.ignoreInheritedProfiles: true` at Workspace scope, inherited User
-  profiles do not appear in the effective settings, the generated/pinned config,
-  or the mcp.json export, and the export is no longer blocked by inherited profiles.
-- A Global/User value of the flag does not suppress the user's own profiles.
-- Existing profile behavior is unchanged when the flag is unset.
+The generated/pinned config built by `buildConfigFile` emits no `profiles` when the mask is active.
+
+### REQ-4: Round-trip and clear semantics preserved
+
+Enabling, saving, reloading and disabling the control round-trips losslessly. Disabling the control
+restores today's inherit behavior. Clearing the Profiles textarea WITHOUT enabling the control keeps
+today's "inherit from User" behavior, so existing workflows are unaffected.
+
+### REQ-5: Documentation
+
+`README` / settings documentation and the contributed setting's `markdownDescription` explain the
+inherit-vs-mask distinction and when to use the control.
+
+## Non-Requirements
+
+- No change to how User-scope profiles are authored or merged for users who want inheritance.
+- No per-profile granular masking UI (mask profile A but inherit profile B); the control is
+  all-or-nothing for the workspace in this iteration (matching the shells precedent).
+- No change to the managed-config generation format itself or to the server's `profiles` schema.
+- No change to multi-root folder-scoped (`workspaceFolderValue`) handling beyond what already exists
+  for `ignoreInheritedShells`.
+
+## Acceptance Criteria
+
+1. With User `wcli0.profiles` non-empty and the new control enabled+saved at Workspace scope, the
+   effective settings read by the provider yield `hasProfilesConfig === false`.
+2. The generated config (`buildConfigFile`) emits no `profiles`, and the mcp.json export is no longer
+   blocked by inherited profiles in that state.
+3. A Global/User value of the flag does not suppress the user's own profiles (Workspace-only honoring,
+   mirroring `ignoreInheritedShells` P101).
+4. Disabling the control restores inherited-profiles behavior.
+5. Clearing the Profiles textarea without enabling the control still inherits the User profiles
+   (unchanged).
+6. The control round-trips through save/reload at Workspace scope.
+7. Unit tests cover the settings/host logic; an integration test covers the real VS Code deep-merge
+   behavior end-to-end.
+8. `tsc --noEmit`, the unit suite, the integration suite, and markdownlint all pass.
+
+## Deliverables
+
+| Deliverable | Type |
+| ----------- | ---- |
+| vscode-extension/package.json | Update |
+| vscode-extension/src/settings.ts | Update |
+| vscode-extension/src/configFile.ts | Update |
+| vscode-extension/src/mcpProvider.ts | Update |
+| vscode-extension/src/commands.ts | Update |
+| vscode-extension/src/webview.ts | Update |
+| vscode-extension/test/unit/settings.test.cjs | Update |
+| vscode-extension/test/unit/configFile.test.cjs | Update |
+| vscode-extension/test/unit/webviewProfiles.test.cjs | Update |
+| vscode-extension/test/unit/commands.test.cjs | Update |
+| vscode-extension/test/integration/extension.test.js | Update |
+| vscode-extension/README.md | Update |
