@@ -111,6 +111,46 @@ Clearing the per-shell fields **without** enabling this flag keeps today's
 inherit behavior. The flag is all-or-nothing for the scope: it disables per-shell
 mode entirely rather than masking individual shells.
 
+### Environment profiles (`wcli0.profiles`)
+
+Named environment profiles let a single server run the same CLI tool under
+different environment variable sets, selected per call via the optional
+`profile` parameter on `execute_command` (for example testing the same SQL
+against several `sqlplus` versions, each with its own `ORACLE_HOME`, `TNS_ADMIN`
+and `PATH`). Configure them with `wcli0.profiles`, an object keyed by profile
+name, from the **Profiles** tab of the Configure panel.
+
+Per profile you can set:
+
+| Field | Meaning |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| `env` | **Required.** Map of environment variable names to string values merged into the command's environment. Values support `${VAR}` interpolation resolved by the **server** against its own environment (e.g. `C:/oracle/19/bin;${PATH}`). |
+| `description` | Optional summary surfaced in the `execute_command` tool description. |
+| `allowedShells` | Optional list restricting the profile to specific shells (`powershell`, `cmd`, `gitbash`, `wsl`, `bash`). Omit to allow every shell. |
+
+```json
+{
+  "wcli0.profiles": {
+    "ora19": {
+      "description": "Oracle 19c client",
+      "allowedShells": ["cmd", "powershell"],
+      "env": {
+        "ORACLE_HOME": "C:/oracle/19",
+        "PATH": "C:/oracle/19/bin;${PATH}"
+      }
+    }
+  }
+}
+```
+
+Like per-shell settings, profiles **cannot** be passed as CLI flags, so whenever
+any profile is configured the extension switches to the **auto-managed config
+file** launch (the same `--config` mechanism described above) and `.vscode/mcp.json`
+export is unavailable. A profile with an empty `env` is dropped (the server
+rejects it). `${workspaceFolder}` and `${userHome}` in a value are resolved when
+the config is generated; server-resolved tokens such as `${PATH}` are left intact.
+**Restart the MCP server** to apply changes.
+
 ### User vs. workspace
 
 Set machine-wide defaults in **User** settings (e.g. launch method, package

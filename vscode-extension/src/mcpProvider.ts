@@ -10,7 +10,13 @@ import {
   validateLaunchSpec,
 } from './argsBuilder';
 import { buildConfigFile } from './configFile';
-import { hasPerShellConfig, primaryWorkspaceFolder, readSettings, Wcli0Settings } from './settings';
+import {
+  hasPerShellConfig,
+  hasProfilesConfig,
+  primaryWorkspaceFolder,
+  readSettings,
+  Wcli0Settings,
+} from './settings';
 
 /** File name for the extension-owned, auto-generated per-shell config. */
 export const MANAGED_CONFIG_FILE = 'managed-config.json';
@@ -303,10 +309,10 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
       return [new vscode.McpHttpServerDefinition(SERVER_LABEL, uri)];
     }
 
-    // When any shell is configured individually, per-shell settings can only be
-    // expressed in a config file, so launch against an auto-managed one instead
-    // of the global CLI flags.
-    const perShell = hasPerShellConfig(settings);
+    // When any shell is configured individually, or any environment profile is
+    // defined, those settings can only be expressed in a config file, so launch
+    // against an auto-managed one instead of the global CLI flags.
+    const needsManagedConfig = hasPerShellConfig(settings) || hasProfilesConfig(settings);
     // The cwd the server would actually launch from: the configured wcli0.launch.cwd
     // resolved to an absolute path, or undefined when unset (the private-dir fallback
     // has no config.json to discover). Reused as the final spec when not managed.
@@ -322,10 +328,10 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     //      contains one; loadConfig loads it before the home config (P74). The
     //      private-dir fallback blocks this candidate only when no cwd is configured.
     const homeConfigPresent = this.homeConfigPresent();
-    const pinnable = !perShell && !settings.configFile.trim();
+    const pinnable = !needsManagedConfig && !settings.configFile.trim();
     const pinAgainstHomeConfig = pinnable && homeConfigPresent;
     const pinAgainstCwdConfig = pinnable && !!configuredCwd && this.cwdConfigPresent(configuredCwd);
-    const managed = perShell || pinAgainstHomeConfig || pinAgainstCwdConfig;
+    const managed = needsManagedConfig || pinAgainstHomeConfig || pinAgainstCwdConfig;
     let managedConfigPath: string | undefined;
     if (managed) {
       managedConfigPath = this.writeManagedConfig(settings);
@@ -361,7 +367,7 @@ export class Wcli0McpProvider implements vscode.McpServerDefinitionProvider {
     // rather than letting the referenced file appear to be in effect.
     if (managed && settings.configFile.trim()) {
       this.log(
-        'wcli0.configFile is ignored while shells are configured individually (wcli0.shells); the auto-managed config is used instead.',
+        'wcli0.configFile is ignored while shells (wcli0.shells) or environment profiles (wcli0.profiles) are configured; the auto-managed config is used instead.',
       );
     }
 

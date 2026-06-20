@@ -1,4 +1,4 @@
-import type { ResolvedShellConfig } from '../types/config.js';
+import type { ResolvedShellConfig, EnvProfileConfig } from '../types/config.js';
 
 /**
  * Builds the tool description dynamically based on enabled shells
@@ -90,7 +90,8 @@ export function buildToolDescription(allowedShells: string[]): string[] {
  */
 export function buildExecuteCommandDescription(
   resolvedConfigs: Map<string, ResolvedShellConfig>,
-  maxOutputLines: number = 20
+  maxOutputLines: number = 20,
+  profiles?: Record<string, EnvProfileConfig>
 ): string {
   const lines: string[] = [];
   const shellNames = Array.from(resolvedConfigs.keys());
@@ -152,7 +153,20 @@ export function buildExecuteCommandDescription(
   lines.push('- Timeout must be a positive integer between 1 and 3,600 seconds (1 hour)');
   lines.push('- If the timeout is exceeded, the command will be terminated');
   lines.push('');
-  
+
+  // List configured environment profiles so a client can discover and select
+  // one via the optional `profile` parameter. Omitted entirely when none exist.
+  const profileNames = profiles ? Object.keys(profiles) : [];
+  if (profileNames.length > 0) {
+    lines.push('**Available env profiles:**');
+    lines.push('- Use the `profile` parameter to apply one of these environments');
+    for (const name of profileNames) {
+      const description = profiles![name].description;
+      lines.push(description ? `- ${name}: ${description}` : `- ${name}`);
+    }
+    lines.push('');
+  }
+
   // Add examples
   lines.push('**Examples:**');
   lines.push('');

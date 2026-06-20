@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added support for named environment profiles (`wcli0.profiles`): a new
+  **Profiles** tab in the configuration form, emission into the generated
+  `config.json`, and an auto-managed `--config` launch whenever any profile is
+  configured (profiles cannot be passed as CLI flags). `.vscode/mcp.json` export
+  refuses while profiles are configured, mirroring per-shell settings.
 - The configuration form now loads and compares values per selected scope (User
   vs Workspace) via `inspect`, so editing one scope never surfaces or re-writes
   the other scope's values.

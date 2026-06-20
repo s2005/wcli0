@@ -448,6 +448,6 @@ test('P100: save and export validate all numeric inputs before posting', () => {
   // invalid timeout/length/maxOutputLines/port can no longer be persisted or exported.
   assert.match(html, /function validateNumbers\(\)/);
   assert.match(html, /querySelectorAll\('input\[type=number\]'\)/);
-  assert.match(html, /\$\('save'\)\.addEventListener\('click', \(\) => \{\s*if \(!validateNumbers\(\)\) return;/);
-  assert.match(html, /function exportAction\(type\) \{\s*if \(!validateNumbers\(\)\) return;/);
+  assert.match(html, /\$\('save'\)\.addEventListener\('click', \(\) => \{\s*if \(!validateNumbers\(\) \|\| !validateProfiles\(\)\) return;/);
+  assert.match(html, /function exportAction\(type\) \{\s*if \(!validateNumbers\(\) \|\| !validateProfiles\(\)\) return;/);
 });

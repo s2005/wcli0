@@ -4,7 +4,7 @@ import {
   buildValidateDirectoriesDescription,
   buildGetConfigDescription
 } from '../src/utils/toolDescription.js';
-import type { ResolvedShellConfig } from '../src/types/config.js';
+import type { ResolvedShellConfig, EnvProfileConfig } from '../src/types/config.js';
 
 function sampleConfig(name: string, type: 'cmd' | 'powershell' | 'gitbash' | 'wsl' = 'cmd'): ResolvedShellConfig {
   return {
@@ -49,6 +49,29 @@ describe('Detailed Tool Descriptions', () => {
     expect(result).toContain('Path format: Windows-style');
     expect(result).toContain('Path format: Mixed');
     expect(result).toContain('Path format: Unix-style');
+  });
+
+  test('buildExecuteCommandDescription lists configured env profiles', () => {
+    const configs = new Map<string, ResolvedShellConfig>();
+    configs.set('cmd', sampleConfig('cmd.exe', 'cmd'));
+    const profiles: Record<string, EnvProfileConfig> = {
+      ora11: { description: 'Oracle 11 client', env: { ORACLE_HOME: 'C:/oracle/11' } },
+      ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } }
+    };
+
+    const result = buildExecuteCommandDescription(configs, 20, profiles);
+
+    expect(result).toContain('**Available env profiles:**');
+    expect(result).toContain('ora11: Oracle 11 client');
+    expect(result).toContain('ora19');
+  });
+
+  test('buildExecuteCommandDescription omits profile block when none configured', () => {
+    const configs = new Map<string, ResolvedShellConfig>();
+    configs.set('cmd', sampleConfig('cmd.exe', 'cmd'));
+
+    expect(buildExecuteCommandDescription(configs)).not.toContain('Available env profiles');
+    expect(buildExecuteCommandDescription(configs, 20, {})).not.toContain('Available env profiles');
   });
 
   test('buildValidateDirectoriesDescription describes shell specific mode', () => {

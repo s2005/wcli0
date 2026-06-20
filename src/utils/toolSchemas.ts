@@ -1,4 +1,4 @@
-import type { ServerConfig, ResolvedShellConfig } from '../types/config.js';
+import type { ServerConfig, ResolvedShellConfig, EnvProfileConfig } from '../types/config.js';
 
 export interface ToolSchema {
   type: string;
@@ -12,7 +12,8 @@ export interface ToolSchema {
  */
 export function buildExecuteCommandSchema(
   enabledShells: string[],
-  resolvedConfigs: Map<string, ResolvedShellConfig>
+  resolvedConfigs: Map<string, ResolvedShellConfig>,
+  profiles?: Record<string, EnvProfileConfig>
 ): ToolSchema {
   if (enabledShells.length === 0) {
     throw new Error('No shells enabled');
@@ -38,35 +39,50 @@ export function buildExecuteCommandSchema(
     }
   }
   
+  const properties: Record<string, any> = {
+    shell: {
+      type: "string",
+      enum: enabledShells,
+      description: "Shell to use for command execution",
+      enumDescriptions: shellDescriptions
+    },
+    command: {
+      type: "string",
+      description: "Command to execute. Note: Different shells have different blocked commands and operators."
+    },
+    workingDir: {
+      type: "string",
+      description: "Working directory (optional). Format depends on shell type:\n" +
+                 "- Windows shells: Use C:\\Path\\Format\n" +
+                 "- Unix/WSL shells: Use /unix/path/format\n" +
+                 "- Mixed shells: Both formats accepted"
+    },
+    maxOutputLines: {
+      type: "number",
+      description: "Maximum number of output lines to return (optional, overrides global setting). Must be a positive integer between 1 and 10,000."
+    },
+    timeout: {
+      type: "number",
+      description: "Command timeout in seconds (optional, overrides global setting). Must be a positive integer between 1 and 3,600 (1 hour)."
+    }
+  };
+
+  // Only expose the `profile` parameter when profiles are configured, so the
+  // schema is byte-for-byte unchanged for deployments without profiles.
+  const profileNames = profiles ? Object.keys(profiles) : [];
+  if (profileNames.length > 0) {
+    properties.profile = {
+      type: "string",
+      enum: profileNames,
+      description: "Optional named environment profile to apply for this command. " +
+                 "Selecting one merges the profile's environment variables into the " +
+                 "command's environment. Omit to run with the server's default environment."
+    };
+  }
+
   return {
     type: "object",
-    properties: {
-      shell: {
-        type: "string",
-        enum: enabledShells,
-        description: "Shell to use for command execution",
-        enumDescriptions: shellDescriptions
-      },
-      command: {
-        type: "string",
-        description: "Command to execute. Note: Different shells have different blocked commands and operators."
-      },
-      workingDir: {
-        type: "string",
-        description: "Working directory (optional). Format depends on shell type:\n" +
-                   "- Windows shells: Use C:\\Path\\Format\n" +
-                   "- Unix/WSL shells: Use /unix/path/format\n" +
-                   "- Mixed shells: Both formats accepted"
-      },
-      maxOutputLines: {
-        type: "number",
-        description: "Maximum number of output lines to return (optional, overrides global setting). Must be a positive integer between 1 and 10,000."
-      },
-      timeout: {
-        type: "number",
-        description: "Command timeout in seconds (optional, overrides global setting). Must be a positive integer between 1 and 3,600 (1 hour)."
-      }
-    },
+    properties,
     required: ["shell", "command"],
     additionalProperties: false
   };

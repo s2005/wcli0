@@ -994,6 +994,44 @@ To completely remove defaults for a given restriction, provide an empty array:
 }
 ```
 
+### Environment Profiles
+
+Named environment profiles let a single server instance run the same CLI tool under different environment variable sets, selected per call via the optional `profile` parameter on `execute_command`. A common use case is testing the same SQL against different `sqlplus` versions, where each version needs its own `ORACLE_HOME`, `TNS_ADMIN`, and a `PATH` that points at that version's `bin`.
+
+Profiles are defined under an optional top-level `profiles` map. Each entry accepts:
+
+| Field | Type | Required | Description |
+| --------------- | ------------------ | -------- | ----------------------------------------------------------------------------- |
+| `env` | object | Yes | Map of environment variable names to string values. Values support `${VAR}` interpolation resolved against the server's environment. |
+| `description` | string | No | Human-readable summary surfaced in the `execute_command` tool description. |
+| `allowedShells` | string[] | No | Shells this profile may be used with (`cmd`, `powershell`, `gitbash`, `wsl`, `bash`). When omitted, the profile is allowed for every shell. |
+
+```json
+{
+  "profiles": {
+    "ora19": {
+      "description": "Oracle 19c sqlplus client",
+      "allowedShells": ["cmd", "powershell"],
+      "env": {
+        "ORACLE_HOME": "C:\\oracle\\product\\19.0.0\\client",
+        "TNS_ADMIN": "C:\\oracle\\product\\19.0.0\\client\\network\\admin",
+        "PATH": "C:\\oracle\\product\\19.0.0\\client\\bin;${PATH}"
+      }
+    }
+  }
+}
+```
+
+Behavior:
+
+- When a profile is selected, its `env` map is merged over the server's environment (`{ ...process.env, ...profileEnv }`) before the command runs.
+- `${VAR}` is replaced with the server environment value of `VAR`; an undefined reference resolves to an empty string. This is how `PATH` is prepended (`"C:\\oracle\\product\\19.0.0\\client\\bin;${PATH}"`).
+- Profiles are validated at load time: `env` must be a non-empty string-to-string map and every `allowedShells` entry must be a known shell. Invalid profiles abort startup with a descriptive error.
+- Selecting an unknown profile, or a profile whose `allowedShells` excludes the requested shell, returns an `InvalidParams` error.
+- When no `profiles` are configured, behavior is unchanged and the `profile` parameter is not exposed.
+
+A complete example is provided in `config.examples/profiles.json`. See [Configuration Examples](docs/CONFIGURATION_EXAMPLES.md#named-environment-profiles) for more.
+
 ## API
 
 ### Tools
@@ -1007,6 +1045,7 @@ To completely remove defaults for a given restriction, provide an empty array:
     - `workingDir` (optional string): Working directory
     - `maxOutputLines` (optional number): Maximum output lines to return (1-10,000). Overrides global setting.
     - `timeout` (optional number): Command timeout in seconds (1-3,600). Overrides global setting.
+    - `profile` (optional string): Named environment profile to apply for this command. Must name a configured profile (see [Environment Profiles](#environment-profiles)). Only present in the schema when profiles are configured; omit to run with the server's default environment.
   - Returns command output as text, or error message if execution fails
   - If `workingDir` is omitted, the command runs in the server's active working directory. If this has not been set, the tool returns an error.
 

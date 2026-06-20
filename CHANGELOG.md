@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] - 2026-06-19
+
+### Added
+
+- **Named environment profiles for `execute_command`** — an operator-defined top-level `profiles` map lets one server instance run the same CLI tool (e.g. `sqlplus`) under different environment variable sets, selected per call via an optional `profile` parameter
+  - Each `EnvProfileConfig` has a required `env` map and optional `description` and `allowedShells`; values support `${VAR}` interpolation resolved against the server's `process.env` (e.g. `"PATH": "C:/oracle/19/bin;${PATH}"`)
+  - Profiles are validated at load time (non-empty string-to-string `env`, known `allowedShells`); invalid profiles abort startup with a descriptive error
+  - The selected profile's env is merged at the spawn choke point (`{ ...process.env, ...profileEnv }`); an unknown profile or a shell excluded by `allowedShells` returns `McpError(InvalidParams)`
+  - The `execute_command` schema exposes an optional `profile` enum and the tool description lists configured profiles, only when profiles are configured
+- New `config.examples/profiles.json`, plus README, `docs/CONFIGURATION_EXAMPLES.md`, and `docs/defaults.md` documentation
+- **VS Code extension support** for environment profiles: a new `wcli0.profiles` setting, emission into the generated config, an auto-managed `--config` launch when any profile is configured, and a new **Profiles** tab in the configuration view
+
+### Notes
+
+- The change is purely additive and backward compatible: with no `profiles` and no `profile` argument, behavior is unchanged
+
 ## [1.3.1] - 2026-05-30
 
 ### Changed

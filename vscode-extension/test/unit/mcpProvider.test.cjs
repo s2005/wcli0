@@ -189,6 +189,49 @@ test('per-shell config launches via an auto-managed --config file', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('profiles config launches via an auto-managed --config file', () => {
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    ora19: { description: 'Oracle 19c', env: { ORACLE_HOME: 'C:/oracle/19' } },
+  });
+  const dir = managedDir();
+  // No home config so only the profiles drive the managed launch (injected false).
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    dir,
+    () => false,
+  ).provideMcpServerDefinitions();
+  assert.equal(defs.length, 1);
+  const args = defs[0].args;
+  const ci = args.indexOf('--config');
+  assert.ok(ci >= 0, '--config present so profiles take effect');
+  assert.equal(args[ci + 1], path.join(dir, 'managed-config.json'));
+  assert.ok(!args.includes('--shell'), 'no --shell in managed mode');
+
+  const written = JSON.parse(fs.readFileSync(path.join(dir, 'managed-config.json'), 'utf8'));
+  assert.deepEqual(written.profiles.ora19, {
+    env: { ORACLE_HOME: 'C:/oracle/19' },
+    description: 'Oracle 19c',
+  });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a profile with an empty env does not trigger the managed launch', () => {
+  // An empty env is dropped by buildProfiles and rejected by the server, so it must
+  // not flip the launch to managed mode (which would write a config with no profiles).
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.profiles', {
+    empty: { env: {} },
+  });
+  vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
+  const defs = new Wcli0McpProvider(
+    undefined,
+    '/priv',
+    managedDir(),
+    () => false,
+  ).provideMcpServerDefinitions();
+  assert.deepEqual(defs[0].args, ['-y', 'wcli0@latest', '--shell', 'cmd']);
+});
+
 test('without per-shell config the normal CLI-flag launch is unchanged', () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');
   // No home config (injected false), so no pinning: the global CLI flags are used.

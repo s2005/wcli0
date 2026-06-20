@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig, LoggingConfig, TransportConfig } from '../types/config.js';
+import { ServerConfig, ResolvedShellConfig, WslShellConfig, BaseShellConfig, LoggingConfig, TransportConfig, EnvProfileConfig, ShellType } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 import { debugWarn, errorLog } from './log.js';
@@ -129,7 +129,8 @@ export const DEFAULT_CONFIG: ServerConfig = {
     httpHost: '127.0.0.1',
     httpPort: 9444,
     httpAllowedOrigins: []
-  }
+  },
+  profiles: {}
 };
 
 export function loadConfig(configPath?: string, disableIfEmpty = false): ServerConfig {
@@ -159,12 +160,27 @@ export function loadConfig(configPath?: string, disableIfEmpty = false): ServerC
   // Use defaults if no config was loaded or merge with loaded config
   const userProvidedConfig = Object.keys(loadedConfig).length > 0;
 
+  // Validate the raw `profiles` value before merging. `mergeConfigs` object-spreads
+  // `userConfig.profiles` into the merged map, which coerces a malformed top-level
+  // value such as `[]` or `123` into `{}` — so a later `validateProfiles` on the
+  // merged config would never see the bad value and the server would start with
+  // profiles silently dropped instead of rejecting the typo.
+  if (userProvidedConfig) {
+    validateProfiles(loadedConfig.profiles);
+  }
+
   const config = userProvidedConfig
     ? mergeConfigs(DEFAULT_CONFIG, loadedConfig)
     : { ...DEFAULT_CONFIG };
 
   if (!config.global.paths.allowedPaths) {
     config.global.paths.allowedPaths = [];
+  }
+
+  // Default profiles to an empty set when absent so downstream code can rely on
+  // the field existing without preserving any pre-feature behavior change.
+  if (!config.profiles) {
+    config.profiles = {};
   }
 
   if (
@@ -495,6 +511,14 @@ export function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<Se
     };
   }
 
+  // Merge profiles (user profiles override defaults of the same name)
+  if (defaultConfig.profiles || userConfig.profiles) {
+    merged.profiles = {
+      ...(defaultConfig.profiles || {}),
+      ...(userConfig.profiles || {})
+    };
+  }
+
   return merged;
 }
 function validateLoggingConfig(config?: LoggingConfig): void {
@@ -664,6 +688,67 @@ function validateTransportConfig(transport?: TransportConfig): void {
   }
 }
 
+const VALID_SHELL_TYPES: ShellType[] = ['cmd', 'powershell', 'gitbash', 'wsl', 'bash'];
+
+function validateProfiles(profiles?: Record<string, EnvProfileConfig>): void {
+  if (profiles === undefined || profiles === null) return;
+
+  // Reject a non-object or array `profiles` value before iterating. A direct
+  // config typo such as `"profiles": []` is truthy with no entries, so the loop
+  // below would silently accept it and the server would start with no profiles
+  // instead of reporting the malformed config.
+  if (typeof profiles !== 'object' || Array.isArray(profiles)) {
+    throw new Error('Invalid profiles: must be an object mapping profile names to definitions');
+  }
+
+  for (const [name, profile] of Object.entries(profiles)) {
+    // Reject a blank profile name. An empty key such as `"": { ... }` would be
+    // advertised by the tools, but `resolveProfileEnv` treats an empty `profile`
+    // argument as "no selection" and returns `{}`, so selecting the advertised
+    // profile would silently run without its environment instead of applying it.
+    if (name.trim() === '') {
+      throw new Error('Invalid profile: profile name must be a non-empty string');
+    }
+
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+      throw new Error(`Invalid profile '${name}': must be an object`);
+    }
+
+    if (profile.description !== undefined && typeof profile.description !== 'string') {
+      throw new Error(`Invalid profile '${name}': description must be a string`);
+    }
+
+    if (profile.allowedShells !== undefined) {
+      if (!Array.isArray(profile.allowedShells)) {
+        throw new Error(`Invalid profile '${name}': allowedShells must be an array`);
+      }
+      for (const shell of profile.allowedShells) {
+        if (!VALID_SHELL_TYPES.includes(shell)) {
+          throw new Error(
+            `Invalid profile '${name}': unknown shell '${shell}' in allowedShells. ` +
+              `Valid shells: ${VALID_SHELL_TYPES.join(', ')}`
+          );
+        }
+      }
+    }
+
+    if (!profile.env || typeof profile.env !== 'object' || Array.isArray(profile.env)) {
+      throw new Error(`Invalid profile '${name}': env must be an object`);
+    }
+
+    const envEntries = Object.entries(profile.env);
+    if (envEntries.length === 0) {
+      throw new Error(`Invalid profile '${name}': env must contain at least one variable`);
+    }
+
+    for (const [key, value] of envEntries) {
+      if (typeof value !== 'string') {
+        throw new Error(`Invalid profile '${name}': env value for '${key}' must be a string`);
+      }
+    }
+  }
+}
+
 export function validateConfig(config: ServerConfig): void {
   // Validate security settings
   if (config.global.security.maxCommandLength < 1) {
@@ -688,6 +773,9 @@ export function validateConfig(config: ServerConfig): void {
   // Validate transport configuration (catches malformed config-file values such
   // as a string ssePort that would otherwise be treated as a named-pipe path)
   validateTransportConfig(config.transport);
+
+  // Validate named environment profiles
+  validateProfiles(config.profiles);
 }
 
 // Helper function to create a default config file

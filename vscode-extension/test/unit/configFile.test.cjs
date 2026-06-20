@@ -697,3 +697,149 @@ test('P95: without ignoreInheritedShells the per-shell overrides are still appli
   assert.equal(cfg.shells.cmd.executable.command, 'C:/custom/cmd.exe');
   assert.deepEqual(cfg.shells.cmd.executable.args, ['/k']);
 });
+
+test('profiles: no profiles key emitted when none configured', () => {
+  const cfg = buildConfigFile(defaults());
+  assert.equal('profiles' in cfg, false);
+});
+
+test('profiles: a valid profile is emitted with env, description and allowedShells', () => {
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: {
+        ora19: {
+          description: 'Oracle 19c',
+          allowedShells: ['cmd', 'powershell'],
+          env: { ORACLE_HOME: 'C:/oracle/19', PATH: 'C:/oracle/19/bin;${PATH}' },
+        },
+      },
+    }),
+  );
+  assert.deepEqual(cfg.profiles, {
+    ora19: {
+      env: { ORACLE_HOME: 'C:/oracle/19', PATH: 'C:/oracle/19/bin;${PATH}' },
+      description: 'Oracle 19c',
+      allowedShells: ['cmd', 'powershell'],
+    },
+  });
+});
+
+test('profiles: a profile with an empty env is dropped (server rejects it)', () => {
+  const cfg = buildConfigFile(
+    defaults({ profiles: { empty: { env: {} }, ok: { env: { A: 'b' } } } }),
+  );
+  assert.equal('empty' in cfg.profiles, false);
+  assert.deepEqual(cfg.profiles.ok, { env: { A: 'b' } });
+});
+
+test('profiles: when every profile is dropped no profiles key is emitted', () => {
+  const cfg = buildConfigFile(defaults({ profiles: { empty: { env: {} } } }));
+  assert.equal('profiles' in cfg, false);
+});
+
+test('profiles: ${workspaceFolder} is resolved but ${PATH} is left for the server', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: { p: { env: { HOME_DIR: '${workspaceFolder}/bin', PATH: 'x;${PATH}' } } },
+    }),
+  );
+  assert.equal(cfg.profiles.p.env.HOME_DIR, '/ws/bin');
+  assert.equal(cfg.profiles.p.env.PATH, 'x;${PATH}');
+});
+
+test('profiles: blank env keys and non-string values are dropped', () => {
+  const cfg = buildConfigFile(
+    defaults({ profiles: { p: { env: { '  ': 'x', N: 5, OK: 'v' } } } }),
+  );
+  assert.deepEqual(cfg.profiles.p.env, { OK: 'v' });
+});
+
+test('profiles: an unknown shell in allowedShells is filtered out', () => {
+  const cfg = buildConfigFile(
+    defaults({ profiles: { p: { allowedShells: ['cmd', 'fish'], env: { A: 'b' } } } }),
+  );
+  assert.deepEqual(cfg.profiles.p.allowedShells, ['cmd']);
+});
+
+test('P107: a profile whose allowedShells are all invalid is dropped (not broadened to all shells)', () => {
+  // A typo like ['powershel'] filters to an empty list; omitting the field would
+  // make the server treat the profile as unrestricted (every shell), the opposite
+  // of the intended restriction. Drop the profile so it fails closed.
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: {
+        p: { allowedShells: ['powershel'], env: { A: 'b' } },
+        ok: { allowedShells: ['cmd'], env: { C: 'd' } },
+      },
+    }),
+  );
+  assert.equal('p' in cfg.profiles, false);
+  assert.deepEqual(cfg.profiles.ok, { env: { C: 'd' }, allowedShells: ['cmd'] });
+});
+
+test('P107: when every profile is dropped for invalid allowedShells no profiles key is emitted', () => {
+  const cfg = buildConfigFile(
+    defaults({ profiles: { p: { allowedShells: ['fish'], env: { A: 'b' } } } }),
+  );
+  assert.equal('profiles' in cfg, false);
+});
+
+test('a profile whose allowedShells is a non-array value is dropped (fails closed)', () => {
+  // A hand-edited `"allowedShells": "cmd"` is not an array. Emitting the profile
+  // without the field would make the server treat it as unrestricted (every shell),
+  // the opposite of the single-shell limit the user expressed. Drop it instead.
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: {
+        bad: { allowedShells: 'cmd', env: { A: 'b' } },
+        ok: { allowedShells: ['cmd'], env: { C: 'd' } },
+      },
+    }),
+  );
+  assert.equal('bad' in cfg.profiles, false);
+  assert.deepEqual(cfg.profiles.ok, { env: { C: 'd' }, allowedShells: ['cmd'] });
+});
+
+test('P106: an env value with an unresolvable ${workspaceFolder} is dropped (no workspace open)', () => {
+  // No workspace folder, so ${workspaceFolder} stays unresolved. Emitting it would
+  // let the server expand the leftover token to '' and rewrite the value.
+  vscodeStub.workspace.workspaceFolders = [];
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: {
+        p: { env: { PATHX: '${workspaceFolder}/bin;${PATH}', KEEP: 'literal;${PATH}' } },
+      },
+    }),
+  );
+  assert.equal('PATHX' in cfg.profiles.p.env, false);
+  // A value with only a server-owned token (${PATH}) is preserved untouched.
+  assert.equal(cfg.profiles.p.env.KEEP, 'literal;${PATH}');
+});
+
+test('P106: a profile left with no env after dropping unresolved tokens is omitted', () => {
+  vscodeStub.workspace.workspaceFolders = [];
+  const cfg = buildConfigFile(
+    defaults({ profiles: { p: { env: { ONLY: '${workspaceFolder}/bin' } } } }),
+  );
+  assert.equal('profiles' in cfg, false);
+});
+
+test('P106: an unresolvable ${workspaceFolder:name} env value is dropped', () => {
+  // The named workspace-folder form stays unresolved when no folder matches.
+  vscodeStub.workspace.workspaceFolders = [];
+  const cfg = buildConfigFile(
+    defaults({
+      profiles: { p: { env: { D: '${workspaceFolder:missing}/x', OK: 'v' } } },
+    }),
+  );
+  assert.equal('D' in cfg.profiles.p.env, false);
+  assert.equal(cfg.profiles.p.env.OK, 'v');
+});
+
+test('profiles: a blank profile name is skipped', () => {
+  const cfg = buildConfigFile(
+    defaults({ profiles: { '   ': { env: { A: 'b' } }, real: { env: { C: 'd' } } } }),
+  );
+  assert.deepEqual(Object.keys(cfg.profiles), ['real']);
+});

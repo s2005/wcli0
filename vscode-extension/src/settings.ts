@@ -53,6 +53,28 @@ export interface PerShellConfig {
 export type ShellsConfig = Partial<Record<ShellName, PerShellConfig>>;
 
 /**
+ * A named environment profile mirroring the server's EnvProfileConfig (see
+ * src/types/config.ts). Selected per call via the `profile` parameter on
+ * execute_command; its `env` map is merged into the spawned command environment.
+ */
+export interface ProfileConfig {
+  /** Human-readable summary surfaced in the execute_command tool description. */
+  description?: string;
+  /** Shells this profile may be used with. Omitted/empty means "all shells". */
+  allowedShells?: ShellName[];
+  /**
+   * Environment variables applied when this profile is selected. Values support
+   * `${VAR}` interpolation resolved by the SERVER against its own environment
+   * (e.g. `${PATH}`), so they are emitted verbatim except for the extension-owned
+   * `${workspaceFolder}` / `${userHome}` tokens, which are resolved at emit time.
+   */
+  env: Record<string, string>;
+}
+
+/** Map of profile name -> profile configuration (the server's `profiles`). */
+export type ProfilesConfig = Record<string, ProfileConfig>;
+
+/**
  * Normalized view of the `wcli0.*` settings for a given scope/resource.
  * Mirrors the CLI options accepted by the wcli0 server (see src/index.ts).
  */
@@ -68,6 +90,13 @@ export interface Wcli0Settings {
   configFile: string;
   shell: string;
   shells: ShellsConfig;
+  /**
+   * Named environment profiles (the server's top-level `profiles` map). Like
+   * per-shell config, profiles can only be expressed in a config file, so when
+   * any profile is configured the extension launches with an auto-managed
+   * `--config` (see hasProfilesConfig).
+   */
+  profiles: ProfilesConfig;
   /**
    * Whether this scope opts out of per-shell configuration entirely. VS Code
    * deep-merges object settings, so a Workspace cannot remove a `shells` entry
@@ -139,6 +168,20 @@ export function hasUnresolvedVariables(value: string): boolean {
   return /\$\{[^}]+\}/.test(value);
 }
 
+/**
+ * Whether a string still contains an unresolved EXTENSION-owned token — one of
+ * the `${workspaceFolder}` / `${workspaceFolder:name}` / `${userHome}` forms that
+ * `resolveVariables` is responsible for expanding. Unlike `hasUnresolvedVariables`
+ * this deliberately ignores arbitrary `${VAR}` tokens (e.g. `${PATH}`), which are
+ * server-owned and meant to be interpolated by the server at spawn time. Callers
+ * that emit values the server later interpolates (profile env) use this to refuse
+ * a value whose extension-owned token could not be resolved, since the server
+ * would otherwise expand the leftover token to an empty string.
+ */
+export function hasUnresolvedExtensionVariables(value: string): boolean {
+  return /\$\{workspaceFolder(?::[^}]+)?\}|\$\{userHome\}/.test(value);
+}
+
 function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -163,6 +206,7 @@ function buildSettings(g: Getter): Wcli0Settings {
     configFile: g<string>('configFile', ''),
     shell: g<string>('shell', 'all'),
     shells: g<ShellsConfig>('shells', {}),
+    profiles: g<ProfilesConfig>('profiles', {}),
     ignoreInheritedShells: g<boolean>('ignoreInheritedShells', false),
     allowedDirectories: g<string[]>('allowedDirectories', []),
     initialDir: g<string>('initialDir', ''),
@@ -257,6 +301,63 @@ export function hasPerShellConfig(s: Wcli0Settings): boolean {
   }
   const shells = s.shells ?? {};
   return SHELL_NAMES.some((name) => isMeaningfulShellConfig(shells[name]));
+}
+
+/**
+ * Whether a single profile entry would survive `buildProfiles` and be emitted into
+ * the generated config. This is the launch-mode gate's view of a profile, so it
+ * must mirror every drop condition buildProfiles applies — otherwise a profile that
+ * is silently dropped from the generated config would still force the managed
+ * `--config` launch (overriding `wcli0.configFile`) while the config carries no
+ * `profiles`, removing both the selected profile and the referenced config:
+ *  - a non-empty `allowedShells` with no valid shell names — or a present-but-non-array
+ *    `allowedShells` value — drops the profile (P107);
+ *  - `env` must hold at least one non-empty, string-valued key whose value still
+ *    resolves after extension-owned-token expansion — a value left with an
+ *    unresolved `${workspaceFolder}`/`${userHome}` token is dropped (P106), so it
+ *    does not count toward an emittable env (the server rejects an empty `env`).
+ */
+function isMeaningfulProfile(p: ProfileConfig | undefined): boolean {
+  if (!p || typeof p !== 'object') {
+    return false;
+  }
+  const rawAllowedShells = p.allowedShells as unknown;
+  if (rawAllowedShells !== undefined) {
+    // Mirror buildProfiles: a present-but-non-array allowedShells fails closed and
+    // drops the profile, so it must not count as an emittable profile here either.
+    if (!Array.isArray(rawAllowedShells)) {
+      return false;
+    }
+    if (rawAllowedShells.length > 0) {
+      const anyValid = rawAllowedShells.some((sh) =>
+        (SHELL_NAMES as readonly string[]).includes(sh),
+      );
+      if (!anyValid) {
+        return false;
+      }
+    }
+  }
+  const env = p.env;
+  if (!env || typeof env !== 'object' || Array.isArray(env)) {
+    return false;
+  }
+  return Object.keys(env).some(
+    (k) =>
+      k.trim() !== '' &&
+      typeof env[k] === 'string' &&
+      !hasUnresolvedExtensionVariables(resolveVariables(env[k])),
+  );
+}
+
+/**
+ * Whether the user has configured any environment profile. Like
+ * {@link hasPerShellConfig}, a true result forces the extension to launch the
+ * server with an auto-managed `--config` file: profiles are a config-file-only
+ * concept with no CLI flag, so they cannot be expressed via launch flags.
+ */
+export function hasProfilesConfig(s: Wcli0Settings): boolean {
+  const profiles = s.profiles ?? {};
+  return Object.keys(profiles).some((name) => name.trim() !== '' && isMeaningfulProfile(profiles[name]));
 }
 
 /**
