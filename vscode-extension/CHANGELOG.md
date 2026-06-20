@@ -12,6 +12,15 @@
   workspace cannot otherwise remove). When enabled, inherited profiles no longer
   force the auto-managed `--config` launch or block the `.vscode/mcp.json` export.
   Mirrors `wcli0.ignoreInheritedShells`; exposed on the **Profiles** tab.
+- `.vscode/mcp.json` export now succeeds for a profiles/shells workspace when a
+  loadable `wcli0.configFile` is referenced (the entry pins it as `--config`,
+  carrying the settings); it still refuses only when nothing can represent them.
+- `Show Resolved Launch Command` now states explicitly that an http/sse command
+  cannot carry shells/profiles (the auto-managed config is stdio-only) instead of
+  printing a command that silently omits them.
+- The configuration form's isolation indicator now mirrors the server's profile
+  drop rules (invalid/non-array `allowedShells`, and env values whose
+  `${workspaceFolder}` cannot resolve), so it no longer over-reports "Isolated".
 - The configuration form now loads and compares values per selected scope (User
   vs Workspace) via `inspect`, so editing one scope never surfaces or re-writes
   the other scope's values.

@@ -689,6 +689,9 @@ function renderHtml(webview: vscode.Webview): string {
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
+  // Whether a workspace folder is open (sent on every init). Used to approximate the
+  // host's workspaceFolder-token resolution when deciding if a profile isolates (P110).
+  let currentHasWorkspace = true;
   const numberFields = ['commandTimeout','maxCommandLength','maxOutputLines','transport.port'];
   // Booleans rendered as tri-state selects (Inherit / enabled / disabled). Selecting
   // Inherit submits null, which applySettings maps to undefined -> clears the value
@@ -853,16 +856,43 @@ function renderHtml(webview: vscode.Webview): string {
       return null;
     }
   }
-  // Whether a parsed profiles object has at least one profile with a non-empty env
-  // of string values under a non-blank key. Mirrors the host's isMeaningfulProfile
-  // so the isolation chip matches the provider's managed-launch decision.
+  // Whether a parsed profiles object has at least one profile the host would emit.
+  // Mirrors the host's isMeaningfulProfile/buildProfiles so the isolation chip matches
+  // the provider's managed-launch decision, including the drop conditions that make a
+  // profile non-isolating: a present-but-non-array allowedShells, a non-empty
+  // allowedShells with no valid shell name, and an env value whose extension-owned
+  // token cannot resolve.
+  const PROFILE_SHELL_NAMES = SHELL_DEFS.map((d) => d.name);
+  // The host drops an env value when, after resolving the extension-owned tokens
+  // (workspaceFolder / userHome), one is still unresolved. The webview has no resolver,
+  // so approximate from the known workspace state: a userHome token always resolves,
+  // while a workspaceFolder token (plain or named) resolves only when a workspace
+  // folder is open. This keeps the chip from OVER-reporting isolation for a value the
+  // host drops. (The token literal is written escaped so the surrounding template
+  // string does not interpolate it.)
+  function profileEnvValueUsable(v) {
+    if (typeof v !== 'string') return false;
+    if (!currentHasWorkspace && v.indexOf('\${workspaceFolder') !== -1) return false;
+    return true;
+  }
   function hasMeaningfulProfiles(p) {
     if (!p || typeof p !== 'object') return false;
     return Object.keys(p).some((name) => {
       if (!name.trim()) return false;
-      const env = p[name] && p[name].env;
+      const prof = p[name];
+      if (!prof || typeof prof !== 'object') return false;
+      // Mirror buildProfiles' allowedShells drops (P107): a present-but-non-array
+      // value, or a non-empty array with no valid shell, drops the whole profile.
+      const allowed = prof.allowedShells;
+      if (allowed !== undefined) {
+        if (!Array.isArray(allowed)) return false;
+        if (allowed.length > 0 && !allowed.some((sh) => PROFILE_SHELL_NAMES.includes(sh))) {
+          return false;
+        }
+      }
+      const env = prof.env;
       if (!env || typeof env !== 'object' || Array.isArray(env)) return false;
-      return Object.keys(env).some((k) => k.trim() !== '' && typeof env[k] === 'string');
+      return Object.keys(env).some((k) => k.trim() !== '' && profileEnvValueUsable(env[k]));
     });
   }
   // Refresh the inline parse-error message; returns true when the JSON is valid.
@@ -1280,6 +1310,7 @@ function renderHtml(webview: vscode.Webview): string {
   // no-workspace hint. When the folder is gone, force the Global radio so the form
   // never keeps Workspace selected against a non-existent target.
   function applyWorkspaceAvailability(hasWorkspace) {
+    currentHasWorkspace = !!hasWorkspace;
     const ws = document.querySelector('input[name=scope][value=Workspace]');
     const gl = document.querySelector('input[name=scope][value=Global]');
     if (hasWorkspace) {

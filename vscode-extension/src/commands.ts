@@ -184,13 +184,22 @@ export async function writeWorkspaceMcpJson(
   // launch settings (method, allowed dirs) are irrelevant and only the port
   // matters — otherwise a valid external endpoint couldn't be written.
   if (settings.transportMode === 'stdio') {
+    // A referenced wcli0.configFile becomes the entry's `--config`; validate it can
+    // actually be loaded so the exported entry does not silently fall back to an
+    // implicit config the server discovers instead (P85).
+    const cfgPath = resolvedConfigFilePath(settings);
+    const cfgLoadable = !cfgPath || configFileLoadable(cfgPath);
+    const hasLoadableConfigFile = !!cfgPath && cfgLoadable;
     // Per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles)
-    // cannot be expressed as the CLI flags a committed mcp.json carries; the
-    // auto-provider launches them via a managed --config file instead. Writing a
-    // stdio entry here would silently ignore them (different enabled shells /
-    // weaker restrictions / missing profiles), so refuse rather than emit a
-    // mismatched entry.
-    if (hasPerShellConfig(settings) || hasProfilesConfig(settings)) {
+    // cannot be expressed as the CLI flags a committed mcp.json carries. A referenced
+    // (loadable) wcli0.configFile IS pinned as the entry's --config below and DOES
+    // carry them, so the exported entry is self-consistent; only refuse when there is
+    // no config file to represent them, where a plain stdio entry would silently drop
+    // them (different enabled shells / weaker restrictions / missing profiles).
+    // (The provider prefers its auto-managed config over wcli0.configFile when both are
+    // set — keep the referenced file in sync with settings, or clear the settings, to
+    // match the provider exactly.)
+    if ((hasPerShellConfig(settings) || hasProfilesConfig(settings)) && !hasLoadableConfigFile) {
       void vscode.window.showErrorMessage(
         'wcli0: per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles) cannot be ' +
           'represented in .vscode/mcp.json. Generate a config file (wcli0: Generate Config File) and ' +
@@ -198,11 +207,6 @@ export async function writeWorkspaceMcpJson(
       );
       return;
     }
-    // A referenced wcli0.configFile becomes the entry's `--config`; validate it can
-    // actually be loaded so the exported entry does not silently fall back to an
-    // implicit config the server discovers instead (P85).
-    const cfgPath = resolvedConfigFilePath(settings);
-    const cfgLoadable = !cfgPath || configFileLoadable(cfgPath);
     const blocking = validateLaunchSpec(settings, false, false, cfgLoadable).filter(
       (p) => p.blocking,
     );
@@ -366,10 +370,12 @@ export async function showLaunchCommand(
   const settings = readExportSettings(asScope(formScopeArg), scope);
   // Mirror the provider: when shells are configured individually OR environment
   // profiles are defined, the server is launched against an auto-managed config
-  // file, not the global CLI flags.
-  const perShell =
-    (hasPerShellConfig(settings) || hasProfilesConfig(settings)) &&
-    settings.transportMode === 'stdio';
+  // file, not the global CLI flags. The auto-managed config is stdio-only
+  // (buildManagedServerArgs forces --transport stdio), so this path is gated on stdio;
+  // for http/sse the command can't carry shells/profiles and says so explicitly below
+  // rather than silently omitting them.
+  const shellsOrProfilesConfigured = hasPerShellConfig(settings) || hasProfilesConfig(settings);
+  const perShell = shellsOrProfilesConfigured && settings.transportMode === 'stdio';
   // Also mirror the provider's pinning: a plain stdio launch with no per-shell
   // config and no wcli0.configFile is launched against a generated config when the
   // server would otherwise discover an implicit config that overrides the displayed
@@ -457,6 +463,24 @@ export async function showLaunchCommand(
       );
       output.appendLine('~/.win-cli-mcp/config.json) cannot override these settings.');
     }
+  }
+  // Shells/profiles can only be carried by the stdio auto-managed config, so an
+  // http/sse command above does NOT include them. Say so explicitly rather than let
+  // the user copy a command that silently runs without the configured shells/profiles.
+  if (shellsOrProfilesConfigured && settings.transportMode !== 'stdio') {
+    output.appendLine('');
+    output.appendLine(
+      'Note: shells (wcli0.shells) or environment profiles (wcli0.profiles) are configured but',
+    );
+    output.appendLine(
+      `cannot be expressed in a ${settings.transportMode} launch command (they require the stdio`,
+    );
+    output.appendLine(
+      'auto-managed config). Generate a config file (wcli0: Generate Config File) and start the',
+    );
+    output.appendLine(
+      'server with --config to apply them, or use stdio transport for the auto-managed launch.',
+    );
   }
   // Show the cwd the server actually runs in. With no wcli0.launch.cwd set, the
   // provider does NOT inherit the caller's directory: it launches from a private

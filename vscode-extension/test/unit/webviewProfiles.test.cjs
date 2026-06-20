@@ -172,6 +172,45 @@ test('a profile with an empty env does not isolate the launch', () => {
   assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
 });
 
+test('a profile the host drops (all-invalid allowedShells) does not isolate', () => {
+  // buildProfiles drops a profile whose non-empty allowedShells has no valid shell,
+  // so the chip must not report Isolated for it (it would mislead about pinning).
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('profilesJson').value = JSON.stringify({ p: { allowedShells: ['fish'], env: { A: 'b' } } });
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+});
+
+test('a profile with a non-array allowedShells does not isolate', () => {
+  const h = makeHarness();
+  h.dispatch({ type: 'init', hasWorkspace: true, scope: 'Workspace', settings: { shells: {} } });
+  h.els.get('profilesJson').value = JSON.stringify({ p: { allowedShells: 'cmd', env: { A: 'b' } } });
+  h.input('profilesJson');
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+});
+
+test('a profile whose only env value needs an unavailable ${workspaceFolder} does not isolate', () => {
+  // With no workspace open the host drops the ${workspaceFolder} value (it cannot
+  // resolve), leaving an empty env the server rejects — so it must not isolate.
+  const h = makeHarness();
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: false,
+    scope: 'Global',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Overridable');
+  // The same profile DOES isolate once a workspace is open (the token resolves).
+  h.dispatch({
+    type: 'init',
+    hasWorkspace: true,
+    scope: 'Workspace',
+    settings: { shells: {}, profiles: { p: { env: { ONLY: '${workspaceFolder}/bin' } } } },
+  });
+  assert.equal(h.els.get('isolationChip').textContent, 'Isolated');
+});
+
 test('a profiles round-trip through save persists into settings', async () => {
   vscode.__reset();
   vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
