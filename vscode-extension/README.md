@@ -28,6 +28,36 @@ you get per-user defaults plus per-project overrides for free — no hand-edited
   first persist the form's current edits to the selected scope, so the generated
   output always matches what you see (no separate "Save settings" click needed).
 
+### Editing an existing `.vscode/mcp.json`
+
+The configuration panel can edit more than VS Code settings. A **configuration
+source** switcher at the top of the panel makes explicit *what* the form is
+editing and *where* **Save** writes:
+
+- **VS Code Settings** (the default) — edits your `wcli0.*` settings at the
+  **User** or **Workspace** scope, exactly as before.
+- **`.vscode/mcp.json`** — edits the `servers.wcli0` entry of the workspace
+  `mcp.json` **file** directly.
+
+When the panel opens, it checks whether the workspace `.vscode/mcp.json` already
+defines a `wcli0` server. If it does, a banner offers a one-click **Load &
+edit**. Loading reverse-maps the entry into the form (launch method, shell,
+allowed directories, limits, transport, …); flags the form does not model are
+preserved verbatim so a save round-trips them. With the file source active,
+**Save to file** writes the edited entry back to `.vscode/mcp.json` — other
+servers in the file are preserved, comments/non-object files are refused rather
+than clobbered, and **no `wcli0.*` setting is written**. This makes
+*load → edit → save* a first-class path alongside the existing
+*new → export* one.
+
+The server's implicit `~/.win-cli-mcp/config.json` is listed in the switcher as
+a **read-only preview** only; it is never an editable or save target. An entry
+that references a `--config` file (so its per-shell settings/profiles live in
+that file) can be edited for the parts the form models, but the referenced
+file's contents are not editable here — edit that file directly. Editing
+arbitrary picked files and the richer `config.json` format, plus a side-by-side
+settings/file view, are planned follow-ups.
+
 ## Configuration model
 
 The server is launched as either:

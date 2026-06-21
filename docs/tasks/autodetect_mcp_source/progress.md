@@ -21,39 +21,48 @@
 
 ## Phase 1: Source model and reverse parser
 
-- [ ] Create `src/configSource.ts` with source kinds and `ConfigSource` descriptor.
-- [ ] Implement `detectWorkspaceMcpJson(folder)` (JSONC-tolerant, never throws).
-- [ ] Implement `parseServerArgs(args)` inverse of `buildServerArgs` (=-form, repeated, negations).
-- [ ] Implement `parseMcpEntry(entry)` (transport, launch method, cwd/env, notes).
-- [ ] Create `test/unit/configSource.test.cjs` (detection, parser, round-trip).
-- [ ] `tsc --noEmit` clean; phase tests pass.
+- [x] Create `src/configSource.ts` with source kinds and `ConfigSource` descriptor.
+- [x] Implement `detectWorkspaceMcpJson(folder)` (JSONC-tolerant, never throws).
+- [x] Implement `parseServerArgs(args)` inverse of `buildServerArgs` (=-form, repeated, negations).
+- [x] Implement `parseMcpEntry(entry)` (transport, launch method, cwd/env, notes).
+- [x] Create `test/unit/configSource.test.cjs` (detection, parser, round-trip).
+- [x] `tsc --noEmit` clean; phase tests pass (22 new tests).
 
 ## Phase 2: Webview source bar and messaging
 
-- [ ] Render the source bar (active-source chip, switcher, detection banner) in `renderHtml`.
-- [ ] Nest the scope radio under the settings source; file source shows Save to file / Revert / dirty.
-- [ ] Webview script: render `init.source` / `init.detected`, build switcher menu, post messages.
-- [ ] Unsaved-changes guard on source switch (reuse `scopeChangeRequest` pattern).
-- [ ] Update `test/unit/webview.test.cjs` for source bar / banner / messages.
-- [ ] `tsc --noEmit` clean; phase tests pass.
+- [x] Render the source bar (active-source chip, switcher, detection banner) in `renderHtml`.
+- [x] Nest the scope radio under the settings source; file source shows Save to file / Revert / dirty.
+- [x] Webview script: render `init.source` / `init.detected`, build switcher menu, post messages.
+- [x] Unsaved-changes guard on source switch (reuse `scopeChangeRequest` pattern).
+- [x] Update `test/unit/webview.test.cjs` for source bar / banner / messages.
+- [x] `tsc --noEmit` clean; phase tests pass.
 
 ## Phase 3: Host load and save wiring
 
-- [ ] Extract `writeMcpJsonFromSettings(settings, folder, ...)` from `writeWorkspaceMcpJson`.
-- [ ] `setupWebview`: add `currentSource`; detect on `ready`; include `source`/`detected` in `init`.
-- [ ] Handle `loadSource` (read + `parseMcpEntry` + populated `init` + notes).
-- [ ] Handle `saveToFile` (collect form values -> settings -> file writer; no `config.update`).
-- [ ] Reject home/read-only source as a load or save target.
-- [ ] Gate external `post(true)` so it does not clobber an active file source.
-- [ ] Update `test/unit/commands.test.cjs` and `test/unit/webview.test.cjs`.
-- [ ] `tsc --noEmit` clean; full unit suite passes.
+- [x] Extract `writeMcpJsonFromSettings(settings, folder, ...)` from `writeWorkspaceMcpJson`.
+- [x] `setupWebview`: add `currentSource`; detect on `ready`; include `source`/`detected` in `init`.
+- [x] Handle source switch (read + `parseMcpEntry` + populated `init` + notes).
+- [x] Handle `saveToFile` (overlay form values onto loaded baseline -> file writer; no `config.update`).
+- [x] Reject home/read-only source as a load or save target.
+- [x] Keep external re-post synchronous; refresh detection cache without racing a save (P96).
+- [x] Update `test/unit/commands.test.cjs` and `test/unit/webview.test.cjs`.
+- [x] `tsc --noEmit` clean; full unit suite passes (431).
 
 ## Phase 4: Integration and documentation
 
-- [ ] Add a fixture `.vscode/mcp.json` with `servers.wcli0` + a second server.
-- [ ] Update `test/integration/mcpJson.test.js` for detection + save-back round trip.
-- [ ] Update `README.md` (source switcher, auto-detect, round trip, home read-only, side-by-side future).
-- [ ] `vscode-test` passes; markdownlint clean.
+- [x] Integration test merges the wcli0 entry into an existing file and preserves other servers
+  (the shared `writeMcpJsonFromSettings` save path the file source also uses).
+- [x] Update `test/integration/mcpJson.test.js`; full integration suite passes (16).
+- [x] Update `README.md` (source switcher, auto-detect, round trip, home read-only, side-by-side future).
+- [x] `vscode-test` passes; markdownlint clean.
+
+## Notes
+
+- The webview is the only surface for load/save (no command), so detection/load/save are covered by
+  unit tests against the host message handlers; the integration test covers the shared file-write
+  merge path in a real Extension Host.
+- Deferred (non-requirements, per the PRD): arbitrary file browse, in-place `config.json` editing,
+  and the side-by-side settings/file view.
 
 ## Review Feedback
 
