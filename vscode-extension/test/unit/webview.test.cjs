@@ -743,6 +743,27 @@ test('P7: saving a file source preserves unmodeled http headers on disk', async 
   assert.equal(parsed.servers.wcli0.url, 'http://127.0.0.1:9444/mcp', 'url round-trips unchanged');
 });
 
+test('P16: a folder change pushes a detection update so the banner can appear', async () => {
+  // Start with no workspace folder open.
+  vscode.__state.workspaceFolders = undefined;
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  // A folder that already has a wcli0 .vscode/mcp.json entry is opened.
+  vscode.__state.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  panel.webview.posted = [];
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) cb();
+  // The detection refresh is async; flush microtasks so the follow-up push lands.
+  await new Promise((r) => setTimeout(r, 0));
+  const detected = panel.webview.posted.find((m) => m.type === 'detected');
+  assert.ok(detected, 'a detection update is pushed after the folder change');
+  const entry = (detected.detected || []).find((d) => d.kind === 'mcpJson');
+  assert.ok(entry && entry.hasWcli0, 'the workspace mcp.json wcli0 entry is detected');
+});
+
 test('the home config row opens the file read-only', async () => {
   openConfigPanel(makeContext());
   const panel = vscode.__state.lastWebviewPanel;

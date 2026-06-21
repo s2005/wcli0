@@ -862,3 +862,91 @@ test('a file save switching http->stdio drops the stale url field', async () => 
   assert.equal(e.url, undefined, 'the http url is removed on a mode switch');
   assert.equal(e.command, 'npx');
 });
+
+test('P19: switching http->stdio drops the other transport unmodeled fields (headers/oauth)', async () => {
+  const base = {
+    type: 'http',
+    url: 'http://127.0.0.1:9444/mcp',
+    headers: { A: '1' },
+    oauth: { id: 'x' },
+  };
+  const s = defaultSettings(); // stdio (npx)
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.equal(e.type, 'stdio');
+  assert.equal(e.headers, undefined, 'http headers removed on switch to stdio');
+  assert.equal(e.oauth, undefined, 'http oauth removed on switch to stdio');
+});
+
+test('P19: switching stdio->http drops the other transport unmodeled fields (envFile/dev)', async () => {
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    envFile: '.env',
+    dev: { watch: true },
+  };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 9444;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.equal(e.type, 'http');
+  assert.equal(e.envFile, undefined, 'stdio envFile removed on switch to http');
+  assert.equal(e.dev, undefined, 'stdio dev removed on switch to http');
+  assert.ok(e.url, 'an http url is written');
+});
+
+test('P18: a file save allows a VS Code variable in cwd', async () => {
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'], cwd: '${env:PROJECT}' };
+  const s = defaultSettings();
+  s.cwd = '${env:PROJECT}';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'a variable cwd does not block the save');
+  assert.equal(wcli0Entry().cwd, '${env:PROJECT}', 'the variable cwd round-trips verbatim');
+});
+
+test('P18: a file save allows a VS Code variable node script path', async () => {
+  const base = { type: 'stdio', command: 'node', args: ['${input:script}', '--shell', 'cmd'] };
+  const s = defaultSettings();
+  s.launchMethod = 'node';
+  s.nodeScriptPath = '${input:script}';
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'a variable node script does not block the save');
+  assert.ok(wcli0Entry().args.includes('${input:script}'), 'the variable script round-trips');
+});
+
+test('P20: a file save merges onto the CURRENT on-disk entry, preserving external additions', async () => {
+  // The panel loaded a snapshot with no headers...
+  const loaded = { type: 'http', url: 'http://127.0.0.1:9444/mcp' };
+  // ...but the file was edited externally afterwards to add headers to the same entry.
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: {
+          wcli0: { type: 'http', url: 'http://127.0.0.1:9444/mcp', headers: { A: '1' } },
+          other: { type: 'stdio' },
+        },
+      }),
+    ),
+  );
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 9444;
+  s.transportUrl = 'http://127.0.0.1:9444/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.deepEqual(
+    parsed.servers.wcli0.headers,
+    { A: '1' },
+    'externally added headers preserved via the on-disk merge',
+  );
+  assert.ok(parsed.servers.other, 'other server preserved');
+});

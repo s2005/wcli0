@@ -250,19 +250,27 @@ function preservedFileUrl(
     : undefined;
 }
 
-// The wcli0-entry keys the form regenerates per transport mode. When saving a loaded file
-// source, these are replaced from the form and the OTHER mode's keys are removed, while any
-// other VS Code-supported keys present on the entry are left untouched (see mergeEntryOntoBase).
+// The wcli0-entry keys the form regenerates per transport mode (replaced from the form on
+// a file save). Other VS Code-supported keys present on the entry are left untouched
+// (see mergeEntryOntoBase).
 const STDIO_OWNED_KEYS = ['type', 'command', 'args', 'cwd', 'env'];
 const HTTP_OWNED_KEYS = ['type', 'url'];
+
+// The FULL set of transport-specific keys VS Code recognizes for each mode, including the
+// unmodeled ones the merge otherwise preserves. When the user switches transport mode, the
+// OTHER mode's whole set is removed so stale fields do not leak across — e.g. an HTTP entry's
+// `headers`/`oauth` must not survive into a stdio entry, nor stdio's `envFile`/`dev`/
+// `sandboxEnabled` into an HTTP entry (P19).
+const STDIO_FIELD_KEYS = [...STDIO_OWNED_KEYS, 'envFile', 'dev', 'sandboxEnabled'];
+const HTTP_FIELD_KEYS = [...HTTP_OWNED_KEYS, 'headers', 'oauth'];
 
 /**
  * Merge the freshly generated wcli0 fields onto the loaded `.vscode/mcp.json` entry,
  * preserving any VS Code-supported fields the form does not model — HTTP `headers`/`oauth`
  * (P7), stdio `envFile`/`dev`/`sandboxEnabled` (P12), and so on — rather than reconstructing
  * the entry from scratch. Keys the form owns for the CURRENT transport mode are replaced from
- * `generated`; keys that belong only to the OTHER transport mode are removed so a stdio<->http
- * switch does not leave stale `command`/`args`/`url` fields behind.
+ * `generated`; the OTHER transport mode's ENTIRE field set (modeled and unmodeled) is removed
+ * so a stdio<->http switch leaves no stale transport-specific fields behind (P19).
  */
 function mergeEntryOntoBase(
   base: Record<string, unknown>,
@@ -270,28 +278,60 @@ function mergeEntryOntoBase(
   mode: TransportMode,
 ): Record<string, unknown> {
   const merged: Record<string, unknown> = { ...base };
-  const stale = mode === 'stdio' ? HTTP_OWNED_KEYS : STDIO_OWNED_KEYS;
+  const otherModeKeys = mode === 'stdio' ? HTTP_FIELD_KEYS : STDIO_FIELD_KEYS;
   const owned = mode === 'stdio' ? STDIO_OWNED_KEYS : HTTP_OWNED_KEYS;
-  for (const key of [...stale, ...owned]) {
+  for (const key of [...otherModeKeys, ...owned]) {
     delete merged[key];
   }
   return Object.assign(merged, generated);
 }
 
 /**
- * Whether a `wcli0.configFile`/`--config` value is a VS Code launch-time variable path
- * (e.g. `${input:cfg}`, `${command:pickConfig}`, `${env:HOME}/cfg.json`) that VS Code
- * resolves when it launches the server. The extension owns only `${workspaceFolder}` /
- * `${userHome}`; any OTHER `${...}` left after resolving those is VS Code's to expand, so a
- * file-source save must not block on it being locally unreadable (P13).
+ * Whether a launch-field value is a VS Code launch-time variable path (e.g. `${input:cfg}`,
+ * `${command:pickConfig}`, `${env:HOME}/cfg.json`) that VS Code resolves when it launches
+ * the server. The extension owns only `${workspaceFolder}` / `${userHome}`; any OTHER
+ * `${...}` left after resolving those is VS Code's to expand, so a file-source save must not
+ * block on it being locally unresolvable/unreadable (P13/P18).
  */
-function isVscodeVariableConfigPath(value: string): boolean {
+function isVscodeVariablePath(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) {
     return false;
   }
   const resolved = resolveVariables(trimmed);
   return hasUnresolvedVariables(resolved) && !hasUnresolvedExtensionVariables(resolved);
+}
+
+// Validation-only stand-in for a required launch field (node script / custom command) whose
+// value is a VS Code variable: an absolute path passes the anchorability checks while the real
+// `${input:...}`/`${env:...}` value is emitted into the entry verbatim (buildLaunchSpec keeps
+// it under resolvePaths:false).
+const VSCODE_VARIABLE_PLACEHOLDER = '/__wcli0_vscode_variable__';
+
+/**
+ * Return a copy of `settings` with every launch field that holds a VS Code launch-time
+ * variable neutralized for validation only. VS Code resolves these at launch and the entry
+ * round-trips them verbatim, so the extension's local anchorability/loadability checks must
+ * not reject an otherwise no-op file-source save (P18). Optional path fields are blanked
+ * (skipped by the checks); required fields are replaced with an absolute placeholder; and
+ * variable allowed-directories are dropped.
+ */
+function neutralizeVscodeVariableLaunchFields(settings: Wcli0Settings): Wcli0Settings {
+  const blankIfVar = (v: string) => (isVscodeVariablePath(v) ? '' : v);
+  return {
+    ...settings,
+    configFile: blankIfVar(settings.configFile),
+    cwd: blankIfVar(settings.cwd),
+    initialDir: blankIfVar(settings.initialDir),
+    logDirectory: blankIfVar(settings.logDirectory),
+    allowedDirectories: settings.allowedDirectories.filter((d) => !isVscodeVariablePath(d)),
+    nodeScriptPath: isVscodeVariablePath(settings.nodeScriptPath)
+      ? VSCODE_VARIABLE_PLACEHOLDER
+      : settings.nodeScriptPath,
+    customCommand: isVscodeVariablePath(settings.customCommand)
+      ? VSCODE_VARIABLE_PLACEHOLDER
+      : settings.customCommand,
+  };
 }
 
 /** Options for {@link writeMcpJsonFromSettings}. */
@@ -323,12 +363,14 @@ export async function writeMcpJsonFromSettings(
   // launch settings (method, allowed dirs) are irrelevant and only the port
   // matters — otherwise a valid external endpoint couldn't be written.
   if (settings.transportMode === 'stdio') {
-    // A `--config ${input:...}`/`${command:...}` path from a loaded mcp.json is resolved
-    // by VS Code at launch, not by us, so it cannot be checked on disk and must not block a
-    // file-source save (P13). Validate with the path blanked; the verbatim argv is still
-    // emitted into the entry below (buildLaunchSpec keeps the unresolved token).
-    const skipConfigCheck = fileSource && isVscodeVariableConfigPath(settings.configFile);
-    const validateSettings = skipConfigCheck ? { ...settings, configFile: '' } : settings;
+    // Launch fields holding a VS Code launch-time variable (`${input:...}`, `${env:...}`,
+    // `${command:...}` in --config, cwd, node script, custom command, ...) are resolved by VS
+    // Code at launch, not by us, so they cannot be checked on disk and must not block a
+    // file-source save (P13/P18). Validate with those neutralized; the verbatim argv is still
+    // emitted into the entry below (buildLaunchSpec keeps the unresolved tokens).
+    const validateSettings = fileSource
+      ? neutralizeVscodeVariableLaunchFields(settings)
+      : settings;
     // A referenced wcli0.configFile becomes the entry's `--config`; validate it can
     // actually be loaded so the exported entry does not silently fall back to an
     // implicit config the server discovers instead (P85).
@@ -426,6 +468,9 @@ export async function writeMcpJsonFromSettings(
   const spec = buildLaunchSpec(settings, { resolvePaths: false });
 
   let entry: Record<string, unknown>;
+  // The form-owned fields, kept separately so a file-source save can merge them onto the
+  // CURRENT on-disk entry (read below) rather than only the snapshot loaded into the panel (P20).
+  let generatedForMerge: Record<string, unknown> | undefined;
   if (settings.transportMode === 'stdio') {
     // Include cwd only when launch.cwd is explicitly set. NOTE: omitting it does
     // not avoid the workspace — VS Code defaults a committed stdio entry's cwd to
@@ -466,7 +511,9 @@ export async function writeMcpJsonFromSettings(
       ...(Object.keys(env).length ? { env } : {}),
     };
     // For a file source, merge onto the loaded entry so unmodeled VS Code stdio fields
-    // (envFile, dev, sandboxEnabled, ...) survive an unrelated edit (P12).
+    // (envFile, dev, sandboxEnabled, ...) survive an unrelated edit (P12). The merge base is
+    // re-derived from the current on-disk entry at the write step (P20).
+    generatedForMerge = generated;
     entry = fileSource ? mergeEntryOntoBase(baseEntry!, generated, 'stdio') : generated;
   } else {
     // Prefer the loaded entry's verbatim URL when host/port are unchanged so a
@@ -484,7 +531,9 @@ export async function writeMcpJsonFromSettings(
       url,
     };
     // For a file source, merge onto the loaded entry so unmodeled VS Code http/sse fields
-    // (headers, oauth, ...) survive an unrelated edit (P7).
+    // (headers, oauth, ...) survive an unrelated edit (P7). The merge base is re-derived from
+    // the current on-disk entry at the write step (P20).
+    generatedForMerge = generated;
     entry = fileSource
       ? mergeEntryOntoBase(baseEntry!, generated, settings.transportMode)
       : generated;
@@ -547,6 +596,14 @@ export async function writeMcpJsonFromSettings(
   }
 
   const servers = (existing.servers as Record<string, unknown>) ?? {};
+  // For a file source, re-merge the form-owned fields onto the CURRENT on-disk wcli0 entry
+  // rather than the snapshot loaded into the panel, so an external edit made to the same
+  // entry after it was loaded (e.g. new headers/envFile/oauth) is preserved instead of being
+  // silently discarded (P20). Falls back to the loaded baseEntry when no entry is on disk.
+  if (fileSource && generatedForMerge) {
+    const onDisk = isPlainObject(servers.wcli0) ? servers.wcli0 : baseEntry!;
+    entry = mergeEntryOntoBase(onDisk, generatedForMerge, settings.transportMode);
+  }
   servers.wcli0 = entry;
   existing.servers = servers;
 

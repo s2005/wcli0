@@ -534,11 +534,16 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       loadedFileFolder = undefined;
     }
     // Post synchronously from the cached detection (a test asserts the re-post happens
-    // synchronously on folder change). Refresh the detection cache in the background
-    // for the next post WITHOUT re-posting — an async repost here would race a
-    // concurrent save's post and could overwrite the realigned scope (P96).
+    // synchronously on folder change). Then refresh the detection cache and push a
+    // detection-only update so a folder added/changed while the panel is open updates the
+    // source switcher and the "Load & edit" banner for a workspace that already has
+    // .vscode/mcp.json (P16) — without it the detection only appears on the next unrelated
+    // post. A dedicated `detected` message (not a full init) is used so it cannot race a
+    // concurrent save's scope realignment by re-posting a stale scope (P96).
     post(true);
-    void refreshDetection();
+    void refreshDetection().then(() =>
+      webview.postMessage({ type: 'detected', detected: detectedSources }),
+    );
   });
 
   return {
@@ -1886,17 +1891,26 @@ function renderHtml(webview: vscode.Webview): string {
         ? 'Switch to VS Code Settings to export. Export actions operate on settings, not a file source.'
         : '';
     }
+    applyDetected(detected);
+    // The just-loaded form is clean (baseline === values), so disable Revert until an
+    // edit is made. Live edits re-evaluate via the delegated input/change listeners.
+    reflectDirty();
+  }
+  // Update the detection-dependent UI (source-switcher rows + the "Load & edit" banner) from
+  // the current detected sources, using the active source already on screen. Kept separate
+  // from setActiveSource so a background detection refresh (e.g. after a workspace-folder
+  // change, P16) can refresh just this without re-posting scope/field values.
+  function applyDetected(detected) {
+    const fileEntry = (detected || []).find((d) => d.kind === 'mcpJson');
     // The detection banner only makes sense while editing settings and a wcli0 entry
     // exists in the workspace mcp.json (and the user has not dismissed it).
     const banner = $('detectBanner');
     if (banner) {
-      const show = !isFile && !bannerDismissed && !!(fileEntry && fileEntry.hasWcli0);
+      const show =
+        currentSourceClient !== 'mcpJson' && !bannerDismissed && !!(fileEntry && fileEntry.hasWcli0);
       banner.style.display = show ? '' : 'none';
     }
     renderSourceMenu(detected);
-    // The just-loaded form is clean (baseline === values), so disable Revert until an
-    // edit is made. Live edits re-evaluate via the delegated input/change listeners.
-    reflectDirty();
   }
   // Re-evaluate the Revert button's enabled state on any field edit. input/change
   // bubble, so a single delegated listener covers every control in the form. Guarded
@@ -1936,6 +1950,13 @@ function renderHtml(webview: vscode.Webview): string {
       // The host already re-posted the file values (re-baselining the form via init);
       // just flash a confirmation so the click has a visible effect.
       flashStatus('Reverted from file ' + CHECK);
+      return;
+    }
+    if (msg.type === 'detected') {
+      // A background detection refresh (workspace folder added/changed). Update only the
+      // switcher rows and the "Load & edit" banner; never touches scope/fields, so it cannot
+      // disturb a dirty form or a just-saved scope (P16/P96).
+      applyDetected(msg.detected);
       return;
     }
     if (msg.type === 'init') {

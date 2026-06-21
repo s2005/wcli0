@@ -258,6 +258,84 @@ test('P3: buildLaunchSpec -> parseMcpEntry round-trips custom launcher args in o
   assert.equal(settings.shell, 'cmd');
 });
 
+test('P14: parseMcpEntry treats node launcher options as custom args, not a script', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['--inspect', 'dist/index.js', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'node');
+  assert.deepEqual(settings.customArgs, ['--inspect', 'dist/index.js']);
+  assert.equal(settings.shell, 'cmd');
+});
+
+test('P14: a plain node entry is still parsed as node', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['dist/index.js', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'node');
+  assert.equal(settings.nodeScriptPath, 'dist/index.js');
+  assert.equal(settings.shell, 'cmd');
+});
+
+test('P17: parseMcpEntry treats npx launcher options as custom, preserving them', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['--package=wcli0', '--', 'wcli0', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'npx');
+  assert.deepEqual(settings.customArgs, ['--package=wcli0', '--', 'wcli0']);
+  assert.equal(settings.shell, 'cmd');
+});
+
+test('P17: a plain npx entry (with or without -y) is still parsed as npx', () => {
+  const withY = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@9.9.9', '--shell', 'cmd'],
+  }).settings;
+  assert.equal(withY.launchMethod, 'npx');
+  assert.equal(withY.packageSpec, 'wcli0@9.9.9');
+  const noY = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['wcli0@1.2.3', '--shell', 'cmd'],
+  }).settings;
+  assert.equal(noY.launchMethod, 'npx');
+  assert.equal(noY.packageSpec, 'wcli0@1.2.3');
+});
+
+test('P15: parseMcpEntry keeps a custom wrapper option that collides with a wcli0 flag', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'mywrapper',
+    args: ['--config', 'wrapper.json', 'wcli0', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'mywrapper');
+  // The wrapper's own --config stays in customArgs; only --shell is a wcli0 flag.
+  assert.deepEqual(settings.customArgs, ['--config', 'wrapper.json', 'wcli0']);
+  assert.equal(settings.configFile, '');
+  assert.equal(settings.shell, 'cmd');
+});
+
+test('P15: a custom suffix with a trailing extra arg still splits at the wcli0 flags', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'mywrapper',
+    args: ['wcli0', '--shell', 'cmd', '--unknownFlag'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, ['wcli0']);
+  assert.equal(settings.shell, 'cmd');
+  assert.deepEqual(settings.extraArgs, ['--unknownFlag']);
+});
+
 test('parseMcpEntry parses an http entry url', () => {
   const { settings } = parseMcpEntry({ type: 'http', url: 'http://127.0.0.1:9444/mcp' });
   assert.equal(settings.transportMode, 'http');
@@ -286,6 +364,17 @@ test('P8: parseMcpEntry keeps a valid default port and preserves a default-port 
   // default port instead of downgrading to http://host:9444/mcp.
   assert.equal(settings.transportUrl, 'https://gateway.example/custom/mcp');
   assert.ok(notes.some((n) => /does not specify a port/.test(n)));
+});
+
+test('P21: parseMcpEntry reads host/port past URL userinfo credentials', () => {
+  const { settings } = parseMcpEntry({
+    type: 'http',
+    url: 'https://user:pass@example.com:9444/mcp',
+  });
+  // The userinfo (user:pass@) is skipped, so the real host and explicit port are read.
+  assert.equal(settings.transportHost, 'example.com');
+  assert.equal(settings.transportPort, 9444);
+  assert.equal(settings.transportUrl, 'https://user:pass@example.com:9444/mcp');
 });
 
 test('P10: parseMcpEntry preserves a socket url it cannot decompose', () => {

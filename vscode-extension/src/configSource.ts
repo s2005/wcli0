@@ -141,35 +141,55 @@ const VALUE_OPTIONS: Record<string, OptionSpec> = {
   '--sse-allowed-origins': { key: 'transportAllowedOrigins', kind: 'csv' },
 };
 
-// Value-less wcli0 flags the forward builder emits (booleans, safety, tri-states
-// and their `--no-` variants). Mirror of the flags handled inline in
-// parseServerArgs; used to find where the wcli0 server flags begin in a custom
-// command's args (see parseMcpEntry).
-const BOOLEAN_FLAGS = new Set<string>([
-  '--allowAllDirs',
-  '--debug',
-  '--yolo',
-  '--unsafe',
-  '--enableTruncation',
-  '--no-enableTruncation',
-  '--enableLogResources',
-  '--no-enableLogResources',
-]);
+/**
+ * Whether `tokens` parse cleanly as a run of wcli0 server flags — the shape the forward
+ * builder emits as the suffix after a launcher's own args. Every token must be a flag
+ * (a recognized value-option consuming the next token as its value, an attached
+ * `--opt=value`, a recognized boolean/tri-state, or any other `--flag` that round-trips
+ * as an extraArg); a bare non-flag token that is not the value of a recognized
+ * value-option is an "orphan" and disqualifies the run. Used to find where the wcli0
+ * flags begin so launcher options that collide with wcli0 flag names stay in the launcher
+ * portion (see {@link serverFlagSuffixStart}).
+ */
+function isPureServerFlagRun(tokens: string[]): boolean {
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (!t.startsWith('-')) {
+      return false; // orphan bare token — not a flag and not consumed as a value
+    }
+    const eq = t.indexOf('=');
+    if (t.startsWith('--') && eq > 0) {
+      continue; // attached --opt=value (recognized or an extraArg) — self-contained
+    }
+    if (t in VALUE_OPTIONS) {
+      if (i + 1 >= tokens.length) {
+        return false; // a value-option with no value cannot be a clean server flag
+      }
+      i++; // consume the value
+      continue;
+    }
+    // A recognized boolean/tri-state, or any other bare `--flag` that round-trips as an
+    // extraArg — both are valid within a server-flag run.
+  }
+  return true;
+}
 
 /**
- * Whether a token is a wcli0 server flag the reverse parser recognizes (a value
- * option in {@link VALUE_OPTIONS} or a boolean/tri-state flag). Accepts the
- * attached `--opt=value` form. Used to locate the boundary between a custom
- * launcher's own arguments and the wcli0 server flags, which the forward builder
- * emits as `[...customArgs, ...serverFlags]`.
+ * The index where the wcli0 server-flag suffix begins in a launcher's full arg list. The
+ * forward builder emits `[...launcherArgs, ...serverFlags]`, so the server flags are a
+ * contiguous suffix: return the smallest index whose remaining tokens form a pure
+ * server-flag run starting with a flag. Everything before it is the launcher's own args.
+ * Defaults to `args.length` (no server flags). Scanning for the longest such suffix keeps
+ * launcher options whose names collide with wcli0 flags (a wrapper's `--config`, node's
+ * `--inspect`) in the launcher portion (P15).
  */
-function isServerFlag(token: string): boolean {
-  if (!token.startsWith('-')) {
-    return false;
+function serverFlagSuffixStart(args: string[]): number {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i))) {
+      return i;
+    }
   }
-  const eq = token.indexOf('=');
-  const flag = token.startsWith('--') && eq > 0 ? token.slice(0, eq) : token;
-  return flag in VALUE_OPTIONS || BOOLEAN_FLAGS.has(flag);
+  return args.length;
 }
 
 /**
@@ -354,7 +374,16 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   const command = asString(entry.command);
   const args = Array.isArray(entry.args) ? entry.args.map((a) => asString(a)) : [];
   let serverArgs: string[];
-  if (command === 'npx') {
+  // The npx/node fast paths only apply when the launcher has no options before the
+  // package/script — `npx -y <pkg>` or `node <script>`. An entry like
+  // `npx --package=x -- wcli0 ...` (P17) or `node --inspect dist/index.js ...` (P14)
+  // carries launcher options the form cannot model as a package/script, so it falls
+  // through to custom parsing, where the launcher args round-trip verbatim.
+  const npxPackageAt = args[0] === '-y' ? 1 : 0;
+  const isPlainNpx =
+    command === 'npx' && (args[npxPackageAt] === undefined || !args[npxPackageAt].startsWith('-'));
+  const isPlainNode = command === 'node' && args[0] !== undefined && !args[0].startsWith('-');
+  if (isPlainNpx) {
     s.launchMethod = 'npx';
     // Forward emits ['-y', packageSpec, ...flags]; tolerate a missing -y.
     if (args[0] === '-y') {
@@ -364,27 +393,22 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
       s.packageSpec = args[0] ?? '';
       serverArgs = args.slice(1);
     }
-  } else if (command === 'node') {
+  } else if (isPlainNode) {
     s.launchMethod = 'node';
     s.nodeScriptPath = args[0] ?? '';
     serverArgs = args.slice(1);
   } else {
     s.launchMethod = 'custom';
     s.customCommand = command;
-    // Leading tokens are the custom command's own args; the rest are wcli0 server
-    // flags. The forward builder emits `[...customArgs, ...serverFlags]`, so the
-    // boundary is the first RECOGNIZED wcli0 flag — not merely the first dashed
-    // token. A launcher option such as `--inspect` or `--from` (e.g.
-    // `node --inspect dist/index.js`, `uvx --from ...`) is not a wcli0 flag and
-    // stays in customArgs, so a load/save round-trip preserves command order (P3).
-    const firstFlag = args.findIndex((a) => isServerFlag(a));
-    if (firstFlag === -1) {
-      s.customArgs = args.slice();
-      serverArgs = [];
-    } else {
-      s.customArgs = args.slice(0, firstFlag);
-      serverArgs = args.slice(firstFlag);
-    }
+    // Leading tokens are the custom command's own args; the wcli0 server flags are the
+    // contiguous suffix the forward builder appends (`[...customArgs, ...serverFlags]`).
+    // Split at the START of the longest pure server-flag suffix, not the first dashed
+    // token, so a launcher option that collides with a wcli0 flag name (a wrapper's own
+    // `--config`/`--transport`, node's `--inspect`, uvx's `--from`) stays in customArgs
+    // and a load/save round-trip preserves the command order (P15).
+    const start = serverFlagSuffixStart(args);
+    s.customArgs = args.slice(0, start);
+    serverArgs = args.slice(start);
   }
 
   const { settings: parsed, extraArgs } = parseServerArgs(serverArgs);
@@ -408,8 +432,10 @@ export function parseHttpUrl(url: string): { host: string; port: number } | unde
   if (!url) {
     return undefined;
   }
-  // Match `scheme://host:port/...`, where host may be a bracketed IPv6 literal.
-  const m = /^[a-z]+:\/\/(\[[^\]]+\]|[^:/]+)(?::(\d+))?/i.exec(url);
+  // Match `scheme://[userinfo@]host[:port]/...`, where host may be a bracketed IPv6
+  // literal. The optional `userinfo@` is skipped so credentials (`user:pass@host:port`)
+  // do not get mistaken for the host and an explicit port behind them is still read (P21).
+  const m = /^[a-z]+:\/\/(?:[^@/]*@)?(\[[^\]]+\]|[^:/]+)(?::(\d+))?/i.exec(url);
   if (!m) {
     return undefined;
   }

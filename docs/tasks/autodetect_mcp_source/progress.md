@@ -103,3 +103,22 @@
   `envFile`/`dev`/`sandboxEnabled` and removes the opposite mode's keys)
 - [x] P13: Allow VS Code input variables in loaded --config paths (fixed — validate
   file-source saves with a VS Code-variable `--config` path blanked; emit it verbatim)
+
+### Review Feedback (PR #89, round 3)
+
+- [x] P14: Preserve node runtime arguments (fixed — gate the node fast path on a
+  non-option first arg; node-with-options parses as custom)
+- [x] P15: Avoid stealing wrapper options that look like server flags (fixed — split
+  custom args at the start of the longest pure server-flag suffix)
+- [x] P16: Re-post source detection after workspace changes (fixed — push a dedicated
+  `detected` message after the async detection refresh)
+- [x] P17: Preserve npx launcher options (fixed — gate the npx fast path on a
+  non-option package token; npx-with-options parses as custom)
+- [x] P18: Allow VS Code variables in all file-source launch fields (fixed —
+  `neutralizeVscodeVariableLaunchFields` bypasses validation for every preserved field)
+- [x] P19: Drop stale transport-only fields on mode changes (fixed — remove the other
+  transport's full field set, including `headers`/`oauth` and `envFile`/`dev`)
+- [x] P20: Merge against the current on-disk entry before saving (fixed — re-derive the
+  merge base from the re-read entry so external additions survive)
+- [x] P21: Parse URL userinfo before host/port (fixed — `parseHttpUrl` skips an optional
+  `userinfo@` segment)
