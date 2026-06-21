@@ -244,6 +244,16 @@ function buildSettings(g: Getter): Wcli0Settings {
   };
 }
 
+/**
+ * A fully-defaulted settings object (every key at its schema default). Used as the
+ * baseline a parsed `.vscode/mcp.json` entry is overlaid onto, so loading a file
+ * source yields a complete {@link Wcli0Settings} the form can render without reading
+ * any VS Code setting.
+ */
+export function defaultSettings(): Wcli0Settings {
+  return buildSettings(<T>(_key: string, def: T): T => def);
+}
+
 /** Whether a single per-shell entry carries any user-set, non-empty field. */
 function isMeaningfulShellConfig(c: PerShellConfig | undefined): boolean {
   if (!c) {
