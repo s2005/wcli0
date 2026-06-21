@@ -83,3 +83,23 @@
 - [x] P5: Preserve full HTTP/SSE URLs when round-tripping (fixed — preserve the
   verbatim `transportUrl` and write it back unless host/port were edited; note
   non-canonical URLs)
+
+### Review Feedback (PR #89, round 2)
+
+- [x] P6: Reject stale file-source saves after workspace changes (fixed — `saveToFile`
+  proceeds only while still in `mcpJson` mode for the same `loadedFileFolder` with the
+  loaded entry intact)
+- [x] P7: Preserve HTTP/SSE auth fields when saving (fixed — merge the regenerated
+  fields onto the loaded raw entry via `mergeEntryOntoBase`, keeping `headers`/`oauth`)
+- [x] P8: Avoid loading default-port URLs as invalid port 0 (fixed — keep the valid
+  default port, preserve the verbatim URL, and note the port field is inert for it)
+- [x] P9: Preserve non-string env values on file saves (fixed — round-trip the loaded
+  entry's raw `env` verbatim instead of the string-filtered settings env)
+- [x] P10: Preserve socket and pipe URLs (fixed — retain the verbatim `transportUrl`
+  when it cannot be decomposed; `preservedFileUrl` writes it back unchanged)
+- [x] P11: Clear stale file-source notes after clean reloads (fixed — carry notes in
+  every file-source `init` and clear them when empty)
+- [x] P12: Preserve stdio-only VS Code fields (fixed — `mergeEntryOntoBase` keeps
+  `envFile`/`dev`/`sandboxEnabled` and removes the opposite mode's keys)
+- [x] P13: Allow VS Code input variables in loaded --config paths (fixed — validate
+  file-source saves with a VS Code-variable `--config` path blanked; emit it verbatim)

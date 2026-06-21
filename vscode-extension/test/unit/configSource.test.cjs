@@ -272,18 +272,34 @@ test('parseMcpEntry parses an sse entry with a bracketed IPv6 host', () => {
   assert.equal(settings.transportPort, 8080);
 });
 
-test('P5: parseMcpEntry preserves a non-canonical http url and notes the limitation', () => {
+test('P8: parseMcpEntry keeps a valid default port and preserves a default-port url', () => {
   const { settings, notes } = parseMcpEntry({
     type: 'http',
     url: 'https://gateway.example/custom/mcp',
   });
   assert.equal(settings.transportMode, 'http');
   assert.equal(settings.transportHost, 'gateway.example');
-  assert.equal(settings.transportPort, 0);
-  // The verbatim URL is retained so a save can round-trip the custom scheme/path
-  // and the default port instead of downgrading to http://host:0/mcp.
+  // The URL omits an explicit port; the form keeps its default port (a valid min=1
+  // value) rather than rendering an invalid 0 that would block Save (P8).
+  assert.equal(settings.transportPort, 9444);
+  // The verbatim URL is retained so a save round-trips the custom scheme/path and the
+  // default port instead of downgrading to http://host:9444/mcp.
   assert.equal(settings.transportUrl, 'https://gateway.example/custom/mcp');
-  assert.ok(notes.some((n) => /custom scheme/.test(n)));
+  assert.ok(notes.some((n) => /does not specify a port/.test(n)));
+});
+
+test('P10: parseMcpEntry preserves a socket url it cannot decompose', () => {
+  const { settings, notes } = parseMcpEntry({
+    type: 'http',
+    url: 'unix:///tmp/server.sock#/mcp',
+  });
+  assert.equal(settings.transportMode, 'http');
+  // The host/port fields cannot model a socket URL, so they stay at their defaults...
+  assert.equal(settings.transportHost, '127.0.0.1');
+  assert.equal(settings.transportPort, 9444);
+  // ...but the verbatim URL is retained so an unrelated save does not rewrite it.
+  assert.equal(settings.transportUrl, 'unix:///tmp/server.sock#/mcp');
+  assert.ok(notes.some((n) => /cannot be represented/.test(n)));
 });
 
 test('P5: parseMcpEntry does not note a canonical http url but still preserves it', () => {

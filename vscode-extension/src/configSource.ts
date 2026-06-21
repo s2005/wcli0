@@ -307,27 +307,44 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   if (type === 'http' || type === 'sse') {
     s.transportMode = type as TransportMode;
     const url = asString(entry.url);
+    // Always retain the verbatim URL so a save round-trips it unchanged, even when the
+    // host/port fields cannot fully represent it: a custom scheme/path (P5), a URL with
+    // no explicit port (P8), or a socket/named-pipe URL (P10).
+    if (url) {
+      s.transportUrl = url;
+    }
+    const canonicalPath = type === 'http' ? 'mcp' : 'sse';
     const parsed = parseHttpUrl(url);
-    if (parsed) {
+    if (parsed && parsed.port > 0) {
+      // Fully modeled: an explicit host AND port the form's fields can edit.
       s.transportHost = parsed.host;
       s.transportPort = parsed.port;
-      // Preserve the verbatim URL so a save round-trips a custom scheme/path or a
-      // default-port URL unchanged instead of rewriting it to http://host:port/<path>
-      // (P5). Note it when the form cannot fully model the URL (a non-http scheme or
-      // a path other than the canonical /mcp//sse), since editing host/port then
-      // rebuilds it to the canonical shape.
-      if (url) {
-        s.transportUrl = url;
-        if (!isCanonicalTransportUrl(url, type, parsed)) {
-          notes.push(
-            `The ${type} URL "${url}" uses a custom scheme, path, or port. It is preserved ` +
-              'as-is when you save, but editing the host or port here rewrites it to the ' +
-              `http://host:port/${type === 'http' ? 'mcp' : 'sse'} form.`,
-          );
-        }
+      if (!isCanonicalTransportUrl(url, type, parsed)) {
+        notes.push(
+          `The ${type} URL "${url}" uses a custom scheme or path. It is preserved as-is ` +
+            'when you save, but editing the host or port here rewrites it to the ' +
+            `http://host:port/${canonicalPath} form.`,
+        );
       }
+    } else if (parsed) {
+      // Decomposes to a host but no explicit port (a default-port URL such as
+      // https://host/path). Show the host, but keep the form's default port so the
+      // number field stays valid (min=1) rather than rendering an invalid 0 (P8); the
+      // verbatim URL above round-trips, and a host edit rebuilds the canonical form.
+      s.transportHost = parsed.host;
+      notes.push(
+        `The ${type} URL "${url}" does not specify a port (it uses the scheme default). ` +
+          'It is preserved as-is when you save; editing the host rewrites it to the ' +
+          `http://host:port/${canonicalPath} form, and the port field does not affect it.`,
+      );
     } else if (url) {
-      notes.push(`Could not parse the ${type} URL "${url}"; check the host and port.`);
+      // Cannot be decomposed into host/port at all (a socket or named-pipe URL such as
+      // unix:///tmp/server.sock#/mcp). Keep the form's defaults and preserve the URL
+      // verbatim so an unrelated save does not rewrite it to http://host:port (P10).
+      notes.push(
+        `The ${type} URL "${url}" cannot be represented by the host and port fields. ` +
+          'It is preserved as-is when you save; edit .vscode/mcp.json directly to change it.',
+      );
     }
     return { settings: s, notes };
   }

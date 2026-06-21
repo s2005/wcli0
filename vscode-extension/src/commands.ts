@@ -14,12 +14,14 @@ import {
   ConfigScope,
   hasPerShellConfig,
   hasProfilesConfig,
+  hasUnresolvedExtensionVariables,
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
   readSettings,
   readSettingsForScope,
   resolveVariables,
   SHELL_NAMES,
+  TransportMode,
   Wcli0Settings,
 } from './settings';
 import {
@@ -179,7 +181,7 @@ export async function writeWorkspaceMcpJson(
     return false;
   }
   const settings = readExportSettings(asScope(formScopeArg), folder.uri);
-  return writeMcpJsonFromSettings(settings, folder, configFileLoadable);
+  return writeMcpJsonFromSettings(settings, folder, { configFileLoadable });
 }
 
 /**
@@ -210,20 +212,127 @@ function preservedTransportUrl(settings: Wcli0Settings): string | undefined {
   return undefined;
 }
 
+/**
+ * The verbatim http/sse URL to write when saving a loaded file source, or undefined to
+ * rebuild it from host/port. Preserves the loaded entry's URL whenever the user has not
+ * changed the transport mode or the host/port the URL decomposes to — so a custom
+ * scheme/path (P5), a default-port URL (P8), or a socket/named-pipe URL the host/port
+ * fields cannot model (P10) round-trips unchanged. Decided against the loaded entry's raw
+ * URL rather than `settings.transportUrl` so the host/port editing rules match exactly
+ * what {@link parseMcpEntry} chose to model for that URL.
+ */
+function preservedFileUrl(
+  settings: Wcli0Settings,
+  base: Record<string, unknown>,
+): string | undefined {
+  const rawUrl = typeof base.url === 'string' ? base.url.trim() : '';
+  if (!rawUrl) {
+    return undefined;
+  }
+  const baseType = typeof base.type === 'string' ? base.type : 'stdio';
+  if (settings.transportMode !== baseType) {
+    // The user switched the transport mode; rebuild the URL for the new mode.
+    return undefined;
+  }
+  const parsed = parseHttpUrl(rawUrl);
+  if (!parsed) {
+    // Socket/named-pipe URL: the host/port fields are inert for it, so preserve verbatim.
+    return rawUrl;
+  }
+  if (parsed.port === 0) {
+    // Default-port URL: only the host is modeled (the port is implicit). Preserve while
+    // the host is unchanged; a host edit falls back to the canonical reconstruction.
+    return parsed.host === settings.transportHost ? rawUrl : undefined;
+  }
+  // Fully decomposable: preserve only while host AND port are untouched.
+  return parsed.host === settings.transportHost && parsed.port === settings.transportPort
+    ? rawUrl
+    : undefined;
+}
+
+// The wcli0-entry keys the form regenerates per transport mode. When saving a loaded file
+// source, these are replaced from the form and the OTHER mode's keys are removed, while any
+// other VS Code-supported keys present on the entry are left untouched (see mergeEntryOntoBase).
+const STDIO_OWNED_KEYS = ['type', 'command', 'args', 'cwd', 'env'];
+const HTTP_OWNED_KEYS = ['type', 'url'];
+
+/**
+ * Merge the freshly generated wcli0 fields onto the loaded `.vscode/mcp.json` entry,
+ * preserving any VS Code-supported fields the form does not model — HTTP `headers`/`oauth`
+ * (P7), stdio `envFile`/`dev`/`sandboxEnabled` (P12), and so on — rather than reconstructing
+ * the entry from scratch. Keys the form owns for the CURRENT transport mode are replaced from
+ * `generated`; keys that belong only to the OTHER transport mode are removed so a stdio<->http
+ * switch does not leave stale `command`/`args`/`url` fields behind.
+ */
+function mergeEntryOntoBase(
+  base: Record<string, unknown>,
+  generated: Record<string, unknown>,
+  mode: TransportMode,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base };
+  const stale = mode === 'stdio' ? HTTP_OWNED_KEYS : STDIO_OWNED_KEYS;
+  const owned = mode === 'stdio' ? STDIO_OWNED_KEYS : HTTP_OWNED_KEYS;
+  for (const key of [...stale, ...owned]) {
+    delete merged[key];
+  }
+  return Object.assign(merged, generated);
+}
+
+/**
+ * Whether a `wcli0.configFile`/`--config` value is a VS Code launch-time variable path
+ * (e.g. `${input:cfg}`, `${command:pickConfig}`, `${env:HOME}/cfg.json`) that VS Code
+ * resolves when it launches the server. The extension owns only `${workspaceFolder}` /
+ * `${userHome}`; any OTHER `${...}` left after resolving those is VS Code's to expand, so a
+ * file-source save must not block on it being locally unreadable (P13).
+ */
+function isVscodeVariableConfigPath(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const resolved = resolveVariables(trimmed);
+  return hasUnresolvedVariables(resolved) && !hasUnresolvedExtensionVariables(resolved);
+}
+
+/** Options for {@link writeMcpJsonFromSettings}. */
+export interface WriteMcpJsonOptions {
+  /**
+   * Injected config-file loadability check (tests use the in-memory filesystem; defaults
+   * to the real on-disk check).
+   */
+  configFileLoadable?: (resolvedPath: string) => boolean;
+  /**
+   * The loaded `.vscode/mcp.json` `servers.wcli0` entry when saving a file source. When
+   * present, the generated fields are merged onto it (preserving unmodeled VS Code fields),
+   * the raw `env` and `url` are round-tripped, and a VS Code-variable `--config` path is not
+   * blocked. Absent for the settings-driven export, which builds a fresh entry.
+   */
+  baseEntry?: Record<string, unknown>;
+}
+
 export async function writeMcpJsonFromSettings(
   settings: Wcli0Settings,
   folder: vscode.WorkspaceFolder,
-  configFileLoadable: (resolvedPath: string) => boolean = configFileIsLoadable,
+  opts: WriteMcpJsonOptions = {},
 ): Promise<boolean> {
+  const configFileLoadable = opts.configFileLoadable ?? configFileIsLoadable;
+  const baseEntry = opts.baseEntry;
+  const fileSource = !!baseEntry;
   // Validate only what the generated entry actually uses. A stdio entry needs a
   // working launch command; an http/sse entry only contains a URL, so local
   // launch settings (method, allowed dirs) are irrelevant and only the port
   // matters — otherwise a valid external endpoint couldn't be written.
   if (settings.transportMode === 'stdio') {
+    // A `--config ${input:...}`/`${command:...}` path from a loaded mcp.json is resolved
+    // by VS Code at launch, not by us, so it cannot be checked on disk and must not block a
+    // file-source save (P13). Validate with the path blanked; the verbatim argv is still
+    // emitted into the entry below (buildLaunchSpec keeps the unresolved token).
+    const skipConfigCheck = fileSource && isVscodeVariableConfigPath(settings.configFile);
+    const validateSettings = skipConfigCheck ? { ...settings, configFile: '' } : settings;
     // A referenced wcli0.configFile becomes the entry's `--config`; validate it can
     // actually be loaded so the exported entry does not silently fall back to an
     // implicit config the server discovers instead (P85).
-    const cfgPath = resolvedConfigFilePath(settings);
+    const cfgPath = resolvedConfigFilePath(validateSettings);
     const cfgLoadable = !cfgPath || configFileLoadable(cfgPath);
     const hasLoadableConfigFile = !!cfgPath && cfgLoadable;
     // Per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles)
@@ -243,7 +352,7 @@ export async function writeMcpJsonFromSettings(
       );
       return false;
     }
-    const blocking = validateLaunchSpec(settings, false, false, cfgLoadable).filter(
+    const blocking = validateLaunchSpec(validateSettings, false, false, cfgLoadable).filter(
       (p) => p.blocking,
     );
     if (blocking.length > 0) {
@@ -293,14 +402,22 @@ export async function writeMcpJsonFromSettings(
         }
       }
     }
-  } else if (!preservedTransportUrl(settings) && !isValidPort(settings.transportPort)) {
-    // Only validate the port when the URL will be reconstructed from host/port. A
-    // preserved verbatim URL (e.g. one relying on a default port) carries its own
-    // authority and need not pass the standalone port check (P5).
-    void vscode.window.showErrorMessage(
-      `wcli0: transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`,
-    );
-    return false;
+  } else {
+    // A loaded file source decides URL preservation against its raw entry so the rules
+    // match what parseMcpEntry modeled (default-port/socket URLs included, P8/P10); the
+    // settings-driven export uses the host/port round-trip check (P5).
+    const preserved = fileSource
+      ? preservedFileUrl(settings, baseEntry as Record<string, unknown>)
+      : preservedTransportUrl(settings);
+    if (!preserved && !isValidPort(settings.transportPort)) {
+      // Only validate the port when the URL will be reconstructed from host/port. A
+      // preserved verbatim URL (e.g. one relying on a default port) carries its own
+      // authority and need not pass the standalone port check (P5).
+      void vscode.window.showErrorMessage(
+        `wcli0: transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`,
+      );
+      return false;
+    }
   }
 
   // Preserve portable ${workspaceFolder} tokens rather than resolving them: a
@@ -315,7 +432,16 @@ export async function writeMcpJsonFromSettings(
     // the workspace folder, so the server may still auto-load <workspace>/config.json.
     // There is no portable "safe" cwd for a shared mcp.json (an absolute temp path
     // would not be portable); set wcli0.launch.cwd or wcli0.configFile to control it.
-    let env = spec.env;
+    //
+    // env is not form-editable. For a file source, round-trip the loaded entry's raw env
+    // verbatim (including non-string values VS Code allows, e.g. numbers/null) rather than
+    // the string-filtered settings env, so an unrelated save does not silently drop them
+    // (P9). For the settings-driven export, use the env built from settings.
+    let env: Record<string, unknown> = spec.env;
+    if (fileSource) {
+      const rawEnv = baseEntry!.env;
+      env = isPlainObject(rawEnv) ? rawEnv : {};
+    }
     if (Object.keys(env).length > 0) {
       // env is serialized into the (commonly committed) mcp.json and may hold
       // secrets inherited from User settings — require an explicit choice.
@@ -332,26 +458,36 @@ export async function writeMcpJsonFromSettings(
         env = {};
       }
     }
-    entry = {
+    const generated: Record<string, unknown> = {
       type: 'stdio',
       command: spec.command,
       args: spec.args,
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
       ...(Object.keys(env).length ? { env } : {}),
     };
+    // For a file source, merge onto the loaded entry so unmodeled VS Code stdio fields
+    // (envFile, dev, sandboxEnabled, ...) survive an unrelated edit (P12).
+    entry = fileSource ? mergeEntryOntoBase(baseEntry!, generated, 'stdio') : generated;
   } else {
     // Prefer the loaded entry's verbatim URL when host/port are unchanged so a
-    // custom scheme/path or default-port URL is not silently downgraded (P5);
+    // custom scheme/path or default-port URL is not silently downgraded (P5/P8/P10);
     // otherwise normalize wildcard/IPv6 bind hosts into a connectable client URL.
     const url =
-      preservedTransportUrl(settings) ??
+      (fileSource
+        ? preservedFileUrl(settings, baseEntry as Record<string, unknown>)
+        : preservedTransportUrl(settings)) ??
       `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
         settings.transportMode === 'http' ? '/mcp' : '/sse'
       }`;
-    entry = {
+    const generated: Record<string, unknown> = {
       type: settings.transportMode === 'http' ? 'http' : 'sse',
       url,
     };
+    // For a file source, merge onto the loaded entry so unmodeled VS Code http/sse fields
+    // (headers, oauth, ...) survive an unrelated edit (P7).
+    entry = fileSource
+      ? mergeEntryOntoBase(baseEntry!, generated, settings.transportMode)
+      : generated;
   }
 
   const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');

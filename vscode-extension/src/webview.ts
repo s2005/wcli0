@@ -184,6 +184,14 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   // file" overlays the form's edits onto so unmodeled fields (extraArgs, blocked
   // lists, env) are preserved rather than dropped.
   let loadedFileSettings: Wcli0Settings | undefined;
+  // The raw `servers.wcli0` entry as loaded from .vscode/mcp.json. A "Save to file"
+  // merges the regenerated fields onto this so VS Code-supported fields the form does not
+  // model (HTTP headers/oauth, stdio envFile/dev, non-string env, custom/socket URLs) are
+  // preserved rather than dropped (P7/P9/P10/P12).
+  let loadedFileEntry: Record<string, unknown> | undefined;
+  // Notes from reverse-parsing the loaded entry (parts the form cannot fully model).
+  // Carried in every file-source init so a clean reload/save clears stale notes (P11).
+  let loadedFileNotes: string[] = [];
   // The fsPath of the workspace folder whose .vscode/mcp.json is loaded as the file
   // source. Tracked so that if the primary workspace folder changes (multi-root
   // removal/reorder), the stale file source is reset rather than saved back to the
@@ -237,6 +245,9 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       external,
       source: currentSource,
       detected: detectedSources,
+      // The file-source parse notes (empty off the file source), sent on EVERY init so a
+      // clean reload or save clears notes that no longer apply (P11).
+      notes: fileSource ? loadedFileNotes : [],
       hasWorkspace: !!primaryWorkspaceFolder(),
       // The open folder names, so the form can resolve ${workspaceFolder:name} tokens
       // exactly as the host does when deciding whether a profile isolates (P110).
@@ -278,16 +289,18 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       }
       const { settings, notes } = parseMcpEntry(entry);
       loadedFileSettings = settings;
+      loadedFileEntry = entry;
+      loadedFileNotes = notes;
       loadedFileFolder = folder.uri.fsPath;
       currentSource = 'mcpJson';
+      // post() carries the notes in its init message (cleared on a note-free reload, P11).
       post();
-      if (notes.length) {
-        webview.postMessage({ type: 'notes', notes });
-      }
       return true;
     }
     currentSource = 'settings';
     loadedFileSettings = undefined;
+    loadedFileEntry = undefined;
+    loadedFileNotes = [];
     loadedFileFolder = undefined;
     post();
     return true;
@@ -356,11 +369,29 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
         void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
         return;
       }
+      // Reject a stale file-source save. If the primary workspace folder changed while the
+      // form had unsaved edits, the host already reset the file source (wsSub) but a dirty
+      // webview ignores that external init and still posts saveToFile. Writing the stale form
+      // values to the NEW folder would overwrite ITS .vscode/mcp.json with the previous
+      // folder's config — the very wrong-folder overwrite the reset avoids (P6). Only proceed
+      // while still in mcpJson mode for THIS folder, with the loaded entry intact.
+      if (
+        currentSource !== 'mcpJson' ||
+        loadedFileFolder !== folder.uri.fsPath ||
+        !loadedFileEntry
+      ) {
+        void vscode.window.showErrorMessage(
+          'wcli0: the workspace folder changed, so the loaded .vscode/mcp.json is no longer ' +
+            'active. Switch the source to .vscode/mcp.json again to reload it before saving.',
+        );
+        return;
+      }
       // Overlay the form's changed values onto the loaded file baseline so unmodeled
-      // fields survive, then write the merged entry back to .vscode/mcp.json. Never
-      // touches wcli0.* settings.
+      // fields survive, then merge the regenerated entry onto the loaded raw entry (so
+      // unmodeled VS Code keys are preserved, P7/P12) and write it back to
+      // .vscode/mcp.json. Never touches wcli0.* settings.
       const settings = overlaySettings(loadedFileSettings ?? defaultSettings(), msg.values);
-      const ok = await writeMcpJsonFromSettings(settings, folder);
+      const ok = await writeMcpJsonFromSettings(settings, folder, { baseEntry: loadedFileEntry });
       if (!ok) {
         return;
       }
@@ -370,7 +401,15 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // `settings` (which still carries the old env) as the baseline would let
       // overlaySettings resurrect that omitted secret on a later unrelated save (P4).
       const written = await readWcli0Entry(folder);
-      loadedFileSettings = written ? parseMcpEntry(written).settings : settings;
+      if (written) {
+        const reparsed = parseMcpEntry(written);
+        loadedFileSettings = reparsed.settings;
+        loadedFileEntry = written;
+        loadedFileNotes = reparsed.notes;
+      } else {
+        loadedFileSettings = settings;
+        loadedFileNotes = [];
+      }
       loadedFileFolder = folder.uri.fsPath;
       await refreshDetection();
       post();
@@ -490,6 +529,8 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
     if (currentSource === 'mcpJson' && primaryWorkspaceFolder()?.uri.fsPath !== loadedFileFolder) {
       currentSource = 'settings';
       loadedFileSettings = undefined;
+      loadedFileEntry = undefined;
+      loadedFileNotes = [];
       loadedFileFolder = undefined;
     }
     // Post synchronously from the cached detection (a test asserts the re-post happens
@@ -1897,15 +1938,6 @@ function renderHtml(webview: vscode.Webview): string {
       flashStatus('Reverted from file ' + CHECK);
       return;
     }
-    if (msg.type === 'notes') {
-      const el = $('sourceNotes');
-      if (el) {
-        const notes = Array.isArray(msg.notes) ? msg.notes : [];
-        el.textContent = notes.join(' ');
-        el.style.display = notes.length ? '' : 'none';
-      }
-      return;
-    }
     if (msg.type === 'init') {
       // Workspace availability (enable/disable the Workspace radio and the mcp.json
       // export, show the no-folder hint) must track reality even when the field-value
@@ -1940,8 +1972,16 @@ function renderHtml(webview: vscode.Webview): string {
       // Reflect the active configuration source (source bar, switcher, banner, Save
       // button) from this init. Clear stale parse notes when not on a file source.
       setActiveSource(msg.source, msg.detected);
-      if (currentSourceClient !== 'mcpJson' && $('sourceNotes')) {
-        $('sourceNotes').style.display = 'none';
+      // Render the file-source parse notes from this init. Every file-source init carries
+      // the current notes (empty when none apply), so a clean reload or save clears stale
+      // notes rather than leaving an obsolete warning visible (P11); off the file source
+      // there are never notes.
+      const notesEl = $('sourceNotes');
+      if (notesEl) {
+        const notes =
+          currentSourceClient === 'mcpJson' && Array.isArray(msg.notes) ? msg.notes : [];
+        notesEl.textContent = notes.join(' ');
+        notesEl.style.display = notes.length ? '' : 'none';
       }
     }
   });

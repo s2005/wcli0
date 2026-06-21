@@ -676,6 +676,73 @@ test('P4: omitting env on save clears it from the file-source baseline', async (
   assert.equal(envWarns(), afterFirst, 'no second env prompt — baseline cleared');
 });
 
+test('P6: a stale file-source save after the primary folder changes is rejected', async () => {
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  // The primary folder changes to a different folder (multi-root removal/reorder); the
+  // host resets the file source, but a dirty webview still posts saveToFile.
+  vscode.__state.workspaceFolders = [{ uri: { fsPath: '/other' }, name: 'other', index: 0 }];
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) cb();
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'saveToFile', values: { commandTimeout: 50 } });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'saved'), undefined, 'no save confirmation');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /workspace folder changed/.test(m)),
+    'the stale save is refused with an explanation',
+  );
+  assert.equal(
+    vscode.__state.files.has('/other/.vscode/mcp.json'),
+    false,
+    'nothing is written to the new folder',
+  );
+});
+
+test('P11: file-source init carries notes and a clean reload clears stale ones', async () => {
+  // A socket URL the host/port fields cannot model produces a parse note.
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'http', url: 'unix:///tmp/s.sock#/mcp' } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  let init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(Array.isArray(init.notes) && init.notes.length > 0, 'notes sent for the un-modeled URL');
+  // Replace the file with a canonical entry that yields no notes, then reload (revert).
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'http', url: 'http://127.0.0.1:9444/mcp' } } });
+  panel.webview.posted = [];
+  vscode.__state.calls.warnReturn = 'Discard changes';
+  await panel.webview._handler({ type: 'revertFileRequest' });
+  init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 're-posted on revert');
+  assert.deepEqual(init.notes, [], 'stale notes cleared on the clean reload');
+});
+
+test('P7: saving a file source preserves unmodeled http headers on disk', async () => {
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: {
+        type: 'http',
+        url: 'http://127.0.0.1:9444/mcp',
+        headers: { Authorization: 'Bearer x' },
+      },
+    },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  await panel.webview._handler({ type: 'saveToFile', values: {} });
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.deepEqual(parsed.servers.wcli0.headers, { Authorization: 'Bearer x' }, 'headers survive the save');
+  assert.equal(parsed.servers.wcli0.url, 'http://127.0.0.1:9444/mcp', 'url round-trips unchanged');
+});
+
 test('the home config row opens the file read-only', async () => {
   openConfigPanel(makeContext());
   const panel = vscode.__state.lastWebviewPanel;
