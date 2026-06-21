@@ -9,6 +9,7 @@ import {
   validateLaunchSpec,
 } from './argsBuilder';
 import { buildConfigFile } from './configFile';
+import { parseHttpUrl } from './configSource';
 import {
   ConfigScope,
   hasPerShellConfig,
@@ -189,6 +190,26 @@ export async function writeWorkspaceMcpJson(
  * supplies settings built from the form rather than read from a scope — so saving a
  * file source never writes any `wcli0.*` setting.
  */
+/**
+ * The verbatim http/sse URL to write for an entry, when a loaded file source's
+ * URL should be preserved rather than rebuilt from host/port. Returns the original
+ * URL only while it still parses to the host/port currently shown in the form — so
+ * a custom scheme/path or default-port URL round-trips unchanged, but editing the
+ * host/port falls back to the canonical reconstruction (P5). Undefined for
+ * settings-sourced reads, which never carry `transportUrl`.
+ */
+function preservedTransportUrl(settings: Wcli0Settings): string | undefined {
+  const url = settings.transportUrl?.trim();
+  if (!url) {
+    return undefined;
+  }
+  const parsed = parseHttpUrl(url);
+  if (parsed && parsed.host === settings.transportHost && parsed.port === settings.transportPort) {
+    return url;
+  }
+  return undefined;
+}
+
 export async function writeMcpJsonFromSettings(
   settings: Wcli0Settings,
   folder: vscode.WorkspaceFolder,
@@ -272,7 +293,10 @@ export async function writeMcpJsonFromSettings(
         }
       }
     }
-  } else if (!isValidPort(settings.transportPort)) {
+  } else if (!preservedTransportUrl(settings) && !isValidPort(settings.transportPort)) {
+    // Only validate the port when the URL will be reconstructed from host/port. A
+    // preserved verbatim URL (e.g. one relying on a default port) carries its own
+    // authority and need not pass the standalone port check (P5).
     void vscode.window.showErrorMessage(
       `wcli0: transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`,
     );
@@ -316,12 +340,17 @@ export async function writeMcpJsonFromSettings(
       ...(Object.keys(env).length ? { env } : {}),
     };
   } else {
+    // Prefer the loaded entry's verbatim URL when host/port are unchanged so a
+    // custom scheme/path or default-port URL is not silently downgraded (P5);
+    // otherwise normalize wildcard/IPv6 bind hosts into a connectable client URL.
+    const url =
+      preservedTransportUrl(settings) ??
+      `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
+        settings.transportMode === 'http' ? '/mcp' : '/sse'
+      }`;
     entry = {
       type: settings.transportMode === 'http' ? 'http' : 'sse',
-      // Normalize wildcard/IPv6 bind hosts into a connectable client URL.
-      url: `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
-        settings.transportMode === 'http' ? '/mcp' : '/sse'
-      }`,
+      url,
     };
   }
 

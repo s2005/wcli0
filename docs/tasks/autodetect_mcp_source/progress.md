@@ -67,3 +67,19 @@
 ## Review Feedback
 
 (Section appears when PR review feedback arrives. Each comment gets a checkbox.)
+
+### Review Feedback (PR #89)
+
+- [x] P1: Prevent export actions from persisting file-source edits (fixed — host
+  export handler refuses while `currentSource === 'mcpJson'`; webview disables the
+  export buttons in file mode)
+- [x] P2: Reset file source when the primary folder changes (fixed — track
+  `loadedFileFolder` and reset the file source whenever the primary folder's fsPath
+  no longer matches it)
+- [x] P3: Preserve dash-prefixed custom launcher args (fixed — split custom args at
+  the first recognized wcli0 flag via `isServerFlag`, not the first dash)
+- [x] P4: Clear omitted env from the saved file baseline (fixed — re-baseline
+  `saveToFile` from the entry re-read off disk after writing)
+- [x] P5: Preserve full HTTP/SSE URLs when round-tripping (fixed — preserve the
+  verbatim `transportUrl` and write it back unless host/port were edited; note
+  non-canonical URLs)

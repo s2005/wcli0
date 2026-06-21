@@ -228,6 +228,36 @@ test('parseMcpEntry splits custom command args from server flags', () => {
   assert.equal(settings.shell, 'gitbash');
 });
 
+test('P3: parseMcpEntry keeps dash-prefixed custom launcher args before wcli0 flags', () => {
+  const { settings, notes } = parseMcpEntry({
+    type: 'stdio',
+    command: 'uvx',
+    args: ['--from', 'git+https://example/repo', 'wcli0', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'uvx');
+  // The launcher's own --from option stays in customArgs; only the recognized wcli0
+  // flag (--shell) starts the server flags. Nothing leaks into extraArgs.
+  assert.deepEqual(settings.customArgs, ['--from', 'git+https://example/repo', 'wcli0']);
+  assert.equal(settings.shell, 'cmd');
+  assert.deepEqual(settings.extraArgs, []);
+  assert.equal(notes.length, 0);
+});
+
+test('P3: buildLaunchSpec -> parseMcpEntry round-trips custom launcher args in order', () => {
+  const s = defaults({
+    launchMethod: 'custom',
+    customCommand: 'uvx',
+    customArgs: ['--from', 'repo', 'wcli0'],
+    shell: 'cmd',
+  });
+  const spec = buildLaunchSpec(s, { resolvePaths: false });
+  const { settings } = parseMcpEntry({ type: 'stdio', command: spec.command, args: spec.args });
+  assert.equal(settings.customCommand, 'uvx');
+  assert.deepEqual(settings.customArgs, ['--from', 'repo', 'wcli0']);
+  assert.equal(settings.shell, 'cmd');
+});
+
 test('parseMcpEntry parses an http entry url', () => {
   const { settings } = parseMcpEntry({ type: 'http', url: 'http://127.0.0.1:9444/mcp' });
   assert.equal(settings.transportMode, 'http');
@@ -240,6 +270,26 @@ test('parseMcpEntry parses an sse entry with a bracketed IPv6 host', () => {
   assert.equal(settings.transportMode, 'sse');
   assert.equal(settings.transportHost, '[::1]');
   assert.equal(settings.transportPort, 8080);
+});
+
+test('P5: parseMcpEntry preserves a non-canonical http url and notes the limitation', () => {
+  const { settings, notes } = parseMcpEntry({
+    type: 'http',
+    url: 'https://gateway.example/custom/mcp',
+  });
+  assert.equal(settings.transportMode, 'http');
+  assert.equal(settings.transportHost, 'gateway.example');
+  assert.equal(settings.transportPort, 0);
+  // The verbatim URL is retained so a save can round-trip the custom scheme/path
+  // and the default port instead of downgrading to http://host:0/mcp.
+  assert.equal(settings.transportUrl, 'https://gateway.example/custom/mcp');
+  assert.ok(notes.some((n) => /custom scheme/.test(n)));
+});
+
+test('P5: parseMcpEntry does not note a canonical http url but still preserves it', () => {
+  const { settings, notes } = parseMcpEntry({ type: 'http', url: 'http://127.0.0.1:9444/mcp' });
+  assert.equal(settings.transportUrl, 'http://127.0.0.1:9444/mcp');
+  assert.equal(notes.length, 0);
 });
 
 test('parseMcpEntry notes a referenced --config file', () => {

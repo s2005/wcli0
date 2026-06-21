@@ -703,6 +703,30 @@ test('writeMcpJsonFromSettings preserves other servers in the file', async () =>
   assert.ok(parsed.servers.wcli0, 'wcli0 server written');
 });
 
+test('P5: writeMcpJsonFromSettings preserves a loaded http url verbatim when host/port are unchanged', async () => {
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'gateway.example';
+  s.transportPort = 0; // default port — only valid because the URL is preserved
+  s.transportUrl = 'https://gateway.example/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.url, 'https://gateway.example/custom/mcp');
+});
+
+test('P5: writeMcpJsonFromSettings rebuilds the url when the host/port were edited', async () => {
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 8123; // edited away from the preserved URL's host/port
+  s.transportUrl = 'https://gateway.example/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.url, 'http://127.0.0.1:8123/mcp');
+});
+
 test('writeMcpJsonFromSettings returns false and does not write a malformed file', async () => {
   vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from('not json'));
   const before = vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8');

@@ -141,6 +141,37 @@ const VALUE_OPTIONS: Record<string, OptionSpec> = {
   '--sse-allowed-origins': { key: 'transportAllowedOrigins', kind: 'csv' },
 };
 
+// Value-less wcli0 flags the forward builder emits (booleans, safety, tri-states
+// and their `--no-` variants). Mirror of the flags handled inline in
+// parseServerArgs; used to find where the wcli0 server flags begin in a custom
+// command's args (see parseMcpEntry).
+const BOOLEAN_FLAGS = new Set<string>([
+  '--allowAllDirs',
+  '--debug',
+  '--yolo',
+  '--unsafe',
+  '--enableTruncation',
+  '--no-enableTruncation',
+  '--enableLogResources',
+  '--no-enableLogResources',
+]);
+
+/**
+ * Whether a token is a wcli0 server flag the reverse parser recognizes (a value
+ * option in {@link VALUE_OPTIONS} or a boolean/tri-state flag). Accepts the
+ * attached `--opt=value` form. Used to locate the boundary between a custom
+ * launcher's own arguments and the wcli0 server flags, which the forward builder
+ * emits as `[...customArgs, ...serverFlags]`.
+ */
+function isServerFlag(token: string): boolean {
+  if (!token.startsWith('-')) {
+    return false;
+  }
+  const eq = token.indexOf('=');
+  const flag = token.startsWith('--') && eq > 0 ? token.slice(0, eq) : token;
+  return flag in VALUE_OPTIONS || BOOLEAN_FLAGS.has(flag);
+}
+
 /**
  * Reverse of {@link buildServerArgs}: parse a wcli0 flag list back into the subset
  * of settings the form models, plus the leftover (unrecognized) flags. Accepts both
@@ -280,6 +311,21 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     if (parsed) {
       s.transportHost = parsed.host;
       s.transportPort = parsed.port;
+      // Preserve the verbatim URL so a save round-trips a custom scheme/path or a
+      // default-port URL unchanged instead of rewriting it to http://host:port/<path>
+      // (P5). Note it when the form cannot fully model the URL (a non-http scheme or
+      // a path other than the canonical /mcp//sse), since editing host/port then
+      // rebuilds it to the canonical shape.
+      if (url) {
+        s.transportUrl = url;
+        if (!isCanonicalTransportUrl(url, type, parsed)) {
+          notes.push(
+            `The ${type} URL "${url}" uses a custom scheme, path, or port. It is preserved ` +
+              'as-is when you save, but editing the host or port here rewrites it to the ' +
+              `http://host:port/${type === 'http' ? 'mcp' : 'sse'} form.`,
+          );
+        }
+      }
     } else if (url) {
       notes.push(`Could not parse the ${type} URL "${url}"; check the host and port.`);
     }
@@ -308,9 +354,13 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   } else {
     s.launchMethod = 'custom';
     s.customCommand = command;
-    // Leading non-flag tokens are the custom command's own args; the rest are wcli0
-    // flags. The first `-`-prefixed token starts the server flags.
-    const firstFlag = args.findIndex((a) => a.startsWith('-'));
+    // Leading tokens are the custom command's own args; the rest are wcli0 server
+    // flags. The forward builder emits `[...customArgs, ...serverFlags]`, so the
+    // boundary is the first RECOGNIZED wcli0 flag — not merely the first dashed
+    // token. A launcher option such as `--inspect` or `--from` (e.g.
+    // `node --inspect dist/index.js`, `uvx --from ...`) is not a wcli0 flag and
+    // stays in customArgs, so a load/save round-trip preserves command order (P3).
+    const firstFlag = args.findIndex((a) => isServerFlag(a));
     if (firstFlag === -1) {
       s.customArgs = args.slice();
       serverArgs = [];
@@ -337,7 +387,7 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
 }
 
 /** Parse host/port out of an http/sse URL; returns undefined when unparseable. */
-function parseHttpUrl(url: string): { host: string; port: number } | undefined {
+export function parseHttpUrl(url: string): { host: string; port: number } | undefined {
   if (!url) {
     return undefined;
   }
@@ -349,4 +399,19 @@ function parseHttpUrl(url: string): { host: string; port: number } | undefined {
   const host = m[1];
   const port = m[2] ? Number(m[2]) : 0;
   return { host, port };
+}
+
+/**
+ * Whether `url` is exactly the shape the forward builder emits for an http/sse
+ * entry: `http://<host>:<port>/<mcp|sse>` with an explicit port and no userinfo,
+ * query, or fragment. A canonical URL round-trips losslessly through host/port, so
+ * it needs no preservation note; anything else does (P5).
+ */
+function isCanonicalTransportUrl(
+  url: string,
+  type: 'http' | 'sse',
+  parsed: { host: string; port: number },
+): boolean {
+  const path = type === 'http' ? '/mcp' : '/sse';
+  return url === `http://${parsed.host}:${parsed.port}${path}` && parsed.port > 0;
 }

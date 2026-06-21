@@ -541,3 +541,154 @@ test('a dirty source switch requests confirmation before discarding edits', asyn
   assert.equal(panel.webview.posted.find((m) => m.type === 'init'), undefined);
   assert.equal(vscode.__state.calls.warn.length, 1);
 });
+
+test('a confirmed revert reloads the file entry and signals reverted', async () => {
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  // Load the file source so a revert has an entry to reload.
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  panel.webview.posted = [];
+  vscode.__state.calls.warnReturn = 'Discard changes';
+  await panel.webview._handler({ type: 'revertFileRequest' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 'the file entry is re-posted on revert');
+  assert.equal(init.source, 'mcpJson');
+  assert.ok(panel.webview.posted.find((m) => m.type === 'reverted'), 'reverted signal sent');
+  assert.equal(vscode.__state.calls.warn.length, 1, 'revert confirms before discarding');
+});
+
+test('a declined revert neither reloads nor signals reverted', async () => {
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  panel.webview.posted = [];
+  vscode.__state.calls.warnReturn = undefined; // dismiss the modal
+  await panel.webview._handler({ type: 'revertFileRequest' });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'init'), undefined, 'no reload on cancel');
+  assert.equal(panel.webview.posted.find((m) => m.type === 'reverted'), undefined, 'no reverted signal on cancel');
+});
+
+test('Save to file writes the wcli0 entry to .vscode/mcp.json and confirms', async () => {
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  panel.webview.posted = [];
+  // The Save button in file mode posts saveToFile with only the changed fields.
+  await panel.webview._handler({ type: 'saveToFile', values: { shell: 'cmd' } });
+  const raw = await vscode.workspace.fs.readFile(
+    vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.vscode', 'mcp.json'),
+  );
+  const parsed = JSON.parse(Buffer.from(raw).toString('utf8'));
+  assert.ok(parsed.servers.wcli0.args.includes('--shell'), JSON.stringify(parsed.servers.wcli0.args));
+  assert.ok(parsed.servers.wcli0.args.includes('cmd'));
+  assert.ok(panel.webview.posted.find((m) => m.type === 'saved'), 'saved confirmation sent');
+});
+
+test('Save to file with no workspace folder is refused (no write)', async () => {
+  vscode.__state.workspaceFolders = undefined;
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'saveToFile', values: { shell: 'cmd' } });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'saved'), undefined, 'no save confirmation');
+  assert.ok(vscode.__state.calls.error.length >= 1, 'an error was surfaced');
+});
+
+test('P1: export actions are refused while editing a file source', async () => {
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  vscode.__state.calls.executedCommands.length = 0;
+  vscode.__state.calls.error.length = 0;
+  // An export carrying form values must NOT persist them to wcli0.* settings nor run
+  // the export command while a file source is active.
+  await panel.webview._handler({
+    type: 'writeMcpJson',
+    target: 'Workspace',
+    values: { shell: 'cmd' },
+  });
+  assert.equal(vscode.__state.calls.executedCommands.length, 0, 'no export command ran');
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.shell'), false, 'no setting written');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /export actions are unavailable/.test(m)),
+    'refusal surfaced',
+  );
+});
+
+test('P2: changing the primary workspace folder resets a loaded file source', async () => {
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  // The primary folder changes to a different folder (multi-root removal/reorder),
+  // still returning a folder but no longer the one the file source was loaded from.
+  vscode.__state.workspaceFolders = [{ uri: { fsPath: '/other' }, name: 'other', index: 0 }];
+  panel.webview.posted = [];
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) cb();
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.ok(init, 're-posted after the folder change');
+  assert.equal(init.source, 'settings', 'stale file source reset to settings');
+});
+
+test('P4: omitting env on save clears it from the file-source baseline', async () => {
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'wcli0@latest', '--shell', 'cmd'],
+        env: { SECRET: 'x' },
+      },
+    },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  const envWarns = () =>
+    vscode.__state.calls.warn.filter((w) => /launch\.env/.test(w.message)).length;
+  // First save: choose to omit the env inherited from the loaded entry.
+  vscode.__state.calls.warnReturn = 'Omit environment';
+  await panel.webview._handler({ type: 'saveToFile', values: { commandTimeout: 30 } });
+  let parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.env, undefined, 'env omitted from the written entry');
+  const afterFirst = envWarns();
+  assert.equal(afterFirst, 1, 'env prompt shown once');
+  // A later unrelated save must neither resurrect the omitted env nor prompt again,
+  // because the baseline was re-read from the env-less file on disk.
+  await panel.webview._handler({ type: 'saveToFile', values: { maxCommandLength: 100 } });
+  parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.env, undefined, 'env stays omitted on the next save');
+  assert.equal(envWarns(), afterFirst, 'no second env prompt — baseline cleared');
+});
+
+test('the home config row opens the file read-only', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'openHomeConfig' });
+  // Opens a document, shows it, and marks the editor read-only in-session.
+  assert.equal(vscode.__state.calls.openedDocs.length, 1, 'opened the home config document');
+  assert.ok(/\.win-cli-mcp[\\/]config\.json$/.test(vscode.__state.calls.openedDocs[0].fsPath));
+  assert.equal(vscode.__state.calls.shownDocs.length, 1, 'showed the document');
+  assert.ok(
+    vscode.__state.calls.executedCommands.some(
+      (c) => c.id === 'workbench.action.files.setActiveEditorReadonlyInSession',
+    ),
+    'marked the editor read-only in session',
+  );
+});

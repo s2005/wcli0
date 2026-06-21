@@ -137,6 +137,15 @@ export interface Wcli0Settings {
   transportAllowedOrigins: string[];
 
   extraArgs: string[];
+
+  /**
+   * The verbatim `url` of a loaded http/sse `.vscode/mcp.json` entry, preserved so
+   * a save can write it back unchanged instead of downgrading a custom
+   * scheme/path/default-port URL to the canonical `http://host:port/{mcp,sse}`
+   * shape (P5). Set only by the file-source reverse parser; never a `wcli0.*`
+   * setting, so it is absent for settings-sourced reads.
+   */
+  transportUrl?: string;
 }
 
 /** The workspace folder used as the base for `${workspaceFolder}` resolution. */

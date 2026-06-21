@@ -184,6 +184,11 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   // file" overlays the form's edits onto so unmodeled fields (extraArgs, blocked
   // lists, env) are preserved rather than dropped.
   let loadedFileSettings: Wcli0Settings | undefined;
+  // The fsPath of the workspace folder whose .vscode/mcp.json is loaded as the file
+  // source. Tracked so that if the primary workspace folder changes (multi-root
+  // removal/reorder), the stale file source is reset rather than saved back to the
+  // new folder, which would overwrite it with the previous folder's config (P2).
+  let loadedFileFolder: string | undefined;
   // Cached detected sources for the switcher. Refreshed on ready / workspace-folder
   // change / after a file save, so post() (which must stay synchronous — a config
   // change re-posts synchronously) can include it without awaiting detection.
@@ -257,32 +262,35 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   // Switch the active source and re-post the form populated from it. For the file
   // source, read and reverse-parse the workspace .vscode/mcp.json wcli0 entry; an
   // absent entry or no folder is reported and the switch is refused.
-  const switchSource = async (target: ConfigSourceKind): Promise<void> => {
+  const switchSource = async (target: ConfigSourceKind): Promise<boolean> => {
     if (target === 'mcpJson') {
       const folder = primaryWorkspaceFolder();
       if (!folder) {
         void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
-        return;
+        return false;
       }
       const entry = await readWcli0Entry(folder);
       if (!entry) {
         void vscode.window.showErrorMessage(
           'wcli0: no wcli0 server entry found in .vscode/mcp.json to load.',
         );
-        return;
+        return false;
       }
       const { settings, notes } = parseMcpEntry(entry);
       loadedFileSettings = settings;
+      loadedFileFolder = folder.uri.fsPath;
       currentSource = 'mcpJson';
       post();
       if (notes.length) {
         webview.postMessage({ type: 'notes', notes });
       }
-    } else {
-      currentSource = 'settings';
-      loadedFileSettings = undefined;
-      post();
+      return true;
     }
+    currentSource = 'settings';
+    loadedFileSettings = undefined;
+    loadedFileFolder = undefined;
+    post();
+    return true;
   };
 
   webview.html = renderHtml(webview);
@@ -310,6 +318,38 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       if (msg.source === 'settings' || msg.source === 'mcpJson') {
         await switchSource(msg.source);
       }
+    } else if (msg.type === 'revertFileRequest') {
+      // Reload the wcli0 entry from disk, discarding unsaved form edits. The webview
+      // only sends this when the form is dirty (a clean form has nothing to revert and
+      // gives its own inline feedback), so always confirm before discarding. Uses
+      // revert-specific wording rather than the generic source-switch prompt, and
+      // signals 'reverted' on success so the webview can flash a confirmation.
+      const choice = await vscode.window.showWarningMessage(
+        'Discard unsaved changes and reload the wcli0 entry from .vscode/mcp.json?',
+        { modal: true },
+        'Discard changes',
+      );
+      if (choice === 'Discard changes' && (await switchSource('mcpJson'))) {
+        webview.postMessage({ type: 'reverted' });
+      }
+    } else if (msg.type === 'openHomeConfig') {
+      // Open the server's implicit ~/.win-cli-mcp/config.json as a read-only preview.
+      // It is never an editable/save target here (REQ-6); the menu row just opens it so
+      // the user can inspect what can silently override their settings. Recompute the
+      // path host-side rather than trusting the message so this can only open that file,
+      // and mark the editor read-only in-session to prevent accidental edits.
+      const home = path.join(os.homedir(), '.win-cli-mcp', 'config.json');
+      try {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(home));
+        await vscode.window.showTextDocument(doc, { preview: true });
+        await vscode.commands.executeCommand(
+          'workbench.action.files.setActiveEditorReadonlyInSession',
+        );
+      } catch {
+        void vscode.window.showErrorMessage(
+          'wcli0: could not open ~/.win-cli-mcp/config.json.',
+        );
+      }
     } else if (msg.type === 'saveToFile' && msg.values) {
       const folder = primaryWorkspaceFolder();
       if (!folder) {
@@ -324,7 +364,14 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       if (!ok) {
         return;
       }
-      loadedFileSettings = settings;
+      // Re-baseline from what was actually written to disk rather than the pre-write
+      // form state, so fields the form does not model match the file. In particular,
+      // when the user chose "Omit environment" the written entry has no env; reusing
+      // `settings` (which still carries the old env) as the baseline would let
+      // overlaySettings resurrect that omitted secret on a later unrelated save (P4).
+      const written = await readWcli0Entry(folder);
+      loadedFileSettings = written ? parseMcpEntry(written).settings : settings;
+      loadedFileFolder = folder.uri.fsPath;
       await refreshDetection();
       post();
       webview.postMessage({ type: 'saved' });
@@ -376,6 +423,18 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       msg.type === 'writeMcpJson' ||
       msg.type === 'showCommand'
     ) {
+      // Export actions read and persist wcli0.* settings. While editing a file source
+      // the form holds the .vscode/mcp.json entry, not settings, so persisting its
+      // values would corrupt wcli0.* settings and the export would be generated from
+      // settings rather than the loaded file. The webview disables the export buttons
+      // in file mode; refuse here too as defense in depth (P1).
+      if (currentSource === 'mcpJson') {
+        void vscode.window.showErrorMessage(
+          'wcli0: export actions are unavailable while editing a .vscode/mcp.json source. ' +
+            'Switch to VS Code Settings to export.',
+        );
+        return;
+      }
       // Export actions operate on persisted settings. Persist the form's current
       // edits first so what the user sees in the form is what gets exported —
       // otherwise unsaved changes (e.g. Limits & Safety) would be silently
@@ -423,11 +482,15 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
     if (!primaryWorkspaceFolder() && currentScope === 'Workspace') {
       currentScope = 'Global';
     }
-    // A file source is workspace-relative; with no folder there is nothing to edit or
-    // save, so fall back to the settings source rather than keep a stale file source.
-    if (!primaryWorkspaceFolder() && currentSource === 'mcpJson') {
+    // A file source is workspace-relative and tied to the folder it was loaded from.
+    // Reset it whenever the primary folder no longer matches that folder — either no
+    // folder remains, or a multi-root removal/reorder changed the primary. Keeping the
+    // stale source would let the next "Save to file" overwrite the new folder's
+    // .vscode/mcp.json with the previously loaded folder's config (P2).
+    if (currentSource === 'mcpJson' && primaryWorkspaceFolder()?.uri.fsPath !== loadedFileFolder) {
       currentSource = 'settings';
       loadedFileSettings = undefined;
+      loadedFileFolder = undefined;
     }
     // Post synchronously from the cached detection (a test asserts the re-post happens
     // synchronously on folder change). Refresh the detection cache in the background
@@ -624,12 +687,33 @@ function renderHtml(webview: vscode.Webview): string {
     background: var(--vscode-button-background); color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px;
   }
-  button:hover { background: var(--vscode-button-hoverBackground); }
+  button:not(:disabled):hover { background: var(--vscode-button-hoverBackground); }
+  button:disabled { opacity: .5; cursor: default; }
   button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-  button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button.secondary:not(:disabled):hover { background: var(--vscode-button-secondaryHoverBackground); }
   .scope-radio { display: inline-flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   .scope-radio > span { font-weight: 600; }
-  .scope-radio label { display: inline-flex; align-items: center; gap: 5px; font-weight: 400; margin: 0; }
+  .scope-radio label {
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 400; margin: 0;
+    padding: 3px 9px; border-radius: 4px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  /* Native radios render as dark-on-dark in most VS Code themes, so the selected
+     option is nearly invisible. Tint the control with the theme focus color and
+     visibly highlight the checked label (chip outline + accent text). */
+  .scope-radio input[type=radio] {
+    accent-color: var(--vscode-focusBorder, var(--vscode-button-background));
+    width: 15px; height: 15px; margin: 0; cursor: pointer;
+  }
+  .scope-radio label:hover { background: var(--vscode-list-hoverBackground, transparent); }
+  .scope-radio label:has(input:checked) {
+    border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+    background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-background));
+    color: var(--vscode-list-activeSelectionForeground, var(--vscode-button-foreground));
+    font-weight: 600;
+  }
+  .scope-radio input[type=radio]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+  .scope-radio label:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   details.shell-block {
     margin-top: 10px; padding: 10px 12px; border-radius: 5px;
     border: 1px solid var(--vscode-panel-border, var(--vscode-editorWidget-border, transparent));
@@ -692,7 +776,7 @@ function renderHtml(webview: vscode.Webview): string {
     <div class="source-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
       <span class="hint">Editing:</span>
       <span id="sourceChip" class="statuschip sc-ok" title="The configuration source the form is editing">VS Code Settings</span>
-      <span id="sourcePath" class="hint" style="font-family:var(--vscode-editor-font-family);max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <span id="sourcePath" class="hint" style="font-family:var(--vscode-editor-font-family);max-width:360px;overflow-wrap:anywhere;word-break:break-word"></span>
       <span class="switcher" style="position:relative">
         <button type="button" id="switchSourceBtn" class="secondary">Switch source &#9662;</button>
         <div id="sourceMenu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:320px;padding:6px;border-radius:6px;background:var(--vscode-editorWidget-background,#252526);border:1px solid var(--vscode-panel-border,#3c3c3c);box-shadow:0 6px 24px #0008"></div>
@@ -719,7 +803,7 @@ function renderHtml(webview: vscode.Webview): string {
       Editing a file directly. Save writes the wcli0 entry back to this file; other servers are preserved.
     </div>
     <div id="detectBanner" class="hint" style="display:none;margin-top:8px;padding:10px 12px;border-radius:6px;border:1px solid var(--vscode-panel-border,#3c3c3c);border-left:3px solid var(--vscode-charts-blue,#6fb3e0);background:var(--vscode-editorWidget-background,#252526)">
-      <span>Found a <strong>wcli0</strong> server in <code>.vscode/mcp.json</code>. Load it to edit the file directly.</span>
+      <span>You are editing <strong>VS Code Settings</strong>. A <strong>wcli0</strong> server also exists in <code>.vscode/mcp.json</code> &mdash; its values are <strong>not loaded here</strong>. Load it to edit that file instead.</span>
       <span style="display:inline-flex;gap:8px;margin-left:8px">
         <button type="button" id="loadMcpJson">Load &amp; edit .vscode/mcp.json</button>
         <button type="button" id="dismissBanner" class="secondary">Dismiss</button>
@@ -1302,6 +1386,15 @@ function renderHtml(webview: vscode.Webview): string {
     return Object.keys(collectChanged()).length > 0;
   }
 
+  // Enable "Revert to file" only when the form has unsaved edits — a clean form already
+  // matches the file, so there is nothing to revert. The button is also hidden entirely
+  // outside the file source (see setActiveSource). Called on every reload/save (via
+  // setActiveSource) and live on each field edit (delegated input/change listeners).
+  function reflectDirty() {
+    const rb = $('revertFile');
+    if (rb) rb.disabled = !isDirty();
+  }
+
   function updateLaunchRows() {
     const m = $('launch.method').value;
     // '' is Inherit (no method chosen): hide all method-specific rows.
@@ -1560,14 +1653,23 @@ function renderHtml(webview: vscode.Webview): string {
   }
 
   let savedTimer;
-  function showSaved() {
+  // Check-mark glyph built from its code point so the source stays ASCII (no literal
+  // non-ASCII characters in code, matching the HTML template's &#10003; convention).
+  const CHECK = String.fromCharCode(0x2713);
+  // Briefly show a transient status message in the shared indicator span, then restore
+  // its default "Saved" label. Used for save, revert, and "nothing to revert" feedback.
+  function flashStatus(text) {
     const el = $('savedMsg');
     if (!el) return;
-    // Re-baseline so the indicator clears once further edits are made.
-    initial = collect();
+    el.textContent = text;
     el.style.display = '';
     clearTimeout(savedTimer);
-    savedTimer = setTimeout(() => { el.style.display = 'none'; }, 2500);
+    savedTimer = setTimeout(() => { el.style.display = 'none'; el.textContent = 'Saved ' + CHECK; }, 2500);
+  }
+  function showSaved() {
+    // Re-baseline so the indicator clears once further edits are made.
+    initial = collect();
+    flashStatus('Saved ' + CHECK);
   }
 
   // Reflect whether a workspace folder is available: enable/disable the Workspace
@@ -1649,10 +1751,24 @@ function renderHtml(webview: vscode.Webview): string {
     const add = (label, sub, onClick, opts) => {
       opts = opts || {};
       const row = document.createElement('div');
-      row.style.cssText = 'padding:8px 10px;border-radius:4px;' + (opts.disabled ? 'opacity:.55;' : 'cursor:pointer;');
+      // The active (currently loaded) source gets a highlighted row + an "active"
+      // badge so it is unmistakable which source the form values come from. A bare
+      // checkmark was too easy to miss and competed with the detection banner's
+      // highlight on a different file.
+      row.style.cssText = 'padding:8px 10px;border-radius:4px;' +
+        (opts.disabled ? 'opacity:.55;' : 'cursor:pointer;') +
+        (opts.active ? 'background:var(--vscode-list-activeSelectionBackground,#04395e);border-left:3px solid var(--vscode-focusBorder,#0078d4);' : '');
       const main = document.createElement('div');
-      main.style.fontWeight = '600';
-      main.textContent = label + (opts.active ? '  ✓' : '');
+      main.style.cssText = 'font-weight:600;display:flex;align-items:center;gap:8px';
+      const labelEl = document.createElement('span');
+      labelEl.textContent = label;
+      main.appendChild(labelEl);
+      if (opts.active) {
+        const badge = document.createElement('span');
+        badge.textContent = 'active';
+        badge.style.cssText = 'font-size:.72em;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:8px;background:var(--vscode-focusBorder,#0078d4);color:var(--vscode-button-foreground,#fff)';
+        main.appendChild(badge);
+      }
       row.appendChild(main);
       if (sub) {
         const s = document.createElement('div');
@@ -1660,9 +1776,13 @@ function renderHtml(webview: vscode.Webview): string {
         s.textContent = sub;
         row.appendChild(s);
       }
-      if (!opts.disabled && onClick) {
+      if (!opts.disabled && onClick && !opts.active) {
         row.addEventListener('mouseenter', () => { row.style.background = '#ffffff14'; });
         row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+        row.addEventListener('click', onClick);
+      } else if (!opts.disabled && onClick) {
+        // Active row: clicking the already-loaded source is a no-op, so keep its
+        // highlight static and don't rebind hover (which would wipe the background).
         row.addEventListener('click', onClick);
       }
       menu.appendChild(row);
@@ -1673,7 +1793,12 @@ function renderHtml(webview: vscode.Webview): string {
         const tag = d.hasWcli0 ? ' (wcli0 entry)' : (d.exists ? ' (no wcli0 entry)' : ' (not present)');
         add('.vscode/mcp.json' + tag, d.fsPath || '', d.hasWcli0 ? () => requestSource('mcpJson') : null, { disabled: !d.hasWcli0, active: currentSourceClient === 'mcpJson' });
       } else if (d.kind === 'homeConfig') {
-        add(d.label, 'read-only preview (never a save target)', null, { disabled: true });
+        // Not an editable source, but clicking opens it read-only so the row is not a
+        // dead item — it lets the user inspect the global config that can override them.
+        add(d.label, 'read-only · click to open (never a save target)', () => {
+          hideSourceMenu();
+          vscode.postMessage({ type: 'openHomeConfig' });
+        }, {});
       }
     }
   }
@@ -1688,13 +1813,38 @@ function renderHtml(webview: vscode.Webview): string {
     }
     const fileEntry = (detected || []).find((d) => d.kind === 'mcpJson');
     const sp = $('sourcePath');
-    if (sp) sp.textContent = isFile && fileEntry ? (fileEntry.fsPath || '') + ' › servers.wcli0' : '';
+    if (sp) {
+      const pathLabel = isFile && fileEntry ? (fileEntry.fsPath || '') + ' (servers.wcli0)' : '';
+      sp.textContent = pathLabel;
+      // Full path as a hover tooltip (it wraps but can still be long); empty string
+      // clears it when not editing a file.
+      sp.title = pathLabel;
+    }
     const sr = document.querySelector('.scope-radio');
     if (sr) sr.style.display = isFile ? 'none' : '';
     if ($('settingsHint')) $('settingsHint').style.display = isFile ? 'none' : '';
     if ($('fileHint')) $('fileHint').style.display = isFile ? '' : 'none';
-    if ($('revertFile')) $('revertFile').style.display = isFile ? '' : 'none';
-    if ($('save')) $('save').textContent = isFile ? 'Save to file' : 'Save settings';
+    if ($('revertFile')) {
+      $('revertFile').style.display = isFile ? '' : 'none';
+      $('revertFile').title = 'Discard unsaved edits and reload the wcli0 entry from the file on disk.';
+    }
+    if ($('save')) {
+      $('save').textContent = isFile ? 'Save to file' : 'Save settings';
+      $('save').title = isFile
+        ? 'Write the wcli0 entry back to the loaded file. Other servers in the file are preserved.'
+        : 'Save these values to your VS Code settings at the selected scope.';
+    }
+    // Export actions read/write wcli0.* settings, so they do not apply while editing a
+    // file source — disable them to match the host's refusal (P1). Off the file source,
+    // restore them: writeMcp additionally depends on a workspace folder being open.
+    for (const id of ['showCommand', 'genConfig', 'writeMcp']) {
+      const btn = $(id);
+      if (!btn) continue;
+      btn.disabled = isFile || (id === 'writeMcp' && !currentHasWorkspace);
+      btn.title = isFile
+        ? 'Switch to VS Code Settings to export. Export actions operate on settings, not a file source.'
+        : '';
+    }
     // The detection banner only makes sense while editing settings and a wcli0 entry
     // exists in the workspace mcp.json (and the user has not dismissed it).
     const banner = $('detectBanner');
@@ -1703,6 +1853,16 @@ function renderHtml(webview: vscode.Webview): string {
       banner.style.display = show ? '' : 'none';
     }
     renderSourceMenu(detected);
+    // The just-loaded form is clean (baseline === values), so disable Revert until an
+    // edit is made. Live edits re-evaluate via the delegated input/change listeners.
+    reflectDirty();
+  }
+  // Re-evaluate the Revert button's enabled state on any field edit. input/change
+  // bubble, so a single delegated listener covers every control in the form. Guarded
+  // for the unit-test DOM harness, which has no document-level addEventListener.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('input', reflectDirty);
+    document.addEventListener('change', reflectDirty);
   }
   const switchBtn = $('switchSourceBtn');
   if (switchBtn) switchBtn.addEventListener('click', () => {
@@ -1718,14 +1878,23 @@ function renderHtml(webview: vscode.Webview): string {
   });
   const revertBtn = $('revertFile');
   if (revertBtn) revertBtn.addEventListener('click', () => {
-    // Reload the file from disk, discarding edits (confirm when dirty via the host).
-    vscode.postMessage({ type: isDirty() ? 'sourceChangeRequest' : 'sourceChange', source: 'mcpJson' });
+    // The button is disabled on a clean form (reflectDirty), so a click means there are
+    // unsaved edits. Guard anyway, then ask the host to confirm and reload from disk (it
+    // flashes "Reverted" on success).
+    if (!isDirty()) return;
+    vscode.postMessage({ type: 'revertFileRequest' });
   });
 
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'saved') {
       showSaved();
+      return;
+    }
+    if (msg.type === 'reverted') {
+      // The host already re-posted the file values (re-baselining the form via init);
+      // just flash a confirmation so the click has a visible effect.
+      flashStatus('Reverted from file ' + CHECK);
       return;
     }
     if (msg.type === 'notes') {
