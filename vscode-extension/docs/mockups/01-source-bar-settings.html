@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>01 — Source bar: editing VS Code Settings</title>
+<link rel="stylesheet" href="mockup.css" />
+</head>
+<body>
+
+<!-- ====== Configuration source bar ====== -->
+<div class="sourcebar">
+  <div class="sourcebar-inner">
+    <div class="source-row">
+      <div class="source-id settings">
+        <span class="ico">&#9881;</span>
+        <span class="kind">VS Code Settings</span>
+        <span class="path">wcli0.* &middot; Workspace scope</span>
+      </div>
+
+      <div class="switcher">
+        <button class="secondary"><span class="ico">&#8645;</span> Switch source <span class="caret">&#9662;</span></button>
+      </div>
+
+      <div class="spacer"></div>
+      <span class="saved">Saved &#10003;</span>
+      <button class="ghost">Revert</button>
+      <button>Save settings</button>
+    </div>
+
+    <!-- scope radio only relevant when the source is VS Code settings -->
+    <div class="scope-radio">
+      <span class="hint">Save to:</span>
+      <label><input type="radio" name="scope" checked /> Workspace</label>
+      <label><input type="radio" name="scope" /> User</label>
+      <span class="chip warn" style="margin-left:8px" title="An implicit config.json could override these settings.">Overridable</span>
+    </div>
+
+    <div class="context-line hint">
+      Editing your <code>wcli0.*</code> settings (this project's <code>.vscode/settings.json</code>).
+      The MCP server definition is generated from these. Switch the source to edit a file directly.
+    </div>
+
+    <div class="tabnav">
+      <button class="tab active">Config source</button>
+      <button class="tab">Launch</button>
+      <button class="tab">Shells</button>
+      <button class="tab">Profiles</button>
+      <button class="tab">Limits &amp; Safety</button>
+      <button class="tab">Transport</button>
+      <button class="tab">Export</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <section>
+    <h2>Config source &amp; launch isolation</h2>
+    <p class="hint" style="margin-top:0">Controls whether an implicit <code>config.json</code> can silently
+    override the settings on the other tabs. This is the same form you have today — the new source bar above
+    just makes explicit that you are editing <strong>settings</strong>, not a file.</p>
+    <label class="field">Config file <span class="hint">passed via --config; CLI settings override it</span></label>
+    <input type="text" placeholder="${workspaceFolder}/wcli0.config.json" />
+    <label class="field"><input type="checkbox" checked style="width:auto;margin-right:8px" />Inherit
+      <span class="hint">no override; uncheck to set an explicit value</span></label>
+  </section>
+
+  <div class="banner">
+    <span class="b-ico">&#128161;</span>
+    <div class="b-body">
+      <strong>New:</strong> this workspace has a <code>.vscode/mcp.json</code> that defines a <code>wcli0</code>
+      server. You can edit it directly instead of editing settings and re-exporting.
+      <div class="b-actions">
+        <button><span class="ico">&#128193;</span> Edit .vscode/mcp.json</button>
+        <button class="secondary">Open another file&hellip;</button>
+        <button class="ghost">Dismiss</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mock-note">
+  <strong>01 — default / settings source.</strong> The source bar replaces the old standalone
+  <em>“Save to: Workspace / User”</em> row by nesting it inside the active source. When the source is
+  <em>VS Code Settings</em>, the scope radio and the “Overridable” isolation chip behave exactly as today,
+  and <strong>Save settings</strong> writes to <code>settings.json</code>. The banner is the entry point into
+  the file-editing flow (mockup&nbsp;02).
+  <div class="nav-links"><a href="index.html">&larr; All mockups</a><a href="02-autodetect-mcp-json.html">Next: auto-detect &rarr;</a></div>
+</div>
+
+</body>
+</html>

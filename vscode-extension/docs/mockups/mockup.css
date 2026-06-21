@@ -1,0 +1,189 @@
+/* Shared styling for the wcli0 configuration-source mockups.
+   Colors approximate the VS Code Dark+ theme tokens the real webview reads via
+   var(--vscode-*). These mockups are static design artifacts, not the extension. */
+:root {
+  --bg: #1e1e1e;
+  --widget: #252526;
+  --panel: #2d2d2d;
+  --fg: #cccccc;
+  --fg-dim: #9d9d9d;
+  --border: #3c3c3c;
+  --input-bg: #3c3c3c;
+  --focus: #007fd4;
+  --btn: #0e639c;
+  --btn-hover: #1177bb;
+  --btn2: #3a3d41;
+  --btn2-hover: #45494e;
+  --green: #3fb950;
+  --yellow: #d7a930;
+  --red: #f48771;
+  --blue: #6fb3e0;
+  --accent: #007acc;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 0 0 48px;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 18px; }
+h1 { font-size: 1.4em; font-weight: 600; }
+h2 { font-size: 1.05em; font-weight: 600; margin: 0 0 12px; letter-spacing: .02em; }
+h3 { font-size: .95em; font-weight: 600; margin: 18px 0 6px; }
+code { font-family: Consolas, "Courier New", monospace; font-size: .92em;
+  background: #00000033; padding: 1px 5px; border-radius: 3px; }
+a { color: var(--blue); }
+.hint { color: var(--fg-dim); font-size: .85em; }
+
+/* ---- Source bar: the core new element ---- */
+.sourcebar {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 18px 0;
+}
+.sourcebar-inner { max-width: 860px; margin: 0 auto; }
+.source-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.source-id {
+  display: inline-flex; align-items: center; gap: 9px;
+  background: var(--widget); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 12px; min-width: 0;
+}
+.source-id .ico { font-size: 1.1em; }
+.source-id .kind { font-weight: 600; white-space: nowrap; }
+.source-id .path {
+  color: var(--fg-dim); font-family: Consolas, monospace; font-size: .85em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px;
+}
+.source-id.file { border-left: 3px solid var(--blue); }
+.source-id.settings { border-left: 3px solid var(--green); }
+.spacer { flex: 1; }
+.dirty {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--yellow); font-size: .85em; font-weight: 600;
+}
+.dirty .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+.saved { color: var(--green); font-size: .85em; font-weight: 600; }
+
+button {
+  font-family: inherit; font-size: .92em; cursor: pointer;
+  background: var(--btn); color: #fff; border: 1px solid transparent;
+  border-radius: 4px; padding: 6px 14px;
+}
+button:hover { background: var(--btn-hover); }
+button.secondary { background: var(--btn2); color: var(--fg); }
+button.secondary:hover { background: var(--btn2-hover); }
+button.ghost { background: transparent; color: var(--fg); border-color: var(--border); }
+button.ghost:hover { background: var(--btn2); }
+button .ico { opacity: .85; }
+
+/* switcher dropdown */
+.switcher { position: relative; }
+.switcher > button .caret { margin-left: 6px; opacity: .7; }
+.menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+  background: var(--widget); border: 1px solid var(--border);
+  border-radius: 6px; box-shadow: 0 6px 24px #000a; min-width: 360px; padding: 6px;
+}
+.menu .group-label { font-size: .72em; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--fg-dim); padding: 8px 10px 4px; }
+.menu-item {
+  display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px;
+  border-radius: 4px; cursor: pointer;
+}
+.menu-item:hover { background: #ffffff10; }
+.menu-item.active { background: #ffffff14; }
+.menu-item .ico { font-size: 1.05em; margin-top: 1px; }
+.menu-item .mi-main { font-weight: 600; }
+.menu-item .mi-sub { color: var(--fg-dim); font-size: .83em; font-family: Consolas, monospace; }
+.menu-item .check { margin-left: auto; color: var(--green); }
+.menu-item.muted .mi-main { color: var(--fg-dim); font-weight: 400; }
+.menu sep, .menu .sep { display: block; height: 1px; background: var(--border); margin: 6px 4px; }
+
+/* scope radio shown when editing VS Code settings */
+.scope-radio { display: inline-flex; gap: 14px; align-items: center; margin: 10px 0 0; }
+.scope-radio label { display: inline-flex; align-items: center; gap: 5px; }
+
+.context-line { padding: 8px 0 12px; }
+
+/* tabs */
+.tabnav { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border); margin-top: 4px; }
+.tabnav .tab { background: transparent; color: var(--fg); opacity: .6;
+  border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 13px; }
+.tabnav .tab:hover { opacity: 1; background: #ffffff0d; }
+.tabnav .tab.active { opacity: 1; font-weight: 600; border-bottom-color: var(--focus); }
+
+/* sections / form */
+section { margin-top: 18px; padding: 16px 18px; border-radius: 6px;
+  background: var(--widget); border: 1px solid var(--border); }
+label.field { display: block; margin: 14px 0 4px; font-weight: 600; font-size: .92em; }
+section > label.field:first-of-type { margin-top: 0; }
+input[type=text], input[type=number], select, textarea {
+  width: 100%; padding: 6px 8px; font-family: inherit; font-size: inherit;
+  background: var(--input-bg); color: var(--fg);
+  border: 1px solid #00000000; border-radius: 4px;
+}
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--focus); outline-offset: -1px; }
+textarea { min-height: 60px; font-family: Consolas, monospace; resize: vertical; }
+.row { display: flex; gap: 16px; flex-wrap: wrap; }
+.row > div { flex: 1; min-width: 170px; }
+
+/* banners */
+.banner { display: flex; gap: 12px; align-items: flex-start; margin-top: 16px;
+  padding: 12px 14px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--widget); border-left: 3px solid var(--blue); }
+.banner.warn { border-left-color: var(--yellow); }
+.banner .b-ico { font-size: 1.2em; margin-top: 1px; }
+.banner .b-body { flex: 1; }
+.banner .b-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* chips */
+.chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px;
+  font-size: .8em; font-weight: 600; border: 1px solid var(--border); }
+.chip.ok { color: var(--green); border-color: var(--green); }
+.chip.warn { color: var(--yellow); border-color: var(--yellow); }
+
+/* JSON preview panel */
+.split { display: flex; gap: 16px; align-items: flex-start; }
+.split .col-form { flex: 1; min-width: 0; }
+.split .col-json { width: 330px; flex: none; }
+.jsonview { background: #1b1b1b; border: 1px solid var(--border); border-radius: 6px;
+  padding: 12px 14px; font-family: Consolas, monospace; font-size: .82em;
+  white-space: pre; overflow: auto; max-height: 460px; }
+.jsonview .k { color: #9cdcfe; }
+.jsonview .s { color: #ce9178; }
+.jsonview .n { color: #b5cea8; }
+.jsonview .b { color: #569cd6; }
+.jsonview .added { background: #2ea04326; display: block; }
+
+/* modal */
+.modal-backdrop { position: fixed; inset: 0; background: #000a; display: flex;
+  align-items: flex-start; justify-content: center; padding-top: 90px; z-index: 50; }
+.modal { background: var(--widget); border: 1px solid var(--border); border-radius: 8px;
+  width: 560px; max-width: 92vw; box-shadow: 0 12px 48px #000c; overflow: hidden; }
+.modal h2 { padding: 16px 18px 0; }
+.modal .m-body { padding: 8px 18px 18px; }
+.filelist { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.filelist .fl-item { display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+  cursor: pointer; border-bottom: 1px solid var(--border); }
+.filelist .fl-item:last-child { border-bottom: none; }
+.filelist .fl-item:hover { background: #ffffff0d; }
+.filelist .fl-item.sel { background: #094771; }
+.fl-main { font-weight: 600; }
+.fl-sub { color: var(--fg-dim); font-size: .83em; font-family: Consolas, monospace; }
+.fl-tag { margin-left: auto; font-size: .75em; color: var(--fg-dim); }
+.modal .m-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px;
+  border-top: 1px solid var(--border); background: #00000022; }
+
+/* mockup page frame */
+.mock-note { max-width: 860px; margin: 18px auto 0; padding: 12px 16px;
+  border: 1px dashed var(--border); border-radius: 6px; color: var(--fg-dim);
+  background: #00000022; }
+.mock-note strong { color: var(--fg); }
+.nav-links { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 0; font-size: .9em; }

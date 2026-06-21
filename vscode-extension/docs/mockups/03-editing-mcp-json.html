@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>03 — Editing .vscode/mcp.json</title>
+<link rel="stylesheet" href="mockup.css" />
+</head>
+<body>
+
+<div class="sourcebar">
+  <div class="sourcebar-inner">
+    <div class="source-row">
+      <div class="source-id file">
+        <span class="ico">&#128193;</span>
+        <span class="kind">mcp.json</span>
+        <span class="path">${workspaceFolder}/.vscode/mcp.json &rsaquo; servers.wcli0</span>
+      </div>
+
+      <div class="switcher">
+        <button class="secondary"><span class="ico">&#8645;</span> Switch source <span class="caret">&#9662;</span></button>
+      </div>
+
+      <div class="spacer"></div>
+      <span class="dirty"><span class="dot"></span> Unsaved changes</span>
+      <button class="ghost">Revert to file</button>
+      <button>Save to file</button>
+    </div>
+
+    <div class="context-line hint">
+      Editing the <code>wcli0</code> entry in <code>.vscode/mcp.json</code> directly.
+      <strong>Save to file</strong> writes the merged JSON back (other servers in the file are preserved);
+      <strong>Revert to file</strong> reloads from disk. Use the
+      <button class="ghost" style="padding:1px 8px;font-size:.85em">Reveal in editor</button>
+      to open it as text.
+    </div>
+
+    <div class="tabnav">
+      <button class="tab">Config source</button>
+      <button class="tab active">Launch</button>
+      <button class="tab">Shells</button>
+      <button class="tab">Profiles</button>
+      <button class="tab">Limits &amp; Safety</button>
+      <button class="tab">Transport</button>
+      <button class="tab">Export</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="split">
+    <!-- form -->
+    <div class="col-form">
+      <section>
+        <h2>Launch</h2>
+        <label class="field">Transport <span class="hint">type in the mcp.json entry</span></label>
+        <select><option>stdio</option><option>http</option><option>sse</option></select>
+
+        <label class="field">Launch method</label>
+        <select><option>npx (published package)</option><option>node (local build)</option><option>custom command</option></select>
+
+        <label class="field">Package spec</label>
+        <input type="text" value="wcli0@latest" />
+
+        <label class="field">Working directory <span class="hint">entry's cwd; supports ${workspaceFolder}</span></label>
+        <input type="text" value="${workspaceFolder}" />
+
+        <label class="field">Allowed directories <span class="hint">one per line &rarr; repeated --allowedDir</span></label>
+        <textarea>${workspaceFolder}
+${workspaceFolder}/scripts</textarea>
+      </section>
+    </div>
+
+    <!-- live JSON preview -->
+    <div class="col-json">
+      <h3 style="margin-top:0">Live preview <span class="chip warn">modified</span></h3>
+<div class="jsonview">{
+  <span class="k">"servers"</span>: {
+    <span class="k">"wcli0"</span>: {
+      <span class="k">"type"</span>: <span class="s">"stdio"</span>,
+      <span class="k">"command"</span>: <span class="s">"npx"</span>,
+      <span class="k">"args"</span>: [
+        <span class="s">"-y"</span>,
+        <span class="s">"wcli0@latest"</span>,
+        <span class="s">"--allowedDir"</span>,
+        <span class="s">"${workspaceFolder}"</span>,
+<span class="added">        <span class="s">"--allowedDir"</span>,
+        <span class="s">"${workspaceFolder}/scripts"</span>,</span>
+        <span class="s">"--transport"</span>,
+        <span class="s">"stdio"</span>
+      ],
+      <span class="k">"cwd"</span>: <span class="s">"${workspaceFolder}"</span>
+    },
+    <span class="k">"other-server"</span>: { <span class="k">"type"</span>: <span class="s">"stdio"</span>, &hellip; }
+  }
+}</div>
+      <p class="hint" style="margin-top:8px">Highlighted lines are your unsaved additions.
+      The <code>other-server</code> entry is left untouched on save.</p>
+    </div>
+  </div>
+
+  <div class="banner warn">
+    <span class="b-ico">&#9888;</span>
+    <div class="b-body">
+      Per-shell settings (<code>wcli0.shells</code>) and profiles can't be expressed as plain
+      <code>mcp.json</code> args. If you add them here, the editor will offer to switch this entry to a
+      referenced <code>config.json</code> (<code>--config</code>) instead — see mockup&nbsp;05.
+    </div>
+  </div>
+</div>
+
+<div class="mock-note">
+  <strong>03 — file editing, the round trip.</strong> The source bar shows the file kind, the exact path, and
+  the JSON pointer (<code>servers.wcli0</code>). The dirty indicator and <strong>Save to file</strong> /
+  <strong>Revert to file</strong> replace the settings-scope save. A live JSON preview shows exactly what will
+  be written, with unsaved changes highlighted, and reassures the user that <em>other</em> servers in the file
+  are preserved (matching the real merge logic in <code>writeWorkspaceMcpJson</code>). This completes the
+  <em>load &rarr; edit &rarr; save</em> path the request asks for.
+  <div class="nav-links"><a href="index.html">&larr; All mockups</a><a href="02-autodetect-mcp-json.html">Prev</a><a href="04-load-another-file.html">Next: open another file &rarr;</a></div>
+</div>
+
+</body>
+</html>

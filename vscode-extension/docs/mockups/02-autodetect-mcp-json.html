@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>02 — Auto-detect &amp; load .vscode/mcp.json</title>
+<link rel="stylesheet" href="mockup.css" />
+</head>
+<body>
+
+<div class="sourcebar">
+  <div class="sourcebar-inner">
+    <div class="source-row">
+      <div class="source-id settings">
+        <span class="ico">&#9881;</span>
+        <span class="kind">VS Code Settings</span>
+        <span class="path">wcli0.* &middot; Workspace scope</span>
+      </div>
+
+      <!-- switcher shown OPEN -->
+      <div class="switcher">
+        <button class="secondary"><span class="ico">&#8645;</span> Switch source <span class="caret">&#9652;</span></button>
+        <div class="menu">
+          <div class="group-label">Settings</div>
+          <div class="menu-item active">
+            <span class="ico">&#9881;</span>
+            <div>
+              <div class="mi-main">VS Code Settings</div>
+              <div class="mi-sub">wcli0.* &middot; User &amp; Workspace scopes</div>
+            </div>
+            <span class="check">&#10003;</span>
+          </div>
+
+          <div class="sep"></div>
+          <div class="group-label">Detected in this workspace</div>
+          <div class="menu-item">
+            <span class="ico">&#128193;</span>
+            <div>
+              <div class="mi-main">.vscode/mcp.json <span class="chip ok" style="margin-left:6px">wcli0 found</span></div>
+              <div class="mi-sub">${workspaceFolder}/.vscode/mcp.json</div>
+            </div>
+          </div>
+          <div class="menu-item">
+            <span class="ico">&#128196;</span>
+            <div>
+              <div class="mi-main">wcli0.config.json</div>
+              <div class="mi-sub">${workspaceFolder}/wcli0.config.json</div>
+            </div>
+          </div>
+          <div class="menu-item muted">
+            <span class="ico">&#128196;</span>
+            <div>
+              <div class="mi-main">~/.win-cli-mcp/config.json</div>
+              <div class="mi-sub">global implicit config (read-only preview)</div>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+          <div class="menu-item">
+            <span class="ico">&#128194;</span>
+            <div><div class="mi-main">Open another file&hellip;</div>
+              <div class="mi-sub">browse for any mcp.json / config.json</div></div>
+          </div>
+          <div class="menu-item">
+            <span class="ico">&#10010;</span>
+            <div><div class="mi-main">New config from current settings</div>
+              <div class="mi-sub">the existing export path</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+      <button class="ghost" disabled style="opacity:.5">Revert</button>
+      <button>Save settings</button>
+    </div>
+
+    <div class="scope-radio">
+      <span class="hint">Save to:</span>
+      <label><input type="radio" name="scope" checked /> Workspace</label>
+      <label><input type="radio" name="scope" /> User</label>
+    </div>
+
+    <div class="context-line hint">
+      Choose what to edit. The switcher lists VS Code settings plus any wcli0 configuration files found in this workspace.
+    </div>
+
+    <div class="tabnav">
+      <button class="tab active">Config source</button>
+      <button class="tab">Launch</button>
+      <button class="tab">Shells</button>
+      <button class="tab">Profiles</button>
+      <button class="tab">Limits &amp; Safety</button>
+      <button class="tab">Transport</button>
+      <button class="tab">Export</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="banner">
+    <span class="b-ico">&#128269;</span>
+    <div class="b-body">
+      <strong>Found a wcli0 server in <code>.vscode/mcp.json</code>.</strong>
+      It defines a <code>stdio</code> entry launching <code>npx -y wcli0@latest</code>.
+      Load it to edit the file directly — your changes will be saved back to <code>.vscode/mcp.json</code>.
+      <div class="b-actions">
+        <button><span class="ico">&#128193;</span> Load &amp; edit .vscode/mcp.json</button>
+        <button class="secondary">Keep editing settings</button>
+        <label class="hint" style="display:inline-flex;align-items:center;gap:6px;margin-left:6px">
+          <input type="checkbox" style="width:auto" /> Always load it automatically</label>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Config source</h2>
+    <p class="hint" style="margin-top:0">Until you load a file, the form continues to edit VS Code settings.
+    Loading the detected <code>.vscode/mcp.json</code> switches every tab to reflect that file's values
+    (mockup&nbsp;03).</p>
+  </section>
+</div>
+
+<div class="mock-note">
+  <strong>02 — auto-detect on open.</strong> When the panel opens and the workspace
+  <code>.vscode/mcp.json</code> already contains a <code>servers.wcli0</code> entry, a detection banner offers a
+  one-click load. The switcher menu (shown open) groups <em>Settings</em>, <em>detected files</em>, and explicit
+  actions (<em>Open another file…</em>, <em>New from settings</em> — the current export path, preserved). The
+  global <code>~/.win-cli-mcp/config.json</code> appears as a read-only preview so it never becomes a
+  silent save target.
+  <div class="nav-links"><a href="index.html">&larr; All mockups</a><a href="01-source-bar-settings.html">Prev</a><a href="03-editing-mcp-json.html">Next: editing the file &rarr;</a></div>
+</div>
+
+</body>
+</html>
