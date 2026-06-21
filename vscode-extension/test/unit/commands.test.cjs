@@ -5,10 +5,12 @@ const vscode = require('../stubs/vscode.cjs');
 const {
   generateConfigFile,
   writeWorkspaceMcpJson,
+  writeMcpJsonFromSettings,
   showLaunchCommand,
   refreshServerDefinition,
   parseJsonc,
 } = require('../../dist/commands.js');
+const { defaultSettings } = require('../../dist/settings.js');
 
 const WS = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
 
@@ -673,4 +675,39 @@ test('P58: a workspace child whose name starts with ".." keeps a portable config
     vscode.workspace.getConfiguration('wcli0').get('configFile', ''),
     '${workspaceFolder}/..generated/wcli0.config.json',
   );
+});
+
+// ---- writeMcpJsonFromSettings (file-source "Save to file") ----
+
+test('writeMcpJsonFromSettings writes the entry from explicit settings and returns true', async () => {
+  const s = defaultSettings();
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.type, 'stdio');
+  assert.ok(parsed.servers.wcli0.args.includes('--shell'));
+  // It writes the file only — no wcli0.* setting is persisted.
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.shell'), false);
+});
+
+test('writeMcpJsonFromSettings preserves other servers in the file', async () => {
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { other: { type: 'stdio' } } })),
+  );
+  const ok = await writeMcpJsonFromSettings(defaultSettings(), WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.ok(parsed.servers.other, 'existing server preserved');
+  assert.ok(parsed.servers.wcli0, 'wcli0 server written');
+});
+
+test('writeMcpJsonFromSettings returns false and does not write a malformed file', async () => {
+  vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from('not json'));
+  const before = vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8');
+  const ok = await writeMcpJsonFromSettings(defaultSettings(), WS[0]);
+  assert.equal(ok, false);
+  assert.equal(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'), before);
+  assert.ok(vscode.__state.calls.error.length >= 1);
 });

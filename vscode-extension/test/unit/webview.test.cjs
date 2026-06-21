@@ -451,3 +451,93 @@ test('P100: save and export validate all numeric inputs before posting', () => {
   assert.match(html, /\$\('save'\)\.addEventListener\('click', \(\) => \{\s*if \(!validateNumbers\(\) \|\| !validateProfiles\(\)\) return;/);
   assert.match(html, /function exportAction\(type\) \{\s*if \(!validateNumbers\(\) \|\| !validateProfiles\(\)\) return;/);
 });
+
+// ---- Configuration source switcher (auto-detect / load / save) ----
+
+function seedWorkspaceMcpJson(obj) {
+  vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from(JSON.stringify(obj)));
+}
+
+test('init reports the settings source and detects a workspace mcp.json wcli0 entry', async () => {
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.equal(init.source, 'settings');
+  const detected = (init.detected || []).find((d) => d.kind === 'mcpJson');
+  assert.ok(detected, 'workspace mcp.json detected');
+  assert.equal(detected.hasWcli0, true);
+});
+
+test('switching to the mcp.json source loads the entry into the form', async () => {
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@9.9.9', '--shell', 'cmd'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  const init = panel.webview.posted.find((m) => m.type === 'init');
+  assert.equal(init.source, 'mcpJson');
+  assert.equal(init.settings.packageSpec, 'wcli0@9.9.9');
+  assert.equal(init.settings.shell, 'cmd');
+});
+
+test('switching to the mcp.json source errors when no wcli0 entry exists', async () => {
+  seedWorkspaceMcpJson({ servers: { other: { type: 'stdio' } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'init'), undefined);
+  assert.ok(vscode.__state.calls.error.some((m) => /no wcli0 server entry/.test(m)));
+});
+
+test('saving the mcp.json source writes the file and never touches settings', async () => {
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--shell', 'cmd'] },
+      other: { type: 'stdio' },
+    },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  await panel.webview._handler({ type: 'saveToFile', values: { commandTimeout: 50 } });
+
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.ok(parsed.servers.other, 'other server preserved');
+  assert.ok(parsed.servers.wcli0.args.includes('--commandTimeout'), 'edit written to the file');
+  assert.ok(parsed.servers.wcli0.args.includes('50'));
+  // The edit went to the file only — no wcli0.* setting was written.
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.commandTimeout'), false);
+  assert.equal(vscode.__state.configGlobal.has('wcli0.commandTimeout'), false);
+  assert.ok(panel.webview.posted.some((m) => m.type === 'saved'));
+});
+
+test('the read-only home config is never accepted as a source target', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'sourceChange', source: 'homeConfig' });
+  // Unknown/read-only source target is ignored: no reload, no error.
+  assert.equal(panel.webview.posted.find((m) => m.type === 'init'), undefined);
+});
+
+test('a dirty source switch requests confirmation before discarding edits', async () => {
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  panel.webview.posted = [];
+  // Decline the discard prompt: the source must not switch.
+  vscode.__state.calls.warnReturn = undefined;
+  await panel.webview._handler({ type: 'sourceChangeRequest', source: 'mcpJson' });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'init'), undefined);
+  assert.equal(vscode.__state.calls.warn.length, 1);
+});

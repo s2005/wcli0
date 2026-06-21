@@ -171,14 +171,29 @@ export async function generateConfigFile(formScopeArg?: unknown): Promise<void> 
 export async function writeWorkspaceMcpJson(
   formScopeArg?: unknown,
   configFileLoadable: (resolvedPath: string) => boolean = configFileIsLoadable,
-): Promise<void> {
+): Promise<boolean> {
   const folder = primaryWorkspaceFolder();
   if (!folder) {
     void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
-    return;
+    return false;
   }
   const settings = readExportSettings(asScope(formScopeArg), folder.uri);
+  return writeMcpJsonFromSettings(settings, folder, configFileLoadable);
+}
 
+/**
+ * Write the wcli0 server entry into `<folder>/.vscode/mcp.json` from an explicit
+ * settings object, preserving any other servers and refusing to clobber a malformed
+ * or comment-bearing file (see the merge logic below). Shared by the settings-driven
+ * `writeWorkspaceMcpJson` export and the file-source "Save to file" path, which
+ * supplies settings built from the form rather than read from a scope — so saving a
+ * file source never writes any `wcli0.*` setting.
+ */
+export async function writeMcpJsonFromSettings(
+  settings: Wcli0Settings,
+  folder: vscode.WorkspaceFolder,
+  configFileLoadable: (resolvedPath: string) => boolean = configFileIsLoadable,
+): Promise<boolean> {
   // Validate only what the generated entry actually uses. A stdio entry needs a
   // working launch command; an http/sse entry only contains a URL, so local
   // launch settings (method, allowed dirs) are irrelevant and only the port
@@ -205,14 +220,14 @@ export async function writeWorkspaceMcpJson(
           'represented in .vscode/mcp.json. Generate a config file (wcli0: Generate Config File) and ' +
           'reference it via wcli0.configFile, or clear wcli0.shells / wcli0.profiles before exporting.',
       );
-      return;
+      return false;
     }
     const blocking = validateLaunchSpec(settings, false, false, cfgLoadable).filter(
       (p) => p.blocking,
     );
     if (blocking.length > 0) {
       void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
-      return;
+      return false;
     }
     // When shells/profiles are configured the entry relies entirely on the referenced
     // configFile to carry them, but the export cannot confirm that file is in sync with
@@ -230,7 +245,7 @@ export async function writeWorkspaceMcpJson(
         'Write anyway',
       );
       if (pick !== 'Write anyway') {
-        return;
+        return false;
       }
     }
     // A stdio entry with no explicit wcli0.configFile carries plain CLI flags but no
@@ -253,7 +268,7 @@ export async function writeWorkspaceMcpJson(
           'Write anyway',
         );
         if (pick !== 'Write anyway') {
-          return;
+          return false;
         }
       }
     }
@@ -261,7 +276,7 @@ export async function writeWorkspaceMcpJson(
     void vscode.window.showErrorMessage(
       `wcli0: transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`,
     );
-    return;
+    return false;
   }
 
   // Preserve portable ${workspaceFolder} tokens rather than resolving them: a
@@ -287,7 +302,7 @@ export async function writeWorkspaceMcpJson(
         'Omit environment',
       );
       if (pick === undefined) {
-        return; // cancelled — don't write
+        return false; // cancelled — don't write
       }
       if (pick === 'Omit environment') {
         env = {};
@@ -321,7 +336,7 @@ export async function writeWorkspaceMcpJson(
       void vscode.window.showErrorMessage(
         `wcli0: could not read ${mcpUri.fsPath} (${(err as Error).message}). Not writing.`,
       );
-      return;
+      return false;
     }
     // Not found — start fresh.
   }
@@ -335,7 +350,7 @@ export async function writeWorkspaceMcpJson(
       void vscode.window.showErrorMessage(
         `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
       );
-      return;
+      return false;
     }
   }
   // A syntactically valid file can still have a non-object root or `servers`
@@ -345,13 +360,13 @@ export async function writeWorkspaceMcpJson(
     void vscode.window.showErrorMessage(
       `wcli0: ${mcpUri.fsPath} root is not a JSON object. Fix it before writing.`,
     );
-    return;
+    return false;
   }
   if (existing.servers !== undefined && !isPlainObject(existing.servers)) {
     void vscode.window.showErrorMessage(
       `wcli0: "servers" in ${mcpUri.fsPath} is not a JSON object. Fix it before writing.`,
     );
-    return;
+    return false;
   }
   // Re-serializing with JSON.stringify drops any comments/formatting the file
   // had. Warn before discarding them rather than silently reformatting.
@@ -362,7 +377,7 @@ export async function writeWorkspaceMcpJson(
       'Write anyway',
     );
     if (pick !== 'Write anyway') {
-      return;
+      return false;
     }
   }
 
@@ -377,6 +392,7 @@ export async function writeWorkspaceMcpJson(
   );
   const doc = await vscode.workspace.openTextDocument(mcpUri);
   await vscode.window.showTextDocument(doc);
+  return true;
 }
 
 /** Show the resolved launch command line and offer to copy it. */
