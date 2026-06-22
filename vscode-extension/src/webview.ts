@@ -307,7 +307,7 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   };
 
   webview.html = renderHtml(webview);
-  const msgSub = webview.onDidReceiveMessage(async (msg: { type: string } & Partial<SavePayload> & { source?: ConfigSourceKind }) => {
+  const msgSub = webview.onDidReceiveMessage(async (msg: { type: string } & Partial<SavePayload> & { source?: ConfigSourceKind; fromResetFileSource?: boolean }) => {
     if (msg.type === 'ready') {
       await refreshDetection();
       post();
@@ -435,6 +435,22 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
         post();
       }
     } else if (msg.type === 'save' && msg.values && msg.target) {
+      // After a file-source reset (folder change), the form still holds the now-gone
+      // file's values and a file-relative dirty baseline. Writing them into wcli0.*
+      // settings would silently corrupt the scope with file-shaped edits the user made
+      // for a file, not for settings — so confirm before doing it (P28). The webview only
+      // sets this flag while that stale baseline is in effect; a clean re-baseline clears it.
+      if (msg.fromResetFileSource) {
+        const pick = await vscode.window.showWarningMessage(
+          'wcli0: these values came from a .vscode/mcp.json source that is no longer active ' +
+            '(the workspace folder changed). Save them to your VS Code settings anyway?',
+          { modal: true },
+          'Save to settings',
+        );
+        if (pick !== 'Save to settings') {
+          return; // declined — leave settings untouched
+        }
+      }
       // A refused save (e.g. Workspace target with no folder open, P89) leaves the
       // form untouched: skip the re-post, saved indicator and success toast.
       if (!(await applySettings(msg as SavePayload))) {
@@ -1675,6 +1691,11 @@ function renderHtml(webview: vscode.Webview): string {
   // The active configuration source ('settings' or 'mcpJson'), set from each init.
   let currentSourceClient = 'settings';
   let bannerDismissed = false;
+  // True after a sourceReset switched the form off a file source while it was dirty: the
+  // form still holds the (now-gone) file's values and a file-relative dirty baseline, so a
+  // plain "Save settings" would silently write those file edits into wcli0.* settings.
+  // Guarded in the save handler; cleared whenever the form re-baselines to real values.
+  let resetFromFileSource = false;
 
   $('save').addEventListener('click', () => {
     if (!validateNumbers() || !validateProfiles()) return;
@@ -1684,7 +1705,15 @@ function renderHtml(webview: vscode.Webview): string {
       return;
     }
     const target = document.querySelector('input[name=scope]:checked').value;
-    vscode.postMessage({ type: 'save', target, values: collectChanged() });
+    // After a file-source reset the form's values/baseline are file-derived; flag the
+    // save so the host confirms before writing them into settings rather than doing it
+    // silently (P28). isDirty() guards against a no-op save re-prompting needlessly.
+    vscode.postMessage({
+      type: 'save',
+      target,
+      values: collectChanged(),
+      fromResetFileSource: resetFromFileSource && isDirty(),
+    });
   });
   // Export actions carry the current form state so the host can persist unsaved
   // edits before generating, keeping the output in sync with what is on screen.
@@ -1983,6 +2012,9 @@ function renderHtml(webview: vscode.Webview): string {
       // values and the dirty state are left untouched so unsaved edits are not discarded;
       // setActiveSource re-evaluates the dirty indicator for the new (settings) source.
       setActiveSource(msg.source, msg.detected);
+      // The form keeps the file's values and a file-relative dirty baseline (P25), so a
+      // subsequent "Save settings" must be confirmed before writing them into settings (P28).
+      resetFromFileSource = true;
       // Off the file source there are never parse notes — clear any left from the file (P11).
       const notesEl = $('sourceNotes');
       if (notesEl) {
@@ -2017,6 +2049,9 @@ function renderHtml(webview: vscode.Webview): string {
       }
       setVal(msg.settings, msg.setKeys, msg.setSelectKeys, msg.setArrayKeys);
       initial = collect();
+      // The form now reflects real persisted values (settings or a freshly loaded file),
+      // so the post-reset file-derived baseline is gone — drop the P28 save guard.
+      resetFromFileSource = false;
       // Record the scope the form now reflects so a cancelled scope switch can
       // revert the radio to it (P70).
       formScope = msg.scope || formScope;

@@ -56,6 +56,61 @@ test('save message persists values to the chosen scope', async () => {
   assert.equal(vscode.__state.calls.info.length, 1);
 });
 
+test('P28: a save flagged from a file-source reset is confirmed before writing settings', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  // Decline the confirmation modal: the file-derived edits must not reach settings.
+  vscode.__state.calls.warnReturn = undefined;
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { commandTimeout: 99 },
+    fromResetFileSource: true,
+  });
+  assert.equal(
+    vscode.workspace.getConfiguration('wcli0').get('commandTimeout', null),
+    null,
+    'declining the confirm leaves settings unwritten',
+  );
+  assert.ok(
+    vscode.__state.calls.warn.some((w) => /no longer active/.test(w.message)),
+    'a confirmation modal was shown',
+  );
+});
+
+test('P28: confirming a file-source-reset save writes the values to settings', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  vscode.__state.calls.warnReturn = 'Save to settings';
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { commandTimeout: 99 },
+    fromResetFileSource: true,
+  });
+  assert.equal(
+    vscode.workspace.getConfiguration('wcli0').get('commandTimeout', null),
+    99,
+    'the confirmed save persists',
+  );
+});
+
+test('P28: an ordinary settings save is not gated by the reset confirm', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  vscode.__state.calls.warnReturn = undefined; // no modal expected for an unflagged save
+  await panel.webview._handler({
+    type: 'save',
+    target: 'Workspace',
+    values: { commandTimeout: 77 },
+  });
+  assert.equal(
+    vscode.workspace.getConfiguration('wcli0').get('commandTimeout', null),
+    77,
+    'an unflagged save persists without a prompt',
+  );
+});
+
 test('scope change reloads values stored at the selected scope', async () => {
   vscode.__setConfig(vscode.ConfigurationTarget.Global, 'wcli0.shell', 'powershell');
   vscode.__setConfig(vscode.ConfigurationTarget.Workspace, 'wcli0.shell', 'cmd');

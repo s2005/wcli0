@@ -421,6 +421,37 @@ test('P1: resolvePaths:false normalizes backslash relative paths to forward-slas
   assert.ok(args.includes('${workspaceFolder}/src/nested'));
 });
 
+test('P27: preserveRelativePaths keeps relative path args verbatim for a file source', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({
+    allowedDirectories: ['src', '${workspaceFolder}/lib', '/abs/dir'],
+    configFile: 'config.json',
+    initialDir: 'work',
+    cwd: 'server',
+  });
+  const args = buildServerArgs(s, { resolvePaths: false, preserveRelativePaths: true });
+  // A loaded entry's relative args were authored relative to its own cwd, so they
+  // round-trip verbatim rather than being anchored to ${workspaceFolder} (which would
+  // resolve config.json under the workspace root instead of <cwd>/config.json).
+  assert.ok(args.includes('config.json'), 'relative --config kept verbatim');
+  assert.ok(args.includes('src'), 'relative --allowedDir kept verbatim');
+  assert.ok(args.includes('work'), 'relative --initialDir kept verbatim');
+  assert.ok(args.includes('${workspaceFolder}/lib'), 'tokenized path still verbatim');
+  assert.ok(args.includes('/abs/dir'), 'absolute path still verbatim');
+  assert.equal(args.includes('${workspaceFolder}/config.json'), false, 'not re-anchored');
+  // The relative cwd is likewise preserved (VS Code resolves it against the workspace).
+  const spec = buildLaunchSpec(s, { resolvePaths: false, preserveRelativePaths: true });
+  assert.equal(spec.cwd, 'server');
+});
+
+test('P27: without preserveRelativePaths a settings export still anchors to ${workspaceFolder}', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({ configFile: 'config.json', cwd: 'server' });
+  const args = buildServerArgs(s, { resolvePaths: false });
+  assert.ok(args.includes('${workspaceFolder}/config.json'), 'relative config anchored for export');
+  assert.equal(args.includes('config.json'), false, 'not kept bare for a settings export');
+});
+
 test('P2: a fractional maxOutputLines is accepted (server only range-checks it)', () => {
   // Server's validateLoggingConfig enforces 1..10000 but not integer-ness.
   assert.deepEqual(buildServerArgs(defaults({ maxOutputLines: 1.5 })), [

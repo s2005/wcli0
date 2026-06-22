@@ -135,3 +135,15 @@
   `sourceReset` message the webview applies even while dirty)
 - [x] P26: Describe the comment handling accurately (fixed — README says commented files
   are rewritten as plain JSON only after confirmation, not refused)
+
+### Review Feedback (PR #89, round 5)
+
+- [x] P27: Preserve cwd-relative --config when saving file sources (fixed — a
+  `preserveRelativePaths` build option keeps a file source's relative path args and `cwd`
+  verbatim instead of anchoring them to `${workspaceFolder}`)
+- [x] P28: Avoid retargeting dirty file edits to settings (fixed — a settings save whose
+  baseline came from a reset file source is flagged `fromResetFileSource`; the host
+  confirms before writing, and the flag clears on any re-baseline)
+- [x] P29: Refuse file-source shell/profile edits that cannot be saved (fixed —
+  `writeMcpJsonFromSettings` refuses a file-source save carrying `wcli0.shells` /
+  `wcli0.profiles`, which the entry cannot persist, instead of dropping them on reparse)

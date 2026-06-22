@@ -261,6 +261,38 @@ test('P22: the dirty indicator stays hidden on the settings source', () => {
   );
 });
 
+test('P28: a settings save after a file-source reset flags the host to confirm', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT);
+  h.els.get('commandTimeout').value = '999'; // a dirty edit on the file form
+  h.fireInput();
+  h.dispatch({ type: 'sourceReset', source: 'settings', detected: [] });
+  h.captured.length = 0;
+  h.click('save');
+  const msg = h.last('save');
+  assert.ok(msg, 'a settings save is posted');
+  assert.equal(
+    msg.fromResetFileSource,
+    true,
+    'flagged so the host confirms before writing file edits into settings',
+  );
+});
+
+test('P28: the confirm flag clears once the form re-baselines to real settings', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT);
+  h.els.get('commandTimeout').value = '999';
+  h.fireInput();
+  h.dispatch({ type: 'sourceReset', source: 'settings', detected: [] });
+  // An explicit (non-external) settings init re-baselines the form to real values.
+  h.dispatch(SETTINGS_INIT);
+  h.captured.length = 0;
+  h.click('save');
+  const msg = h.last('save');
+  assert.ok(msg, 'a settings save is posted');
+  assert.ok(!msg.fromResetFileSource, 'no longer flagged after the re-baseline');
+});
+
 test('P25: a sourceReset switches the UI off the file source even when dirty', () => {
   const h = makeHarness();
   h.dispatch(FILE_INIT);

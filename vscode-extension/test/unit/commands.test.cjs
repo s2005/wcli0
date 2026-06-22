@@ -852,6 +852,71 @@ test('P13: a file save allows a VS Code variable --config path that cannot be re
   assert.ok(e.args.includes('${input:cfg}'), 'the variable path is round-tripped verbatim');
 });
 
+test('P29: a file save refuses per-shell/profile edits that cannot be persisted to the file', async () => {
+  // A loaded file source referencing a config file. parseMcpEntry never loads
+  // shells/profiles back from that file, so any in the form are unsaved edits this save
+  // (which only writes the entry, not the referenced file) would silently drop on the
+  // post-write reparse — refuse instead of reporting a false success.
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', '${workspaceFolder}/wcli0.json'],
+  };
+  const s = defaultSettings();
+  s.configFile = '${workspaceFolder}/wcli0.json';
+  s.profiles = { ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } } };
+  const ok = await writeMcpJsonFromSettings(s, WS[0], {
+    baseEntry: base,
+    configFileLoadable: () => true,
+  });
+  assert.equal(ok, false, 'the save is refused');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /live in the referenced config file/.test(m)),
+    'explains the edits cannot be saved from a file-source form',
+  );
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
+});
+
+test('P29: a file save with no shell/profile edits is not blocked by the P29 refusal', async () => {
+  // The refusal must only fire on actual shells/profiles edits, not every file save.
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  const s = defaultSettings();
+  s.shell = 'cmd'; // a normal modeled edit, not per-shell config
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'an ordinary file save still succeeds');
+  assert.ok(wcli0Entry().args.includes('--shell'), 'the edit is written');
+});
+
+test('P27: a file save preserves a cwd-relative --config instead of re-anchoring it', async () => {
+  // A loaded entry whose server resolves config.json under a non-workspace cwd.
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', 'config.json'],
+    cwd: '${workspaceFolder}/server',
+  };
+  const s = defaultSettings();
+  s.configFile = 'config.json'; // as parseMcpEntry sets from the relative --config
+  s.cwd = '${workspaceFolder}/server';
+  // An unrelated edit triggers a regenerate; the relative --config must round-trip.
+  s.shell = 'cmd';
+  // The referenced config exists under the server's cwd at launch; inject loadability
+  // so the test isolates the written-entry behavior from the on-disk validation check.
+  const ok = await writeMcpJsonFromSettings(s, WS[0], {
+    baseEntry: base,
+    configFileLoadable: () => true,
+  });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.ok(e.args.includes('config.json'), 'relative --config kept verbatim');
+  assert.equal(
+    e.args.includes('${workspaceFolder}/config.json'),
+    false,
+    'not re-anchored to the workspace root (would load a different file)',
+  );
+  assert.equal(e.cwd, '${workspaceFolder}/server', 'cwd preserved');
+});
+
 test('a file save switching http->stdio drops the stale url field', async () => {
   const base = { type: 'http', url: 'http://127.0.0.1:9444/mcp', headers: { A: '1' } };
   const s = defaultSettings(); // stdio (npx)

@@ -377,6 +377,23 @@ export async function writeMcpJsonFromSettings(
     const cfgPath = resolvedConfigFilePath(validateSettings);
     const cfgLoadable = !cfgPath || configFileLoadable(cfgPath);
     const hasLoadableConfigFile = !!cfgPath && cfgLoadable;
+    // A file source's per-shell settings (wcli0.shells) and environment profiles
+    // (wcli0.profiles) live in the referenced --config file, not the mcp.json entry:
+    // this save only writes the entry (the referenced file is left untouched) and
+    // parseMcpEntry does not read shells/profiles back from that file. Any such values in
+    // the form are therefore unsaved edits that the post-write reparse would silently drop
+    // while still reporting success. Refuse so the loss is explicit and the user edits the
+    // referenced config file directly instead (P29). Settings exports are handled below:
+    // there shells/profiles persist in wcli0.* settings and the provider builds its own
+    // managed config from them, so they get a sync warning rather than a hard block.
+    if (fileSource && (hasPerShellConfig(settings) || hasProfilesConfig(settings))) {
+      void vscode.window.showErrorMessage(
+        'wcli0: per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles) for a ' +
+          '.vscode/mcp.json source live in the referenced config file, not the entry, so they cannot be ' +
+          'saved from this form. Edit the referenced --config file directly, then reload the source.',
+      );
+      return false;
+    }
     // Per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles)
     // cannot be expressed as the CLI flags a committed mcp.json carries. A referenced
     // (loadable) wcli0.configFile IS pinned as the entry's --config below and DOES
@@ -464,8 +481,14 @@ export async function writeMcpJsonFromSettings(
 
   // Preserve portable ${workspaceFolder} tokens rather than resolving them: a
   // committed mcp.json is shared across machines and VS Code resolves these
-  // variables itself, so baking in absolute paths would break for teammates.
-  const spec = buildLaunchSpec(settings, { resolvePaths: false });
+  // variables itself, so baking in absolute paths would break for teammates. For a
+  // file source, also preserve plain relative path args verbatim (preserveRelativePaths):
+  // they were authored relative to the entry's own cwd, so anchoring them to
+  // ${workspaceFolder} on an unrelated save would retarget the referenced file (P27).
+  const spec = buildLaunchSpec(settings, {
+    resolvePaths: false,
+    preserveRelativePaths: fileSource,
+  });
 
   let entry: Record<string, unknown>;
   // The form-owned fields, kept separately so a file-source save can merge them onto the
