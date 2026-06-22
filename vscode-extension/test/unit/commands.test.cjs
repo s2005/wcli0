@@ -871,7 +871,7 @@ test('P29: a file save refuses per-shell/profile edits that cannot be persisted 
   });
   assert.equal(ok, false, 'the save is refused');
   assert.ok(
-    vscode.__state.calls.error.some((m) => /live in the referenced config file/.test(m)),
+    vscode.__state.calls.error.some((m) => /cannot be saved from this form/.test(m)),
     'explains the edits cannot be saved from a file-source form',
   );
   assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
@@ -915,6 +915,111 @@ test('P27: a file save preserves a cwd-relative --config instead of re-anchoring
     'not re-anchored to the workspace root (would load a different file)',
   );
   assert.equal(e.cwd, '${workspaceFolder}/server', 'cwd preserved');
+});
+
+test('P-cwdconfig: a file save checks --config loadability against the entry cwd', async () => {
+  // The server resolves a relative --config against the entry's cwd, not the workspace root.
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', 'config.json'],
+    cwd: '${workspaceFolder}/server',
+  };
+  const s = defaultSettings();
+  s.configFile = 'config.json';
+  s.cwd = '${workspaceFolder}/server';
+  let checkedPath;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], {
+    baseEntry: base,
+    configFileLoadable: (p) => {
+      checkedPath = p;
+      return true;
+    },
+  });
+  assert.equal(ok, true);
+  // Loadability was checked under the cwd (/ws/server), NOT the workspace root (/ws).
+  assert.equal(checkedPath, '/ws/server/config.json');
+});
+
+test('P-port0: a file save rebuilds an explicit :0 url from the port field', async () => {
+  const base = { type: 'http', url: 'http://host:0/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'host';
+  s.transportPort = 9444; // the form's default, since the :0 port cannot be held (min=1)
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  // The invalid :0 is NOT round-tripped verbatim; the canonical URL is rebuilt from the port.
+  assert.equal(wcli0Entry().url, 'http://host:9444/mcp');
+});
+
+test('P-varsyntax: a file save rejects a --config path with an unknown ${...} token', async () => {
+  // `${PATH}` is a bare shell variable VS Code does not substitute, so the value is a real
+  // (broken) local path and must face validation rather than be bypassed as a VS Code var.
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', '${PATH}/cfg.json'],
+  };
+  const s = defaultSettings();
+  s.configFile = '${PATH}/cfg.json';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false, 'an unknown-variable config path is validated, not bypassed');
+});
+
+test('P-varsyntax: a file save still allows a recognized VS Code variable config path', async () => {
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', '${input:cfg}'],
+  };
+  const s = defaultSettings();
+  s.configFile = '${input:cfg}'; // VS Code resolves this at launch
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'a known VS Code variable is bypassed and round-tripped');
+  assert.ok(wcli0Entry().args.includes('${input:cfg}'), 'the variable is written verbatim');
+});
+
+test('P-staleargs: a file save preserves an unmodeled flag added to args on disk after load', async () => {
+  // The panel loaded this stale snapshot...
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  // ...but another process then added an unmodeled escape-hatch flag to the on-disk entry.
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: {
+          wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--futureFlag', 'x'] },
+        },
+      }),
+    ),
+  );
+  const s = defaultSettings();
+  s.shell = 'cmd'; // an unrelated modeled edit triggers a regenerate
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.ok(
+    e.args.includes('--futureFlag') && e.args.includes('x'),
+    'the externally-added unmodeled flag survives the save',
+  );
+  assert.ok(e.args.includes('--shell'), 'the modeled edit is written too');
+});
+
+test('P-httpshells: a file save to an http source refuses unsavable per-shell/profile edits', async () => {
+  // The stdio branch already refused these (P29); the http/sse branch must too, instead of
+  // writing {type,url} and reporting a false "Saved" while the edits silently disappear.
+  const base = { type: 'http', url: 'http://127.0.0.1:9444/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.profiles = { ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } } };
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false, 'an http file source also refuses shells/profiles edits');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /cannot be saved from this form/.test(m)),
+    'explains the edits cannot be saved from a file-source form',
+  );
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
 });
 
 test('a file save switching http->stdio drops the stale url field', async () => {

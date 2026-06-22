@@ -201,6 +201,17 @@ function serverFlagSuffixStart(args: string[]): number {
 }
 
 /**
+ * Whether a custom launch `command` is the wcli0 binary itself (so its args are wcli0
+ * server flags rather than a wrapper's own options). Matched by basename, tolerating a
+ * directory prefix and a `.js`/`.cjs`/`.mjs`/`.cmd`/`.bat`/`.exe` suffix. Used to decide
+ * whether a server-flag run starting at arg index 0 can be trusted (P-wrapperflags).
+ */
+function isWcli0Command(command: string): boolean {
+  const base = command.trim().replace(/\\/g, '/').split('/').pop() ?? '';
+  return /^wcli0(\.(js|cjs|mjs|cmd|bat|exe))?$/i.test(base);
+}
+
+/**
  * Reverse of {@link buildServerArgs}: parse a wcli0 flag list back into the subset
  * of settings the form models, plus the leftover (unrecognized) flags. Accepts both
  * `--opt value` and `--opt=value` forms and the boolean/tri-state/safety flags the
@@ -343,8 +354,8 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     }
     const canonicalPath = type === 'http' ? 'mcp' : 'sse';
     const parsed = parseHttpUrl(url);
-    if (parsed && parsed.port > 0) {
-      // Fully modeled: an explicit host AND port the form's fields can edit.
+    if (parsed && parsed.port !== undefined && parsed.port > 0) {
+      // Fully modeled: an explicit host AND usable port the form's fields can edit.
       s.transportHost = parsed.host;
       s.transportPort = parsed.port;
       if (!isCanonicalTransportUrl(url, type, parsed)) {
@@ -354,7 +365,7 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
             `http://host:port/${canonicalPath} form.`,
         );
       }
-    } else if (parsed) {
+    } else if (parsed && parsed.port === undefined) {
       // Decomposes to a host but no explicit port (a default-port URL such as
       // https://host/path). Show the host, but keep the form's default port so the
       // number field stays valid (min=1) rather than rendering an invalid 0 (P8); the
@@ -364,6 +375,19 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
         `The ${type} URL "${url}" does not specify a port (it uses the scheme default). ` +
           'It is preserved as-is when you save; editing the host rewrites it to the ' +
           `http://host:port/${canonicalPath} form, and the port field does not affect it.`,
+      );
+    } else if (parsed) {
+      // An explicitly-written but unusable port (e.g. `:0`), which the port field cannot
+      // hold (min=1). Show the host and keep the form's default port; unlike a default-port
+      // URL the verbatim `:0` URL is NOT preserved on save (preservedFileUrl requires the
+      // port to be unchanged, and 0 can never match the default), so saving rebuilds the
+      // canonical http://host:port form from the port field rather than writing back an
+      // invalid port that ignores edits (P-port0).
+      s.transportHost = parsed.host;
+      notes.push(
+        `The ${type} URL "${url}" specifies port ${parsed.port}, which is not a usable port ` +
+          '(it must be between 1 and 65535). Saving rewrites it to the ' +
+          `http://host:port/${canonicalPath} form using the port field below.`,
       );
     } else if (url) {
       // Cannot be decomposed into host/port at all (a socket or named-pipe URL such as
@@ -414,7 +438,18 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     // token, so a launcher option that collides with a wcli0 flag name (a wrapper's own
     // `--config`/`--transport`, node's `--inspect`, uvx's `--from`) stays in customArgs
     // and a load/save round-trip preserves the command order (P15).
-    const start = serverFlagSuffixStart(args);
+    let start = serverFlagSuffixStart(args);
+    // A suffix that begins at index 0 has NO launcher token before it, so for a wrapper
+    // command the leading flags are ambiguous: `mywrapper --transport fast` or
+    // `mywrapper --config wrapper.json` are the wrapper's own options, but a flag-only run
+    // parses cleanly as wcli0 flags and would be misread as wcli0 settings — a no-op save
+    // could then rewrite the entry as a network server or validate the wrapper's path as
+    // wcli0.configFile (P-wrapperflags). Only trust an index-0 boundary when the command IS
+    // the wcli0 binary (its args really are server flags); otherwise keep every arg in the
+    // launcher portion, where it round-trips verbatim.
+    if (start === 0 && !isWcli0Command(command)) {
+      start = args.length;
+    }
     s.customArgs = args.slice(0, start);
     serverArgs = args.slice(start);
   }
@@ -435,8 +470,14 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   return { settings: s, notes };
 }
 
-/** Parse host/port out of an http/sse URL; returns undefined when unparseable. */
-export function parseHttpUrl(url: string): { host: string; port: number } | undefined {
+/**
+ * Parse host/port out of an http/sse URL; returns undefined when unparseable. An OMITTED
+ * port is reported as `port: undefined` (the URL relies on the scheme default), distinct
+ * from an explicitly-written port — including an unusable `:0`, reported as `port: 0`. The
+ * two must not be conflated: a `:0` URL is a real explicit port, not a default-port URL, so
+ * it must not be preserved verbatim in a way that ignores a port-field edit (P-port0).
+ */
+export function parseHttpUrl(url: string): { host: string; port: number | undefined } | undefined {
   if (!url) {
     return undefined;
   }
@@ -448,7 +489,7 @@ export function parseHttpUrl(url: string): { host: string; port: number } | unde
     return undefined;
   }
   const host = m[1];
-  const port = m[2] ? Number(m[2]) : 0;
+  const port = m[2] !== undefined ? Number(m[2]) : undefined;
   return { host, port };
 }
 
@@ -461,8 +502,12 @@ export function parseHttpUrl(url: string): { host: string; port: number } | unde
 function isCanonicalTransportUrl(
   url: string,
   type: 'http' | 'sse',
-  parsed: { host: string; port: number },
+  parsed: { host: string; port: number | undefined },
 ): boolean {
   const path = type === 'http' ? '/mcp' : '/sse';
-  return url === `http://${parsed.host}:${parsed.port}${path}` && parsed.port > 0;
+  return (
+    parsed.port !== undefined &&
+    parsed.port > 0 &&
+    url === `http://${parsed.host}:${parsed.port}${path}`
+  );
 }

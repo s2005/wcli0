@@ -7,6 +7,7 @@ const {
   readWcli0Entry,
   parseServerArgs,
   parseMcpEntry,
+  parseHttpUrl,
   mcpJsonUri,
 } = require('../../dist/configSource.js');
 const { buildLaunchSpec } = require('../../dist/argsBuilder.js');
@@ -404,6 +405,63 @@ test('P21: parseMcpEntry reads host/port past URL userinfo credentials', () => {
   assert.equal(settings.transportHost, 'example.com');
   assert.equal(settings.transportPort, 9444);
   assert.equal(settings.transportUrl, 'https://user:pass@example.com:9444/mcp');
+});
+
+test('P-port0: parseHttpUrl distinguishes an omitted port from an explicit :0', () => {
+  // An omitted port is reported as undefined (scheme default); an explicit :0 is a real
+  // (unusable) port, so the two must not collapse to the same sentinel.
+  assert.equal(parseHttpUrl('https://gateway.example/custom/mcp').port, undefined);
+  assert.equal(parseHttpUrl('http://host:0/mcp').port, 0);
+  assert.equal(parseHttpUrl('http://host:9444/mcp').port, 9444);
+});
+
+test('P-port0: parseMcpEntry does not preserve an explicit :0 url as a default-port url', () => {
+  const { settings, notes } = parseMcpEntry({ type: 'http', url: 'http://host:0/mcp' });
+  assert.equal(settings.transportMode, 'http');
+  // The host is modeled, but the port field cannot hold 0 (min=1), so it keeps the default.
+  assert.equal(settings.transportHost, 'host');
+  assert.equal(settings.transportPort, 9444);
+  // A note explains the unusable port is rebuilt on save, not preserved verbatim.
+  assert.ok(notes.some((n) => /not a usable port/.test(n)));
+});
+
+test('P-wrapperflags: a wrapper command keeps flag-only args in the launcher portion', () => {
+  // `mywrapper --transport fast` is the wrapper's own option, not a wcli0 flag; with no
+  // launcher positional before it there is no unambiguous server-flag boundary, so it must
+  // stay in customArgs rather than be misread as wcli0's transport setting.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'mywrapper',
+    args: ['--transport', 'fast'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'mywrapper');
+  assert.deepEqual(settings.customArgs, ['--transport', 'fast']);
+  // None of it leaked into wcli0 settings.
+  assert.equal(settings.transportMode, 'stdio');
+});
+
+test('P-wrapperflags: a wrapper --config option is not parsed as wcli0.configFile', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'mywrapper',
+    args: ['--config', 'wrapper.json'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, ['--config', 'wrapper.json']);
+  assert.equal(settings.configFile, '');
+});
+
+test('P-wrapperflags: an index-0 server-flag run IS trusted when the command is wcli0', () => {
+  // Running the wcli0 binary directly: its args really are server flags, so they are modeled.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: '/usr/local/bin/wcli0',
+    args: ['--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, []);
+  assert.equal(settings.shell, 'cmd');
 });
 
 test('P10: parseMcpEntry preserves a socket url it cannot decompose', () => {
