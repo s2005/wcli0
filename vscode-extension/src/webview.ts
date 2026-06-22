@@ -526,12 +526,14 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
     // folder remains, or a multi-root removal/reorder changed the primary. Keeping the
     // stale source would let the next "Save to file" overwrite the new folder's
     // .vscode/mcp.json with the previously loaded folder's config (P2).
+    let sourceWasReset = false;
     if (currentSource === 'mcpJson' && primaryWorkspaceFolder()?.uri.fsPath !== loadedFileFolder) {
       currentSource = 'settings';
       loadedFileSettings = undefined;
       loadedFileEntry = undefined;
       loadedFileNotes = [];
       loadedFileFolder = undefined;
+      sourceWasReset = true;
     }
     // Post synchronously from the cached detection (a test asserts the re-post happens
     // synchronously on folder change). Then refresh the detection cache and push a
@@ -541,6 +543,14 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
     // post. A dedicated `detected` message (not a full init) is used so it cannot race a
     // concurrent save's scope realignment by re-posting a stale scope (P96).
     post(true);
+    // The post above is an external reload, which a DIRTY form ignores so it does not discard
+    // unsaved edits — but that also means it never applies the source reset, leaving the UI
+    // showing and saving as the now-gone file source until a save is rejected. Push a
+    // dedicated source-reset message that switches the UI off the file source even while
+    // dirty (field values and dirty state are left untouched, P25).
+    if (sourceWasReset) {
+      webview.postMessage({ type: 'sourceReset', source: 'settings', detected: detectedSources });
+    }
     void refreshDetection().then(() =>
       webview.postMessage({ type: 'detected', detected: detectedSources }),
     );
@@ -1437,8 +1447,15 @@ function renderHtml(webview: vscode.Webview): string {
   // outside the file source (see setActiveSource). Called on every reload/save (via
   // setActiveSource) and live on each field edit (delegated input/change listeners).
   function reflectDirty() {
+    const dirty = isDirty();
     const rb = $('revertFile');
-    if (rb) rb.disabled = !isDirty();
+    if (rb) rb.disabled = !dirty;
+    // Surface the "Unsaved changes" indicator only while editing the file source, where
+    // there is no per-scope Save cue: a clean form (or any settings-source form) hides it,
+    // a dirty file form shows it. Toggled live via the delegated input/change listeners and
+    // on every reload/save through setActiveSource (P22).
+    const dm = $('dirtyMsg');
+    if (dm) dm.style.display = dirty && currentSourceClient === 'mcpJson' ? '' : 'none';
   }
 
   function updateLaunchRows() {
@@ -1957,6 +1974,21 @@ function renderHtml(webview: vscode.Webview): string {
       // switcher rows and the "Load & edit" banner; never touches scope/fields, so it cannot
       // disturb a dirty form or a just-saved scope (P16/P96).
       applyDetected(msg.detected);
+      return;
+    }
+    if (msg.type === 'sourceReset') {
+      // The host reset the active source because the loaded .vscode/mcp.json's folder is no
+      // longer the primary one. Switch the UI off the file source even while the form is
+      // dirty — the file is gone, so continuing to show and save as it is wrong (P25). Field
+      // values and the dirty state are left untouched so unsaved edits are not discarded;
+      // setActiveSource re-evaluates the dirty indicator for the new (settings) source.
+      setActiveSource(msg.source, msg.detected);
+      // Off the file source there are never parse notes — clear any left from the file (P11).
+      const notesEl = $('sourceNotes');
+      if (notesEl) {
+        notesEl.textContent = '';
+        notesEl.style.display = 'none';
+      }
       return;
     }
     if (msg.type === 'init') {

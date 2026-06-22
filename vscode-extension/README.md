@@ -45,8 +45,10 @@ edit**. Loading reverse-maps the entry into the form (launch method, shell,
 allowed directories, limits, transport, …); flags the form does not model are
 preserved verbatim so a save round-trips them. With the file source active,
 **Save to file** writes the edited entry back to `.vscode/mcp.json` — other
-servers in the file are preserved, comments/non-object files are refused rather
-than clobbered, and **no `wcli0.*` setting is written**. This makes
+servers in the file are preserved, a non-object or malformed file is refused
+rather than clobbered, a file containing comments is rewritten as plain JSON only
+after you confirm (the comments are removed), and **no `wcli0.*` setting is
+written**. This makes
 *load → edit → save* a first-class path alongside the existing
 *new → export* one.
 

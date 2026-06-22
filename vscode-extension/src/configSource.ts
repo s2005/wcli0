@@ -169,7 +169,15 @@ function isPureServerFlagRun(tokens: string[]): boolean {
       continue;
     }
     // A recognized boolean/tri-state, or any other bare `--flag` that round-trips as an
-    // extraArg — both are valid within a server-flag run.
+    // extraArg. An unrecognized flag can also carry a space-separated value (`--futureFlag x`),
+    // which appears as a trailing bare token. Consume that token as the flag's value so a
+    // suffix ending in a valued extraArg is not mistaken for an orphan and wrongly rejected
+    // (P24). Only the LAST token is consumed this way: a bare token with more tokens after it
+    // is a launcher positional (e.g. uvx's package before the wcli0 flags), which must still
+    // disqualify the run so it stays in the launcher portion (P15).
+    if (i === tokens.length - 2 && !tokens[i + 1].startsWith('-')) {
+      i++; // consume the trailing bare value of this extraArg
+    }
   }
   return true;
 }

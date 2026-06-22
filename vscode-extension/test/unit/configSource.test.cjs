@@ -336,6 +336,35 @@ test('P15: a custom suffix with a trailing extra arg still splits at the wcli0 f
   assert.deepEqual(settings.extraArgs, ['--unknownFlag']);
 });
 
+test('P24: a custom suffix ending in a valued extraArg still parses the modeled flags', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'mywrapper',
+    args: ['wcli0', '--shell', 'cmd', '--futureFlag', 'x'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  // The trailing `--futureFlag x` is a valued extraArg, not a launcher positional, so the
+  // split stays at --shell: the launcher keeps only `wcli0`, --shell is modeled, and the
+  // unrecognized flag and its value round-trip verbatim in extraArgs.
+  assert.deepEqual(settings.customArgs, ['wcli0']);
+  assert.equal(settings.shell, 'cmd');
+  assert.deepEqual(settings.extraArgs, ['--futureFlag', 'x']);
+});
+
+test('P24: a non-trailing bare token still keeps a launcher positional out of the flags', () => {
+  // `repo` follows the unrecognized --from but is NOT the last token, so it is a launcher
+  // positional (uvx's package) and must stay in customArgs, not be eaten as --from's value.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'uvx',
+    args: ['--from', 'repo', 'wcli0', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, ['--from', 'repo', 'wcli0']);
+  assert.equal(settings.shell, 'cmd');
+  assert.deepEqual(settings.extraArgs, []);
+});
+
 test('parseMcpEntry parses an http entry url', () => {
   const { settings } = parseMcpEntry({ type: 'http', url: 'http://127.0.0.1:9444/mcp' });
   assert.equal(settings.transportMode, 'http');

@@ -122,3 +122,16 @@
   merge base from the re-read entry so external additions survive)
 - [x] P21: Parse URL userinfo before host/port (fixed — `parseHttpUrl` skips an optional
   `userinfo@` segment)
+
+### Review Feedback (PR #89, round 4)
+
+- [x] P22: Toggle the dirty indicator on edits (fixed — `reflectDirty` toggles `#dirtyMsg`
+  on a dirty file form, hidden on the settings source)
+- [x] P23: Preserve current on-disk env on file saves (fixed — round-trip `env` from the
+  current on-disk entry via `readWcli0Entry`, not the panel snapshot)
+- [x] P24: Parse custom suffixes with valued extraArgs (fixed — `isPureServerFlagRun`
+  consumes a trailing bare token as the value of a valued extraArg)
+- [x] P25: Push source resets through dirty file forms (fixed — host posts a dedicated
+  `sourceReset` message the webview applies even while dirty)
+- [x] P26: Describe the comment handling accurately (fixed — README says commented files
+  are rewritten as plain JSON only after confirmation, not refused)

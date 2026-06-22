@@ -644,6 +644,42 @@ test('P2: changing the primary workspace folder resets a loaded file source', as
   assert.equal(init.source, 'settings', 'stale file source reset to settings');
 });
 
+test('P25: a folder change pushes a source-reset so a dirty file form leaves the file source', async () => {
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  vscode.__state.workspaceFolders = [{ uri: { fsPath: '/other' }, name: 'other', index: 0 }];
+  panel.webview.posted = [];
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) cb();
+  // The external init is ignored by a dirty webview, so a dedicated source-reset message
+  // carries the switch off the now-gone file source (P25).
+  const reset = panel.webview.posted.find((m) => m.type === 'sourceReset');
+  assert.ok(reset, 'a sourceReset message is posted on the folder change');
+  assert.equal(reset.source, 'settings', 'the reset targets the settings source');
+});
+
+test('P25: no source-reset is pushed when the file source was not active', async () => {
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  // Stay on the settings source; a folder change must not emit a source reset.
+  vscode.__state.workspaceFolders = [{ uri: { fsPath: '/other' }, name: 'other', index: 0 }];
+  panel.webview.posted = [];
+  for (const cb of vscode.__state.workspaceFoldersChangeListeners) cb();
+  assert.equal(
+    panel.webview.posted.find((m) => m.type === 'sourceReset'),
+    undefined,
+    'no sourceReset when settings was the active source',
+  );
+});
+
 test('P4: omitting env on save clears it from the file-source baseline', async () => {
   seedWorkspaceMcpJson({
     servers: {
@@ -674,6 +710,45 @@ test('P4: omitting env on save clears it from the file-source baseline', async (
   parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
   assert.equal(parsed.servers.wcli0.env, undefined, 'env stays omitted on the next save');
   assert.equal(envWarns(), afterFirst, 'no second env prompt — baseline cleared');
+});
+
+test('P23: a file save preserves env added on disk after the panel loaded', async () => {
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'wcli0@latest', '--shell', 'cmd'],
+        env: { SECRET: 'x' },
+      },
+    },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  // Another process adds a variable (a non-string value VS Code allows) to the on-disk
+  // entry AFTER the panel loaded its snapshot.
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'wcli0@latest', '--shell', 'cmd'],
+        env: { SECRET: 'x', PORT: 3000 },
+      },
+    },
+  });
+  // An unrelated save keeps the env: it must come from the CURRENT on-disk entry, not the
+  // stale panel snapshot, so the newly added PORT is not silently dropped (P23).
+  vscode.__state.calls.warnReturn = 'Include environment';
+  await panel.webview._handler({ type: 'saveToFile', values: { commandTimeout: 30 } });
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.deepEqual(
+    parsed.servers.wcli0.env,
+    { SECRET: 'x', PORT: 3000 },
+    'the env added on disk survives the unrelated save',
+  );
 });
 
 test('P6: a stale file-source save after the primary folder changes is rejected', async () => {

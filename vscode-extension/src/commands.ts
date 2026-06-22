@@ -9,7 +9,7 @@ import {
   validateLaunchSpec,
 } from './argsBuilder';
 import { buildConfigFile } from './configFile';
-import { parseHttpUrl } from './configSource';
+import { parseHttpUrl, readWcli0Entry } from './configSource';
 import {
   ConfigScope,
   hasPerShellConfig,
@@ -484,7 +484,14 @@ export async function writeMcpJsonFromSettings(
     // (P9). For the settings-driven export, use the env built from settings.
     let env: Record<string, unknown> = spec.env;
     if (fileSource) {
-      const rawEnv = baseEntry!.env;
+      // Round-trip the CURRENT on-disk entry's raw env, not the snapshot loaded into the
+      // panel: another process may have added/changed servers.wcli0.env after the panel
+      // opened, and the on-disk merge below treats env as a form-owned stdio key (it would
+      // otherwise delete the on-disk value and apply this stale one), silently dropping
+      // those vars without even the env prompt. Fall back to the loaded baseEntry when no
+      // entry is on disk (P23, matching the merge base re-derivation below for P20).
+      const onDiskEntry = await readWcli0Entry(folder);
+      const rawEnv = (onDiskEntry ?? baseEntry!).env;
       env = isPlainObject(rawEnv) ? rawEnv : {};
     }
     if (Object.keys(env).length > 0) {

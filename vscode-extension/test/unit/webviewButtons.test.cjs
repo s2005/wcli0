@@ -239,3 +239,37 @@ test('Revert posts revertFileRequest only when there are unsaved edits', () => {
   h.click('revertFile');
   assert.ok(h.last('revertFileRequest'), 'posts revertFileRequest when dirty');
 });
+
+test('P22: the dirty indicator shows only on a dirty file form', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT);
+  assert.equal(h.els.get('dirtyMsg').style.display, 'none', 'clean file form: indicator hidden');
+  h.els.get('commandTimeout').value = '999';
+  h.fireInput();
+  assert.equal(h.els.get('dirtyMsg').style.display, '', 'dirty file form: indicator shown');
+});
+
+test('P22: the dirty indicator stays hidden on the settings source', () => {
+  const h = makeHarness();
+  h.dispatch(SETTINGS_INIT);
+  h.els.get('commandTimeout').value = '999';
+  h.fireInput();
+  assert.equal(
+    h.els.get('dirtyMsg').style.display,
+    'none',
+    'settings source has its own Save cue: indicator never shown',
+  );
+});
+
+test('P25: a sourceReset switches the UI off the file source even when dirty', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT);
+  h.els.get('commandTimeout').value = '999';
+  h.fireInput();
+  assert.equal(h.els.get('save').textContent, 'Save to file', 'starts on the file source');
+  // The host reset the source because the loaded file's folder is no longer primary.
+  h.dispatch({ type: 'sourceReset', source: 'settings', detected: [] });
+  assert.equal(h.els.get('save').textContent, 'Save settings', 'switched to the settings source');
+  assert.equal(h.els.get('revertFile').style.display, 'none', 'revert hidden off the file source');
+  assert.equal(h.els.get('dirtyMsg').style.display, 'none', 'dirty indicator hidden off the file source');
+});
