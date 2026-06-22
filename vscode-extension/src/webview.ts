@@ -910,6 +910,13 @@ function renderHtml(webview: vscode.Webview): string {
     </div>
   </div>
 
+  <div id="networkLockNote" class="hint" style="display:none;margin:0 0 10px;color:var(--vscode-charts-yellow,#d7a930)">
+    This .vscode/mcp.json entry is an http/sse server, so it stores only its URL. The Launch,
+    Config file, Shells, Profiles, and Limits &amp; Safety options cannot be written to it and are
+    disabled here &mdash; edit them in VS Code Settings, or switch this entry to stdio on the
+    Transport tab.
+  </div>
+
   <div class="tabpanel active" data-tab="config">
   <section>
   <h2>Config source &amp; launch isolation</h2>
@@ -1506,8 +1513,38 @@ function renderHtml(webview: vscode.Webview): string {
     $('transport.host').disabled = !networked;
     $('transport.port').disabled = !networked;
     $('transportHint').style.display = networked ? 'none' : '';
+    // The set of editable tabs depends on the mode for a file source (see below).
+    applyFileTransportLock();
   }
   $('transport.mode').addEventListener('change', updateTransportRows);
+
+  // The data-tab panels whose fields cannot be stored in a network (http/sse)
+  // .vscode/mcp.json entry — which is just type + url: the launch command, the referenced
+  // config file, per-shell config, profiles, and limits/safety/logging/allowed-directories.
+  const NETWORK_LOCKED_PANELS = ['config', 'launch', 'shells', 'profiles', 'safety'];
+  // When editing an http/sse FILE source, disable those panels' controls (and show a notice)
+  // so edits that the entry cannot store are not made and then silently dropped on the
+  // post-save reparse (P-httpdrop). The Transport tab stays editable so the URL can be changed
+  // or the entry switched back to stdio. A settings source keeps everything editable (the
+  // values persist in wcli0.* settings), and so does a stdio file source.
+  function applyFileTransportLock() {
+    const modeEl = $('transport.mode');
+    if (!modeEl || typeof document.querySelector !== 'function') return; // minimal test DOM
+    const mode = modeEl.value;
+    const lock = currentSourceClient === 'mcpJson' && (mode === 'http' || mode === 'sse');
+    for (const name of NETWORK_LOCKED_PANELS) {
+      const panel = document.querySelector('.tabpanel[data-tab="' + name + '"]');
+      if (!panel || !panel.querySelectorAll) continue;
+      for (const el of panel.querySelectorAll('input, select, textarea, button')) {
+        el.disabled = lock;
+      }
+    }
+    const note = $('networkLockNote');
+    if (note) note.style.display = lock ? '' : 'none';
+    // Unlocking blanket-enabled every control above, so restore the conditional disabled
+    // states (the Workspace-only inherited-config masks) that other logic owns (P97).
+    if (!lock) applyScopeAvailability(formScope);
+  }
 
   // ---- Design 5: tabs, per-shell segmented enable, isolation status ----
   // Tab switching. Only runs in the real webview; the test harness exposes no
@@ -1961,6 +1998,9 @@ function renderHtml(webview: vscode.Webview): string {
         : '';
     }
     applyDetected(detected);
+    // Lock the non-transport tabs when this is an http/sse file source (their fields cannot
+    // be saved to a network entry); re-enable them otherwise. Runs after the mode is set.
+    applyFileTransportLock();
     // The just-loaded form is clean (baseline === values), so disable Revert until an
     // edit is made. Live edits re-evaluate via the delegated input/change listeners.
     reflectDirty();

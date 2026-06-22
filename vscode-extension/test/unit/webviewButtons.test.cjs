@@ -189,6 +189,47 @@ test('P1: export buttons are disabled on a file source and re-enabled on setting
   }
 });
 
+// Fire the change listeners registered on an element (the harness has no real events).
+function fireChange(h, id) {
+  const el = h.els.get(id);
+  (el._l.change || []).forEach((cb) => cb());
+}
+
+test('P-httpdrop: an http file source shows the network-lock notice', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT);
+  // Switch the loaded entry to http on the Transport tab.
+  h.els.get('transport.mode').value = 'http';
+  fireChange(h, 'transport.mode');
+  assert.equal(
+    h.els.get('networkLockNote').style.display,
+    '',
+    'the lock notice is shown for an http file source (non-transport tabs are inert)',
+  );
+});
+
+test('P-httpdrop: a stdio file source does NOT lock the non-transport tabs', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT); // stdio by default
+  assert.equal(
+    h.els.get('networkLockNote').style.display,
+    'none',
+    'no lock for a stdio file source — its launch/shell/safety fields are editable',
+  );
+});
+
+test('P-httpdrop: an http SETTINGS source is not locked (values persist in settings)', () => {
+  const h = makeHarness();
+  h.dispatch(SETTINGS_INIT);
+  h.els.get('transport.mode').value = 'http';
+  fireChange(h, 'transport.mode');
+  assert.equal(
+    h.els.get('networkLockNote').style.display,
+    'none',
+    'a settings source stays fully editable regardless of transport mode',
+  );
+});
+
 test('Load & edit mcp.json requests a switch to the file source', () => {
   const h = makeHarness();
   h.dispatch(SETTINGS_INIT);
