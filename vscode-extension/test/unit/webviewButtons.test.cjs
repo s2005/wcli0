@@ -278,6 +278,26 @@ test('P28: a settings save after a file-source reset flags the host to confirm',
   );
 });
 
+test('P28: an export after a file-source reset flags the host to confirm', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT);
+  h.els.get('commandTimeout').value = '999'; // a dirty edit on the file form
+  h.fireInput();
+  h.dispatch({ type: 'sourceReset', source: 'settings', detected: [] });
+  h.captured.length = 0;
+  // The export buttons are re-enabled off the file source, but the form still holds
+  // the now-gone file's values; an export persists them via applySettings just like a
+  // save, so it must carry the same confirm flag (otherwise it bypasses the guard).
+  h.click('genConfig');
+  const msg = h.last('generateConfig');
+  assert.ok(msg, 'an export is posted');
+  assert.equal(
+    msg.fromResetFileSource,
+    true,
+    'flagged so the host confirms before applySettings writes file edits into settings',
+  );
+});
+
 test('P28: the confirm flag clears once the form re-baselines to real settings', () => {
   const h = makeHarness();
   h.dispatch(FILE_INIT);

@@ -307,6 +307,20 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   };
 
   webview.html = renderHtml(webview);
+  // After a file-source reset (the loaded .vscode/mcp.json's folder is no longer the
+  // primary one) the form still holds that file's values and a file-relative dirty
+  // baseline. Both save and export persist these via applySettings, which would
+  // silently corrupt wcli0.* settings with file-shaped edits — so confirm first (P28).
+  // Returns true when the user agrees to write to settings, false when they decline.
+  const confirmStaleFileSourceWrite = async (): Promise<boolean> => {
+    const pick = await vscode.window.showWarningMessage(
+      'wcli0: these values came from a .vscode/mcp.json source that is no longer active ' +
+        '(the workspace folder changed). Save them to your VS Code settings anyway?',
+      { modal: true },
+      'Save to settings',
+    );
+    return pick === 'Save to settings';
+  };
   const msgSub = webview.onDidReceiveMessage(async (msg: { type: string } & Partial<SavePayload> & { source?: ConfigSourceKind; fromResetFileSource?: boolean }) => {
     if (msg.type === 'ready') {
       await refreshDetection();
@@ -440,16 +454,8 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // settings would silently corrupt the scope with file-shaped edits the user made
       // for a file, not for settings — so confirm before doing it (P28). The webview only
       // sets this flag while that stale baseline is in effect; a clean re-baseline clears it.
-      if (msg.fromResetFileSource) {
-        const pick = await vscode.window.showWarningMessage(
-          'wcli0: these values came from a .vscode/mcp.json source that is no longer active ' +
-            '(the workspace folder changed). Save them to your VS Code settings anyway?',
-          { modal: true },
-          'Save to settings',
-        );
-        if (pick !== 'Save to settings') {
-          return; // declined — leave settings untouched
-        }
+      if (msg.fromResetFileSource && !(await confirmStaleFileSourceWrite())) {
+        return; // declined — leave settings untouched
       }
       // A refused save (e.g. Workspace target with no folder open, P89) leaves the
       // form untouched: skip the re-post, saved indicator and success toast.
@@ -495,6 +501,14 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // otherwise unsaved changes (e.g. Limits & Safety) would be silently
       // dropped from the generated config.json / mcp.json / launch command.
       if (msg.values && msg.target) {
+        // After a file-source reset (folder change) the form still holds the now-gone
+        // file's values; the export's applySettings would write them into wcli0.*
+        // settings just like a plain save would, so confirm first — matching the save
+        // path's guard. Without this the re-enabled export buttons bypass the P28
+        // confirmation and silently persist stale file-source edits into settings.
+        if (msg.fromResetFileSource && !(await confirmStaleFileSourceWrite())) {
+          return; // declined — leave settings untouched, skip the export
+        }
         // A refused save (Workspace target with no folder open, P89) must abort the
         // export too: it would otherwise operate on unsaved/stale persisted settings.
         if (!(await applySettings(msg as SavePayload))) {
@@ -1720,7 +1734,16 @@ function renderHtml(webview: vscode.Webview): string {
   function exportAction(type) {
     if (!validateNumbers() || !validateProfiles()) return;
     const target = document.querySelector('input[name=scope]:checked').value;
-    vscode.postMessage({ type, target, values: collectChanged() });
+    // After a file-source reset the form's values/baseline are file-derived; flag the
+    // export so the host confirms before applySettings writes them into settings,
+    // matching the Save button's guard — otherwise an export would silently persist
+    // stale file-source edits into wcli0.* settings (P28).
+    vscode.postMessage({
+      type,
+      target,
+      values: collectChanged(),
+      fromResetFileSource: resetFromFileSource && isDirty(),
+    });
   }
   $('genConfig').addEventListener('click', () => exportAction('generateConfig'));
   $('writeMcp').addEventListener('click', () => exportAction('writeMcpJson'));

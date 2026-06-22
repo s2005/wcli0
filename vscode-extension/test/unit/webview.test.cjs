@@ -95,6 +95,56 @@ test('P28: confirming a file-source-reset save writes the values to settings', a
   );
 });
 
+test('P28: an export flagged from a file-source reset is confirmed before writing settings', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  // Decline the confirmation modal: the file-derived edits must not reach settings,
+  // and the export command must not run on the stale/unwritten state.
+  vscode.__state.calls.warnReturn = undefined;
+  vscode.__state.calls.executedCommands = [];
+  await panel.webview._handler({
+    type: 'generateConfig',
+    target: 'Workspace',
+    values: { commandTimeout: 99 },
+    fromResetFileSource: true,
+  });
+  assert.equal(
+    vscode.workspace.getConfiguration('wcli0').get('commandTimeout', null),
+    null,
+    'declining the confirm leaves settings unwritten',
+  );
+  assert.ok(
+    vscode.__state.calls.warn.some((w) => /no longer active/.test(w.message)),
+    'a confirmation modal was shown',
+  );
+  assert.ok(
+    !vscode.__state.calls.executedCommands.some((c) => c.id === 'wcli0.generateConfigFile'),
+    'the export command does not run after declining',
+  );
+});
+
+test('P28: confirming a file-source-reset export writes settings then exports', async () => {
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  vscode.__state.calls.warnReturn = 'Save to settings';
+  vscode.__state.calls.executedCommands = [];
+  await panel.webview._handler({
+    type: 'generateConfig',
+    target: 'Workspace',
+    values: { commandTimeout: 99 },
+    fromResetFileSource: true,
+  });
+  assert.equal(
+    vscode.workspace.getConfiguration('wcli0').get('commandTimeout', null),
+    99,
+    'the confirmed export persists the values first',
+  );
+  assert.ok(
+    vscode.__state.calls.executedCommands.some((c) => c.id === 'wcli0.generateConfigFile'),
+    'the export command runs after confirming',
+  );
+});
+
 test('P28: an ordinary settings save is not gated by the reset confirm', async () => {
   openConfigPanel(makeContext());
   const panel = vscode.__state.lastWebviewPanel;
