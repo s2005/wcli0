@@ -14,4 +14,4 @@ the old text might assume comments are always protected. The new wording matches
 actual code path in `writeMcpJsonFromSettings` (`containsJsoncComments` -> modal "Write
 anyway"). Documentation-only change; no test needed.
 
-**Commit:** 7d5c8e2 — fix(vscode): address review feedback for PR #89 (round 4)
+**Commit:** baf060b — fix(vscode): address review feedback for PR #89 (round 4)

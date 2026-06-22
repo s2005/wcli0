@@ -19,4 +19,4 @@ only at save time. Covered by webview.test.cjs P25 (sourceReset posted on folder
 not posted when settings was active) and webviewButtons.test.cjs P25 (the webview switches
 off the file source on a dirty form).
 
-**Commit:** 7d5c8e2 — fix(vscode): address review feedback for PR #89 (round 4)
+**Commit:** baf060b — fix(vscode): address review feedback for PR #89 (round 4)

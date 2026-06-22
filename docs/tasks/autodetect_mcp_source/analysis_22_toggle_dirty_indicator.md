@@ -15,4 +15,4 @@ source matches the original intent (the dirty/Revert affordances are file-source
 and keeps the settings flow unchanged. Covered by client-side DOM tests P22 in
 webviewButtons.test.cjs (shown when a file form is dirty; hidden on the settings source).
 
-**Commit:** 7d5c8e2 — fix(vscode): address review feedback for PR #89 (round 4)
+**Commit:** baf060b — fix(vscode): address review feedback for PR #89 (round 4)

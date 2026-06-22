@@ -16,4 +16,4 @@ P20 (merge against current on-disk entry) and P9 (preserve non-string env) handl
 Covered by webview.test.cjs P23 (a PORT added on disk after load survives an unrelated
 save).
 
-**Commit:** 7d5c8e2 — fix(vscode): address review feedback for PR #89 (round 4)
+**Commit:** baf060b — fix(vscode): address review feedback for PR #89 (round 4)

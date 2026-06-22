@@ -18,4 +18,4 @@ wrapper options/positionals in the launcher) or P17 (`npx --package=x -- wcli0 .
 Covered by configSource.test.cjs P24 (trailing valued extraArg parses; non-trailing bare
 token stays a launcher positional).
 
-**Commit:** 7d5c8e2 — fix(vscode): address review feedback for PR #89 (round 4)
+**Commit:** baf060b — fix(vscode): address review feedback for PR #89 (round 4)
