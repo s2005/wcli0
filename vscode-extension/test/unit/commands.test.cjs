@@ -1161,3 +1161,47 @@ test('P20: a file save merges onto the CURRENT on-disk entry, preserving externa
   );
   assert.ok(parsed.servers.other, 'other server preserved');
 });
+
+test('P40: a file save carries forward an on-disk argv addition (e.g. --blockedCommand)', async () => {
+  // The panel loaded a snapshot with no blocked command...
+  const loaded = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  // ...but the file on disk now has --blockedCommand rm (added externally after load).
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--blockedCommand', 'rm'] } },
+      }),
+    ),
+  );
+  // The form only edits the shell; the uneditable blockedCommand must survive from disk.
+  const s = defaultSettings();
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  const args = wcli0Entry().args;
+  assert.ok(args.includes('--shell'), 'the edited shell flag is written');
+  assert.ok(args.includes('rm'), 'the externally added --blockedCommand rm is carried forward');
+});
+
+test('P41: a file save preserves the CURRENT on-disk url when host/port match', async () => {
+  // The panel loaded a canonical URL...
+  const loaded = { type: 'http', url: 'http://127.0.0.1:9444/mcp' };
+  // ...but the file on disk now uses a custom scheme/path with the SAME host/port.
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: { wcli0: { type: 'http', url: 'https://127.0.0.1:9444/custom/mcp' } },
+      }),
+    ),
+  );
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 9444;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  // The current on-disk URL (custom scheme/path) is preserved, not the stale canonical one.
+  assert.equal(wcli0Entry().url, 'https://127.0.0.1:9444/custom/mcp');
+});

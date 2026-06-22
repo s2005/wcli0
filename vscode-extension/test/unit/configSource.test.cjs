@@ -519,11 +519,104 @@ test('buildLaunchSpec -> parseMcpEntry round-trips modeled stdio fields', () => 
   assert.equal(settings.debug, true);
 });
 
-test('buildLaunchSpec -> parseMcpEntry round-trips an http endpoint', () => {
-  const s = defaults({ transportMode: 'http', transportHost: '127.0.0.1', transportPort: 7777 });
-  const spec = buildLaunchSpec(s, { resolvePaths: false });
-  // An http launch command still carries --transport http etc.; parse them back.
-  const { settings } = parseMcpEntry({ type: 'stdio', command: spec.command, args: spec.args });
+test('buildLaunchSpec -> parseMcpEntry round-trips an http endpoint via its url', () => {
+  // A real http server in mcp.json is { type, url }, not a stdio entry carrying transport
+  // flags. Round-trip the URL representation (host/port are recovered from it).
+  const { settings } = parseMcpEntry({ type: 'http', url: 'http://127.0.0.1:7777/mcp' });
   assert.equal(settings.transportMode, 'http');
+  assert.equal(settings.transportHost, '127.0.0.1');
   assert.equal(settings.transportPort, 7777);
+});
+
+// ---- P30: transport flags must not override a stdio entry's type ------------------
+
+test('P30: a stdio entry with --transport http keeps stdio and preserves the flag', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--transport', 'http', '--http-port', '7777'],
+  });
+  // The authoritative `type` wins: transportMode stays stdio, and the transport flags
+  // round-trip verbatim in extraArgs instead of flipping the type / dropping the launcher.
+  assert.equal(settings.transportMode, 'stdio');
+  assert.equal(settings.launchMethod, 'npx');
+  assert.deepEqual(settings.extraArgs, ['--transport', 'http', '--http-port', '7777']);
+});
+
+// ---- P31: unrecognized transport type ---------------------------------------------
+
+test('P31: an uppercase HTTP type is modeled as http, not coerced to stdio', () => {
+  const { settings } = parseMcpEntry({ type: 'HTTP', url: 'http://127.0.0.1:9444/mcp' });
+  assert.equal(settings.transportMode, 'http');
+  assert.equal(settings.transportHost, '127.0.0.1');
+});
+
+test('P31: an unrecognized type is noted and parsed as stdio', () => {
+  const { settings, notes } = parseMcpEntry({
+    type: 'websocket',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--shell', 'cmd'],
+  });
+  assert.equal(settings.transportMode, 'stdio');
+  assert.equal(settings.shell, 'cmd');
+  assert.ok(notes.some((n) => /websocket/.test(n)), 'notes the unmodeled type');
+});
+
+// ---- P32: short-form config alias -------------------------------------------------
+
+test('P32: the -c short alias is recognized like --config', () => {
+  const { settings, notes } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '-c', '/ws/wcli0.config.json', '--shell', 'cmd'],
+  });
+  assert.equal(settings.configFile, '/ws/wcli0.config.json');
+  assert.ok(notes.some((n) => /--config/.test(n)), 'still emits the config-file note');
+  assert.equal(settings.shell, 'cmd');
+});
+
+test('P32: the attached -c=value and --c=value forms are recognized', () => {
+  const a = parseMcpEntry({ type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '-c=/ws/a.json'] });
+  const b = parseMcpEntry({ type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--c=/ws/b.json'] });
+  assert.equal(a.settings.configFile, '/ws/a.json');
+  assert.equal(b.settings.configFile, '/ws/b.json');
+});
+
+// ---- P33: non-string args are stringified, not dropped ----------------------------
+
+test('P33: a numeric arg is stringified rather than coerced to empty', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['--inspect', 9229, 'dist/index.js'],
+  });
+  // node-with-options parses as custom; 9229 round-trips as "9229", not "".
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, ['--inspect', '9229', 'dist/index.js']);
+});
+
+// ---- P34: an unparseable numeric flag round-trips via extraArgs -------------------
+
+test('P34: an invalid numeric value falls through to extraArgs instead of blocking saves', () => {
+  const { settings, extraArgs } = parseServerArgs(['--commandTimeout', 'abc', '--shell', 'cmd']);
+  // The unparseable value is not stored in the typed field; both tokens survive verbatim.
+  assert.equal(settings.commandTimeout, undefined);
+  assert.deepEqual(extraArgs, ['--commandTimeout', 'abc']);
+  assert.equal(settings.shell, 'cmd');
+});
+
+// ---- P42: multiple unknown value-bearing extras in the suffix ---------------------
+
+test('P42: a suffix with several valued extras still recovers the modeled flags', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['--shell', 'cmd', '--future', 'x', '--another', 'y'],
+  });
+  // The modeled --shell is recovered (not stranded in customArgs), and every unknown
+  // flag/value pair round-trips in extraArgs.
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, []);
+  assert.equal(settings.shell, 'cmd');
+  assert.deepEqual(settings.extraArgs, ['--future', 'x', '--another', 'y']);
 });

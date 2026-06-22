@@ -117,9 +117,14 @@ interface OptionSpec {
 
 // Recognized `--option value` / `--option=value` flags, keyed by flag name. Mirror
 // of the forward emission in argsBuilder.buildServerArgs. Transport host/port use the
-// http/sse-specific flag names the forward builder emits.
+// http/sse-specific flag names the forward builder emits. The `config` option's `c`
+// alias (`-c`, `--c`) is included so a hand-written entry that uses the short form is
+// modeled like `--config` instead of dumped to extraArgs (matching the forward
+// builder's stripConfigArgs, which recognizes the same alias forms — P32).
 const VALUE_OPTIONS: Record<string, OptionSpec> = {
   '--config': { key: 'configFile', kind: 'string' },
+  '-c': { key: 'configFile', kind: 'string' },
+  '--c': { key: 'configFile', kind: 'string' },
   '--shell': { key: 'shell', kind: 'string' },
   '--allowedDir': { key: 'allowedDirectories', kind: 'array' },
   '--initialDir': { key: 'initialDir', kind: 'string' },
@@ -141,6 +146,59 @@ const VALUE_OPTIONS: Record<string, OptionSpec> = {
   '--sse-allowed-origins': { key: 'transportAllowedOrigins', kind: 'csv' },
 };
 
+// Boolean / tri-state / safety flags the forward builder emits with no value. Shared by
+// parseServerArgs (which models them) and isRecognizedServerFlag (the suffix detector).
+const BOOLEAN_FLAGS = new Set<string>([
+  '--allowAllDirs',
+  '--debug',
+  '--yolo',
+  '--unsafe',
+  '--enableTruncation',
+  '--no-enableTruncation',
+  '--enableLogResources',
+  '--no-enableLogResources',
+]);
+
+// The value-option flags that select/override transport. For a stdio entry the
+// authoritative `type` field — not a flag in the args — sets transportMode, so these
+// must NOT be consumed when parsing a stdio entry's args; otherwise a stray
+// `--transport http` (or `--http-port`) in a stdio entry flips the type and deletes the
+// launcher on save (P30).
+const TRANSPORT_FLAGS = new Set<string>([
+  '--transport',
+  '--http-host',
+  '--sse-host',
+  '--http-port',
+  '--sse-port',
+  '--http-allowed-origins',
+  '--sse-allowed-origins',
+]);
+
+/** Options for {@link parseServerArgs}. */
+export interface ParseServerArgsOptions {
+  /**
+   * When true, transport flags (`--transport`, `--http-*`, `--sse-*`) are NOT consumed
+   * and instead fall through to `extraArgs` verbatim. Set when parsing a stdio entry,
+   * whose `type` is authoritative and must not be overridden by a transport flag in its
+   * args (P30).
+   */
+  stdio?: boolean;
+}
+
+/**
+ * Whether a bare flag token (no `=`) is one the form models — a recognized value-option
+ * or a recognized boolean/tri-state. Used by the suffix detector to know when the
+ * modeled-flags portion of the run has begun, so unknown `--flag value` pairs AFTER it
+ * are treated as extraArgs rather than launcher positionals (P42).
+ */
+function isRecognizedServerFlag(token: string): boolean {
+  if (token in VALUE_OPTIONS || BOOLEAN_FLAGS.has(token)) {
+    return true;
+  }
+  const eq = token.indexOf('=');
+  return eq > 0 && token.startsWith('-') && token.slice(0, eq) in VALUE_OPTIONS;
+}
+
 /**
  * Whether `tokens` parse cleanly as a run of wcli0 server flags — the shape the forward
  * builder emits as the suffix after a launcher's own args. Every token must be a flag
@@ -152,31 +210,48 @@ const VALUE_OPTIONS: Record<string, OptionSpec> = {
  * portion (see {@link serverFlagSuffixStart}).
  */
 function isPureServerFlagRun(tokens: string[]): boolean {
+  let seenModeled = false;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
+    if (t === '--') {
+      return false; // options separator — positionals follow, not a pure server-flag run
+    }
     if (!t.startsWith('-')) {
       return false; // orphan bare token — not a flag and not consumed as a value
     }
     const eq = t.indexOf('=');
-    if (t.startsWith('--') && eq > 0) {
-      continue; // attached --opt=value (recognized or an extraArg) — self-contained
+    if (eq > 0) {
+      // Attached `--opt=value` / `-c=value` (recognized modeled or an extraArg) — self-contained.
+      if (isRecognizedServerFlag(t)) {
+        seenModeled = true;
+      }
+      continue;
     }
     if (t in VALUE_OPTIONS) {
       if (i + 1 >= tokens.length) {
         return false; // a value-option with no value cannot be a clean server flag
       }
+      seenModeled = true;
       i++; // consume the value
       continue;
     }
-    // A recognized boolean/tri-state, or any other bare `--flag` that round-trips as an
-    // extraArg. An unrecognized flag can also carry a space-separated value (`--futureFlag x`),
-    // which appears as a trailing bare token. Consume that token as the flag's value so a
-    // suffix ending in a valued extraArg is not mistaken for an orphan and wrongly rejected
-    // (P24). Only the LAST token is consumed this way: a bare token with more tokens after it
-    // is a launcher positional (e.g. uvx's package before the wcli0 flags), which must still
-    // disqualify the run so it stays in the launcher portion (P15).
-    if (i === tokens.length - 2 && !tokens[i + 1].startsWith('-')) {
-      i++; // consume the trailing bare value of this extraArg
+    if (BOOLEAN_FLAGS.has(t)) {
+      seenModeled = true; // a recognized boolean/tri-state modeled flag
+      continue;
+    }
+    // Any other bare `--flag` round-trips as an extraArg. Once the modeled portion has
+    // begun, it may carry a space-separated value; consume that value so a run of
+    // `--unknown value` pairs in the suffix stays pure (P42, generalizing the P24 trailing
+    // rule to any number of pairs). Before any modeled flag the following bare token is a
+    // launcher positional and must NOT be consumed — it disqualifies the run via the orphan
+    // check above, keeping wrapper options/positionals in the launcher portion (P15/P17).
+    if (
+      seenModeled &&
+      i + 1 < tokens.length &&
+      !tokens[i + 1].startsWith('-') &&
+      tokens[i + 1] !== '--'
+    ) {
+      i++; // consume this extraArg's value
     }
   }
   return true;
@@ -218,13 +293,27 @@ function isWcli0Command(command: string): boolean {
  * forward builder emits. Anything unrecognized is preserved verbatim in `extraArgs`
  * so a save round-trips it rather than silently dropping it.
  */
-export function parseServerArgs(args: string[]): {
+export function parseServerArgs(
+  args: string[],
+  opts: ParseServerArgsOptions = {},
+): {
   settings: Partial<Wcli0Settings>;
   extraArgs: string[];
 } {
   const out: Partial<Wcli0Settings> = {};
   const extraArgs: string[] = [];
   const arrays: Partial<Record<keyof Wcli0Settings, string[]>> = {};
+
+  // Look up a value-option, honoring the stdio exclusion: a stdio entry's authoritative
+  // `type` sets transportMode, so a transport flag in its args is NOT modeled and falls
+  // through to extraArgs verbatim (P30).
+  const optionFor = (flag: string): OptionSpec | undefined => {
+    const spec = VALUE_OPTIONS[flag];
+    if (spec && opts.stdio && TRANSPORT_FLAGS.has(flag)) {
+      return undefined;
+    }
+    return spec;
+  };
 
   const pushArray = (key: keyof Wcli0Settings, value: string) => {
     const list = (arrays[key] ??= []);
@@ -278,21 +367,34 @@ export function parseServerArgs(args: string[]): {
       out.enableLogResources = (token.startsWith('--no-') ? 'disabled' : 'enabled') as TriState;
       continue;
     }
-    // Attached `--opt=value` form.
+    // Attached `--opt=value` / `-c=value` form (any single-or-double dash flag with `=`).
     const eq = token.indexOf('=');
-    if (token.startsWith('--') && eq > 0) {
+    if (eq > 0 && token.startsWith('-')) {
       const flag = token.slice(0, eq);
-      const spec = VALUE_OPTIONS[flag];
+      const spec = optionFor(flag);
       if (spec) {
-        applyValue(spec, token.slice(eq + 1));
+        const v = token.slice(eq + 1);
+        if (spec.kind === 'number' && !Number.isFinite(Number(v))) {
+          // An unparseable numeric value cannot be modeled without poisoning the typed
+          // field (which would then block every save); preserve it verbatim (P34).
+          extraArgs.push(token);
+          continue;
+        }
+        applyValue(spec, v);
         continue;
       }
       extraArgs.push(token);
       continue;
     }
     // Space-separated `--opt value` form.
-    const spec = VALUE_OPTIONS[token];
+    const spec = optionFor(token);
     if (spec && i + 1 < args.length) {
+      if (spec.kind === 'number' && !Number.isFinite(Number(args[i + 1]))) {
+        // Unparseable numeric value: don't consume it. The flag is preserved here, and the
+        // following value token falls through to extraArgs on the next iteration (P34).
+        extraArgs.push(token);
+        continue;
+      }
       applyValue(spec, args[i + 1]);
       i++;
       continue;
@@ -341,7 +443,10 @@ function asStringMap(value: unknown): Record<string, string> {
 export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   const s = defaultSettings();
   const notes: string[] = [];
-  const type = asString(entry.type) || 'stdio';
+  // Match `type` case-insensitively so an entry written as `HTTP`/`Sse` is modeled as
+  // http/sse rather than silently coerced to stdio (P31).
+  const rawType = asString(entry.type);
+  const type = rawType ? rawType.toLowerCase() : 'stdio';
 
   if (type === 'http' || type === 'sse') {
     s.transportMode = type as TransportMode;
@@ -404,7 +509,12 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   // stdio: command + args carry the launch method and server flags.
   s.transportMode = 'stdio';
   const command = asString(entry.command);
-  const args = Array.isArray(entry.args) ? entry.args.map((a) => asString(a)) : [];
+  // Coerce each arg like node's spawn would (String()) rather than dropping non-strings
+  // to '', so a numeric arg such as 9229 round-trips as "9229" instead of being corrupted
+  // to an empty string (P33).
+  const args = Array.isArray(entry.args)
+    ? entry.args.map((a) => (typeof a === 'string' ? a : String(a)))
+    : [];
   let serverArgs: string[];
   // The npx/node fast paths only apply when the launcher has no options before the
   // package/script — `npx -y <pkg>` or `node <script>`. An entry like
@@ -454,12 +564,25 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     serverArgs = args.slice(start);
   }
 
-  const { settings: parsed, extraArgs } = parseServerArgs(serverArgs);
+  // Parse the server flags as stdio: a transport flag (`--transport`, `--http-*`, `--sse-*`)
+  // in a stdio entry's args must NOT override the authoritative `type` — it falls through
+  // to extraArgs verbatim instead of flipping transportMode and deleting the launcher on
+  // save (P30).
+  const { settings: parsed, extraArgs } = parseServerArgs(serverArgs, { stdio: true });
   Object.assign(s, parsed);
   s.extraArgs = extraArgs;
   s.cwd = asString(entry.cwd);
   s.env = asStringMap(entry.env);
 
+  if (rawType && type !== 'stdio' && type !== 'http' && type !== 'sse') {
+    // An entry whose `type` the form cannot model (e.g. "websocket", or a future
+    // transport). It is parsed as stdio for the editable fields, but the original type is
+    // not one the form offers; surface it so the user knows a save will normalize it (P31).
+    notes.push(
+      `The entry type "${rawType}" is not stdio/http/sse and cannot be fully modeled here. ` +
+        'Edit .vscode/mcp.json directly to change the transport type.',
+    );
+  }
   if (s.configFile.trim()) {
     notes.push(
       'This entry references a config file via --config. Per-shell settings and ' +

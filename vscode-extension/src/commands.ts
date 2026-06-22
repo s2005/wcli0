@@ -451,6 +451,15 @@ export async function writeMcpJsonFromSettings(
     );
     return false;
   }
+  // For a file source, re-read the CURRENT on-disk entry once, up front, and use it as the
+  // basis for every on-disk-dependent decision below: URL preservation (P41), the env
+  // round-trip (P23), and the uneditable-argv carry-forward (P40). Reading it before
+  // validation (rather than after, as before) lets the http/sse URL-preservation check use
+  // the current entry instead of the stale load snapshot, so a concurrent edit to an
+  // unmodeled part of the URL (scheme/path/default-port) survives when the modeled host/port
+  // still match the form (P41). Falls back to the loaded baseEntry when nothing is on disk.
+  const onDiskEntry = fileSource ? await readWcli0Entry(folder) : undefined;
+  const urlBase = (onDiskEntry ?? baseEntry) as Record<string, unknown>;
   // Validate only what the generated entry actually uses. A stdio entry needs a
   // working launch command; an http/sse entry only contains a URL, so local
   // launch settings (method, allowed dirs) are irrelevant and only the port
@@ -547,11 +556,12 @@ export async function writeMcpJsonFromSettings(
       }
     }
   } else {
-    // A loaded file source decides URL preservation against its raw entry so the rules
-    // match what parseMcpEntry modeled (default-port/socket URLs included, P8/P10); the
-    // settings-driven export uses the host/port round-trip check (P5).
+    // A loaded file source decides URL preservation against the CURRENT on-disk entry so the
+    // rules match what parseMcpEntry modeled (default-port/socket URLs included, P8/P10) AND
+    // a concurrent edit to an unmodeled URL part survives (P41); the settings-driven export
+    // uses the host/port round-trip check (P5).
     const preserved = fileSource
-      ? preservedFileUrl(settings, baseEntry as Record<string, unknown>)
+      ? preservedFileUrl(settings, urlBase)
       : preservedTransportUrl(settings);
     if (!preserved && !isValidPort(settings.transportPort)) {
       // Only validate the port when the URL will be reconstructed from host/port. A
@@ -564,18 +574,32 @@ export async function writeMcpJsonFromSettings(
     }
   }
 
-  // For a file source, re-read the CURRENT on-disk entry once (reused for env below) so an
-  // external edit made after the panel opened survives the save (P20/P23). The unmodeled
-  // escape-hatch flags (`extraArgs`) are not form-editable, so re-derive them from the
-  // on-disk entry and splice them back into the build settings: otherwise the regenerated,
-  // form-owned `args` array — built from the stale loaded snapshot — would drop a flag
-  // another process added to servers.wcli0.args, since the merge replaces `args` wholesale
-  // (P-staleargs). Modeled fields still follow the form, as for every loaded field.
-  const onDiskEntry = fileSource ? await readWcli0Entry(folder) : undefined;
+  // The regenerated, form-owned `args` array is built from the loaded snapshot, and the merge
+  // replaces `args` wholesale — so EVERY argv-derived field the form does not edit must be
+  // re-derived from the CURRENT on-disk entry (read once up front) and spliced back, or a flag
+  // another process added to servers.wcli0.args is dropped (P-staleargs/P40). Besides the
+  // escape-hatch `extraArgs`, this covers `customArgs`, the blocked lists, `--maxReturnLines`,
+  // and the transport allowed-origins — none of which have a form control. Modeled fields
+  // still follow the form, as for every loaded field.
   let buildSettings = settings;
   if (fileSource && settings.transportMode === 'stdio') {
-    const onDiskExtraArgs = parseMcpEntry(onDiskEntry ?? baseEntry!).settings.extraArgs;
-    buildSettings = { ...settings, extraArgs: onDiskExtraArgs };
+    const onDisk = parseMcpEntry(onDiskEntry ?? baseEntry!).settings;
+    // Only carry forward when the on-disk entry is itself stdio, so a mode switch does not
+    // import an http entry's (empty) argv fields.
+    if (onDisk.transportMode === 'stdio') {
+      buildSettings = {
+        ...settings,
+        customArgs: onDisk.customArgs,
+        blockedCommands: onDisk.blockedCommands,
+        blockedArguments: onDisk.blockedArguments,
+        blockedOperators: onDisk.blockedOperators,
+        maxReturnLines: onDisk.maxReturnLines,
+        transportAllowedOrigins: onDisk.transportAllowedOrigins,
+        extraArgs: onDisk.extraArgs,
+      };
+    } else {
+      buildSettings = { ...settings, extraArgs: onDisk.extraArgs };
+    }
   }
   // Preserve portable ${workspaceFolder} tokens rather than resolving them: a
   // committed mcp.json is shared across machines and VS Code resolves these
@@ -644,12 +668,13 @@ export async function writeMcpJsonFromSettings(
     generatedForMerge = generated;
     entry = fileSource ? mergeEntryOntoBase(baseEntry!, generated, 'stdio') : generated;
   } else {
-    // Prefer the loaded entry's verbatim URL when host/port are unchanged so a
-    // custom scheme/path or default-port URL is not silently downgraded (P5/P8/P10);
-    // otherwise normalize wildcard/IPv6 bind hosts into a connectable client URL.
+    // Prefer the CURRENT on-disk entry's verbatim URL when host/port are unchanged so a
+    // custom scheme/path or default-port URL is not silently downgraded (P5/P8/P10) and a
+    // concurrent edit to an unmodeled URL part survives (P41); otherwise normalize
+    // wildcard/IPv6 bind hosts into a connectable client URL.
     const url =
       (fileSource
-        ? preservedFileUrl(settings, baseEntry as Record<string, unknown>)
+        ? preservedFileUrl(settings, urlBase)
         : preservedTransportUrl(settings)) ??
       `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
         settings.transportMode === 'http' ? '/mcp' : '/sse'

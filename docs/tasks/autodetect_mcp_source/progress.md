@@ -147,3 +147,59 @@
 - [x] P29: Refuse file-source shell/profile edits that cannot be saved (fixed —
   `writeMcpJsonFromSettings` refuses a file-source save carrying `wcli0.shells` /
   `wcli0.profiles`, which the entry cannot persist, instead of dropping them on reparse)
+
+### Review Feedback (PR #89, round 6)
+
+P30-P38 were found by re-auditing the round trip; P39-P42 are the matching
+unresolved Codex review threads (P39 is the same root issue as P36). Each has an
+`analysis_N_*.md` + `comment_N_*.md` pair in this folder.
+
+Note: a concurrent session landed its own round-6 commits on the branch first
+(the hoisted refusal with `hasRawPerShellConfig`/`hasRawProfilesConfig` for
+P35/P36/P39, the http/sse non-transport tab lock, the `parseHttpUrl`
+port-`undefined` distinction, and the index-0 wrapper-flag guard). This batch was
+rebased on top of that work, so the entries below reflect the MERGED state: some
+were satisfied by the prior commits and the rest are added here.
+
+- [x] P30: Transport flags in a stdio entry's args flip the type and delete
+  command/args on save (fixed — `parseServerArgs` takes a `stdio` option that
+  routes `--transport`/`--http-*`/`--sse-*` to `extraArgs` so the authoritative
+  `type` wins and the flags round-trip verbatim)
+- [x] P31: An unrecognized transport `type` is silently rewritten to stdio
+  (fixed — `type` is matched case-insensitively; an unrecognized non-empty type
+  is noted rather than silently coerced)
+- [x] P32: The short-form `-c`/`--c` config alias is not recognized on load
+  (fixed — the alias forms are added to the reverse parser's option table,
+  matching the forward `stripConfigArgs`)
+- [x] P33: Non-string `args` elements are coerced to empty string (fixed — args
+  are stringified via `String()` like node's spawn, so a numeric arg survives)
+- [x] P34: An invalid numeric flag value blocks every save (fixed — an
+  unparseable numeric value falls through to `extraArgs` instead of poisoning the
+  typed field)
+- [x] P35: The P29 refusal is nested in the stdio branch (fixed by the prior
+  round-6 commit — the file-source refusal is hoisted above the stdio/http split
+  so http/sse sources are covered)
+- [x] P36: The ignore-inherited masks bypass P29 on a file source (fixed by the
+  prior round-6 commit — the hoisted gate uses `hasRawPerShellConfig` /
+  `hasRawProfilesConfig`, which ignore the masks, so a mask cannot suppress the
+  refusal)
+- [x] P37: TOCTOU — env and merge base from two file reads (addressed — the
+  on-disk entry is read once up front and reused for the env round-trip, the
+  uneditable-argv carry-forward, and URL preservation, removing the separate
+  pre-modal env read)
+- [x] P38: `sourceReset` unconditionally arms the P28 flag (fixed — the flag is
+  armed only when the form is still dirty, so a clean re-baseline is not falsely
+  flagged)
+- [x] P39: Don't report inherited-mask edits as saved to mcp.json (fixed by the
+  same `hasRaw*` refusal as P36 — a mask edit on a file source is blocked rather
+  than misreported as saved)
+- [x] P40: Preserve current uneditable argv settings on file saves (fixed —
+  extends the prior commit's `extraArgs`-only carry-forward to ALL uneditable
+  argv fields: customArgs, blocked lists, `--maxReturnLines`, allowed-origins)
+- [x] P41: Preserve current custom URLs on file saves (fixed — URL preservation
+  uses the current on-disk entry read up front, so a concurrent URL edit survives
+  when its modeled host/port still match)
+- [x] P42: Parse modeled flags before multiple valued extras (fixed —
+  `isPureServerFlagRun` lets every unknown `--flag` consume one following value
+  once the modeled portion has begun, so a suffix with several `--unknown value`
+  pairs no longer hides the modeled flags)

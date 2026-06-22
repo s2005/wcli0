@@ -2077,7 +2077,13 @@ function renderHtml(webview: vscode.Webview): string {
       setActiveSource(msg.source, msg.detected);
       // The form keeps the file's values and a file-relative dirty baseline (P25), so a
       // subsequent "Save settings" must be confirmed before writing them into settings (P28).
-      resetFromFileSource = true;
+      // Only arm the guard when the form is actually dirty: the wsSub flow sends an external
+      // init (post(true)) BEFORE this sourceReset, and for a CLEAN form that init re-baselines
+      // to real settings values (clearing the flag), so arming unconditionally here would
+      // flag a settings-derived save and trip a false P28 confirmation (P38).
+      if (isDirty()) {
+        resetFromFileSource = true;
+      }
       // Off the file source there are never parse notes — clear any left from the file (P11).
       const notesEl = $('sourceNotes');
       if (notesEl) {

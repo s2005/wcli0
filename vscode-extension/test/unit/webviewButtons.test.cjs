@@ -366,3 +366,33 @@ test('P25: a sourceReset switches the UI off the file source even when dirty', (
   assert.equal(h.els.get('revertFile').style.display, 'none', 'revert hidden off the file source');
   assert.equal(h.els.get('dirtyMsg').style.display, 'none', 'dirty indicator hidden off the file source');
 });
+
+test('P38: a sourceReset after a clean re-baseline does not flag the next save', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT); // file source loaded (clean)
+  // The real wsSub flow sends an external init (post(true)) BEFORE sourceReset. For a clean
+  // form that init re-baselines to settings values; a subsequent sourceReset must NOT arm the
+  // P28 flag, or a later settings save trips a false "came from a file source" confirmation.
+  h.dispatch(SETTINGS_INIT);
+  h.dispatch({ type: 'sourceReset', source: 'settings', detected: [] });
+  h.captured.length = 0;
+  h.els.get('commandTimeout').value = '999'; // a settings edit
+  h.fireInput();
+  h.click('save');
+  const msg = h.last('save');
+  assert.ok(msg, 'a settings save is posted');
+  assert.ok(!msg.fromResetFileSource, 'not flagged: the form was re-baselined before the reset');
+});
+
+test('P38: a sourceReset on a DIRTY form still flags the next save (P28 preserved)', () => {
+  const h = makeHarness();
+  h.dispatch(FILE_INIT);
+  h.els.get('commandTimeout').value = '999'; // a dirty file edit, no intervening re-baseline
+  h.fireInput();
+  h.dispatch({ type: 'sourceReset', source: 'settings', detected: [] });
+  h.captured.length = 0;
+  h.click('save');
+  const msg = h.last('save');
+  assert.ok(msg, 'a settings save is posted');
+  assert.ok(msg.fromResetFileSource, 'flagged: the dirty form still holds file-derived values');
+});
