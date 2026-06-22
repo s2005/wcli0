@@ -175,4 +175,29 @@ describe('wcli0: Write .vscode/mcp.json', function () {
     assert.equal(entry.url, 'http://127.0.0.1:8080/mcp');
     assert.equal(entry.args, undefined);
   });
+
+  // The file-source "Save to file" path and this command share
+  // writeMcpJsonFromSettings, whose merge must preserve any other server entries in
+  // an existing .vscode/mcp.json. Verify that end-to-end against a real file.
+  it('preserves other servers when merging the wcli0 entry into an existing file', async function () {
+    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(folder().uri, '.vscode'));
+    const existing = {
+      servers: {
+        other: { type: 'stdio', command: 'echo', args: ['hi'] },
+        wcli0: { type: 'stdio', command: 'stale' },
+      },
+    };
+    await vscode.workspace.fs.writeFile(mcpUri(), Buffer.from(JSON.stringify(existing), 'utf8'));
+
+    await setAll({ shell: 'cmd' });
+    await vscode.commands.executeCommand('wcli0.writeWorkspaceMcpJson');
+
+    const raw = await vscode.workspace.fs.readFile(mcpUri());
+    const parsed = JSON.parse(Buffer.from(raw).toString('utf8'));
+    assert.ok(parsed.servers.other, 'unrelated server preserved');
+    assert.equal(parsed.servers.other.command, 'echo');
+    assert.deepEqual(parsed.servers.other.args, ['hi']);
+    assert.equal(parsed.servers.wcli0.command, 'npx', 'wcli0 entry rewritten from settings');
+    assert.ok(parsed.servers.wcli0.args.includes('--shell'), JSON.stringify(parsed.servers.wcli0.args));
+  });
 });

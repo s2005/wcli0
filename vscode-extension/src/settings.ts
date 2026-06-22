@@ -137,6 +137,15 @@ export interface Wcli0Settings {
   transportAllowedOrigins: string[];
 
   extraArgs: string[];
+
+  /**
+   * The verbatim `url` of a loaded http/sse `.vscode/mcp.json` entry, preserved so
+   * a save can write it back unchanged instead of downgrading a custom
+   * scheme/path/default-port URL to the canonical `http://host:port/{mcp,sse}`
+   * shape (P5). Set only by the file-source reverse parser; never a `wcli0.*`
+   * setting, so it is absent for settings-sourced reads.
+   */
+  transportUrl?: string;
 }
 
 /** The workspace folder used as the base for `${workspaceFolder}` resolution. */
@@ -242,6 +251,16 @@ function buildSettings(g: Getter): Wcli0Settings {
 
     extraArgs: g<string[]>('extraArgs', []),
   };
+}
+
+/**
+ * A fully-defaulted settings object (every key at its schema default). Used as the
+ * baseline a parsed `.vscode/mcp.json` entry is overlaid onto, so loading a file
+ * source yields a complete {@link Wcli0Settings} the form can render without reading
+ * any VS Code setting.
+ */
+export function defaultSettings(): Wcli0Settings {
+  return buildSettings(<T>(_key: string, def: T): T => def);
 }
 
 /** Whether a single per-shell entry carries any user-set, non-empty field. */

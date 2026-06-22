@@ -1,14 +1,23 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import {
   CONFIG_SECTION,
   ConfigScope,
+  defaultSettings,
   explicitlySetArrayKeys,
   explicitlySetKeys,
   explicitlySetSelectKeys,
+  INHERITABLE_SELECT_KEYS,
+  OPTIONAL_ARRAY_KEYS,
   OPTIONAL_STRING_KEYS,
   primaryWorkspaceFolder,
   readSettingsForScope,
+  Wcli0Settings,
 } from './settings';
+import { detectWorkspaceMcpJson, parseMcpEntry, readWcli0Entry } from './configSource';
+import { writeMcpJsonFromSettings } from './commands';
 
 /** Keys where an explicit empty string is a meaningful override, not "clear". */
 const OPTIONAL_STRING_KEY_SET = new Set<string>(OPTIONAL_STRING_KEYS);
@@ -46,6 +55,88 @@ const FIELD_KEYS = [
 interface SavePayload {
   target: 'Global' | 'Workspace';
   values: Record<string, unknown>;
+}
+
+/** Which configuration source the form is editing. */
+type ConfigSourceKind = 'settings' | 'mcpJson';
+
+/** A source descriptor sent to the webview for the switcher menu. */
+interface DetectedSource {
+  /** 'settings' / 'mcpJson' are editable; 'homeConfig' is a read-only preview. */
+  kind: ConfigSourceKind | 'homeConfig';
+  label: string;
+  fsPath?: string;
+  /** True for an entry that is listed only for awareness (never a save target). */
+  readOnly?: boolean;
+  /** Whether a detected mcp.json actually holds a wcli0 entry to load. */
+  hasWcli0?: boolean;
+  /** Whether the backing file exists. */
+  exists?: boolean;
+}
+
+/** Dotted form field key -> normalized {@link Wcli0Settings} property. */
+const FIELD_TO_PROP: Record<string, keyof Wcli0Settings> = {
+  'launch.method': 'launchMethod',
+  'launch.packageSpec': 'packageSpec',
+  'launch.nodeScriptPath': 'nodeScriptPath',
+  'launch.customCommand': 'customCommand',
+  'launch.cwd': 'cwd',
+  configFile: 'configFile',
+  shell: 'shell',
+  shells: 'shells',
+  profiles: 'profiles',
+  ignoreInheritedShells: 'ignoreInheritedShells',
+  ignoreInheritedProfiles: 'ignoreInheritedProfiles',
+  allowedDirectories: 'allowedDirectories',
+  initialDir: 'initialDir',
+  commandTimeout: 'commandTimeout',
+  maxCommandLength: 'maxCommandLength',
+  wslMountPoint: 'wslMountPoint',
+  maxOutputLines: 'maxOutputLines',
+  enableTruncation: 'enableTruncation',
+  enableLogResources: 'enableLogResources',
+  logDirectory: 'logDirectory',
+  allowAllDirs: 'allowAllDirs',
+  safetyMode: 'safetyMode',
+  debug: 'debug',
+  'transport.mode': 'transportMode',
+  'transport.host': 'transportHost',
+  'transport.port': 'transportPort',
+};
+
+/** Enum selects whose form value '' means "inherit" (mapped to the default here). */
+const ENUM_INHERIT_FIELDS = new Set([
+  'launch.method',
+  'shell',
+  'safetyMode',
+  'enableTruncation',
+  'enableLogResources',
+  'transport.mode',
+]);
+
+/**
+ * Overlay the form's changed field values onto a baseline settings object, used to
+ * build the settings a file-source "Save to file" writes. Starting from the loaded
+ * file's settings preserves fields the form does not model (extraArgs, blocked lists,
+ * env, custom args) instead of dropping them. A `null` value (the form's Inherit for
+ * a tri-state) or an empty enum select maps to the schema default, since a file has
+ * no scope to inherit from.
+ */
+function overlaySettings(base: Wcli0Settings, values: Record<string, unknown>): Wcli0Settings {
+  const out = { ...base } as unknown as Record<string, unknown>;
+  const defaults = defaultSettings() as unknown as Record<string, unknown>;
+  for (const [field, prop] of Object.entries(FIELD_TO_PROP)) {
+    if (!(field in values)) {
+      continue;
+    }
+    const v = values[field];
+    if (v === null || (v === '' && ENUM_INHERIT_FIELDS.has(field))) {
+      out[prop] = defaults[prop];
+      continue;
+    }
+    out[prop] = v;
+  }
+  return out as unknown as Wcli0Settings;
 }
 
 let panel: vscode.WebviewPanel | undefined;
@@ -86,38 +177,258 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
   // scope (not inherited), so saving never re-writes the other scope's values.
   let currentScope: ConfigScope = primaryWorkspaceFolder() ? 'Workspace' : 'Global';
 
+  // The configuration source the form is editing. 'settings' (the default) edits the
+  // wcli0.* VS Code settings; 'mcpJson' edits the workspace .vscode/mcp.json entry.
+  let currentSource: ConfigSourceKind = 'settings';
+  // The settings parsed from the loaded mcp.json, used as the baseline a "Save to
+  // file" overlays the form's edits onto so unmodeled fields (extraArgs, blocked
+  // lists, env) are preserved rather than dropped.
+  let loadedFileSettings: Wcli0Settings | undefined;
+  // The raw `servers.wcli0` entry as loaded from .vscode/mcp.json. A "Save to file"
+  // merges the regenerated fields onto this so VS Code-supported fields the form does not
+  // model (HTTP headers/oauth, stdio envFile/dev, non-string env, custom/socket URLs) are
+  // preserved rather than dropped (P7/P9/P10/P12).
+  let loadedFileEntry: Record<string, unknown> | undefined;
+  // Notes from reverse-parsing the loaded entry (parts the form cannot fully model).
+  // Carried in every file-source init so a clean reload/save clears stale notes (P11).
+  let loadedFileNotes: string[] = [];
+  // The fsPath of the workspace folder whose .vscode/mcp.json is loaded as the file
+  // source. Tracked so that if the primary workspace folder changes (multi-root
+  // removal/reorder), the stale file source is reset rather than saved back to the
+  // new folder, which would overwrite it with the previous folder's config (P2).
+  let loadedFileFolder: string | undefined;
+  // Cached detected sources for the switcher. Refreshed on ready / workspace-folder
+  // change / after a file save, so post() (which must stay synchronous — a config
+  // change re-posts synchronously) can include it without awaiting detection.
+  let detectedSources: DetectedSource[] = [];
+
+  const refreshDetection = async (): Promise<void> => {
+    const sources: DetectedSource[] = [];
+    const folder = primaryWorkspaceFolder();
+    if (folder) {
+      const d = await detectWorkspaceMcpJson(folder);
+      sources.push({
+        kind: 'mcpJson',
+        label: '.vscode/mcp.json',
+        fsPath: d.fsPath,
+        exists: d.exists,
+        hasWcli0: d.hasWcli0,
+      });
+    }
+    // The server's implicit ~/.win-cli-mcp/config.json is listed READ-ONLY only: it
+    // is never an editable/save target, so a save can't silently overwrite it.
+    const home = path.join(os.homedir(), '.win-cli-mcp', 'config.json');
+    let homeExists = false;
+    try {
+      homeExists = fs.existsSync(home);
+    } catch {
+      homeExists = false;
+    }
+    if (homeExists) {
+      sources.push({ kind: 'homeConfig', label: '~/.win-cli-mcp/config.json', fsPath: home, readOnly: true });
+    }
+    detectedSources = sources;
+  };
+
   // `external` marks a reload triggered by a background configuration change (not
   // an explicit ready/scope-change). The webview ignores such a reload while the
   // form has unsaved edits so it doesn't silently overwrite the user's work.
   const post = (external = false) => {
     const scope = primaryWorkspaceFolder()?.uri;
+    // When editing a file source the form shows the file's concrete values, so every
+    // optional/inheritable key is reported "set" (the form would otherwise render an
+    // unset value as "Inherit" — meaningless for a file with no scope to inherit).
+    const fileSource = currentSource === 'mcpJson';
+    const fileSettings = loadedFileSettings ?? defaultSettings();
     webview.postMessage({
       type: 'init',
       external,
+      source: currentSource,
+      detected: detectedSources,
+      // The file-source parse notes (empty off the file source), sent on EVERY init so a
+      // clean reload or save clears notes that no longer apply (P11).
+      notes: fileSource ? loadedFileNotes : [],
       hasWorkspace: !!primaryWorkspaceFolder(),
       // The open folder names, so the form can resolve ${workspaceFolder:name} tokens
       // exactly as the host does when deciding whether a profile isolates (P110).
       workspaceFolderNames: (vscode.workspace.workspaceFolders ?? []).map((f) => f.name),
       scope: currentScope,
-      settings: readSettingsForScope(currentScope, scope),
+      settings: fileSource ? fileSettings : readSettingsForScope(currentScope, scope),
       // Which optional-string keys are explicitly set at this scope, so the form
       // can distinguish an empty override from "Inherit" (both read as empty).
-      setKeys: explicitlySetKeys(currentScope, scope),
+      setKeys: fileSource ? [...OPTIONAL_STRING_KEYS] : explicitlySetKeys(currentScope, scope),
       // Which inheritable enum/boolean keys are explicitly set at this scope, so the
       // form can show "Inherit" for an unset field instead of the schema default it
       // reads back (which would misreport e.g. an unset safetyMode as "safe").
-      setSelectKeys: explicitlySetSelectKeys(currentScope, scope),
+      setSelectKeys: fileSource
+        ? [...INHERITABLE_SELECT_KEYS]
+        : explicitlySetSelectKeys(currentScope, scope),
       // Which optional-array keys (allowedDirectories) are explicitly set at this
       // scope, so the form can show an explicit empty override as set rather than as
       // "Inherit" (both render an empty textarea otherwise — see P69).
-      setArrayKeys: explicitlySetArrayKeys(currentScope, scope),
+      setArrayKeys: fileSource ? [...OPTIONAL_ARRAY_KEYS] : explicitlySetArrayKeys(currentScope, scope),
     });
   };
 
-  webview.html = renderHtml(webview);
-  const msgSub = webview.onDidReceiveMessage(async (msg: { type: string } & Partial<SavePayload>) => {
-    if (msg.type === 'ready') {
+  // Switch the active source and re-post the form populated from it. For the file
+  // source, read and reverse-parse the workspace .vscode/mcp.json wcli0 entry; an
+  // absent entry or no folder is reported and the switch is refused.
+  const switchSource = async (target: ConfigSourceKind): Promise<boolean> => {
+    if (target === 'mcpJson') {
+      const folder = primaryWorkspaceFolder();
+      if (!folder) {
+        void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
+        return false;
+      }
+      const entry = await readWcli0Entry(folder);
+      if (!entry) {
+        void vscode.window.showErrorMessage(
+          'wcli0: no wcli0 server entry found in .vscode/mcp.json to load.',
+        );
+        return false;
+      }
+      const { settings, notes } = parseMcpEntry(entry);
+      loadedFileSettings = settings;
+      loadedFileEntry = entry;
+      loadedFileNotes = notes;
+      loadedFileFolder = folder.uri.fsPath;
+      currentSource = 'mcpJson';
+      // post() carries the notes in its init message (cleared on a note-free reload, P11).
       post();
+      return true;
+    }
+    currentSource = 'settings';
+    loadedFileSettings = undefined;
+    loadedFileEntry = undefined;
+    loadedFileNotes = [];
+    loadedFileFolder = undefined;
+    post();
+    return true;
+  };
+
+  webview.html = renderHtml(webview);
+  // After a file-source reset (the loaded .vscode/mcp.json's folder is no longer the
+  // primary one) the form still holds that file's values and a file-relative dirty
+  // baseline. Both save and export persist these via applySettings, which would
+  // silently corrupt wcli0.* settings with file-shaped edits — so confirm first (P28).
+  // Returns true when the user agrees to write to settings, false when they decline.
+  const confirmStaleFileSourceWrite = async (): Promise<boolean> => {
+    const pick = await vscode.window.showWarningMessage(
+      'wcli0: these values came from a .vscode/mcp.json source that is no longer active ' +
+        '(the workspace folder changed). Save them to your VS Code settings anyway?',
+      { modal: true },
+      'Save to settings',
+    );
+    return pick === 'Save to settings';
+  };
+  const msgSub = webview.onDidReceiveMessage(async (msg: { type: string } & Partial<SavePayload> & { source?: ConfigSourceKind; fromResetFileSource?: boolean }) => {
+    if (msg.type === 'ready') {
+      await refreshDetection();
+      post();
+    } else if ((msg.type === 'sourceChange' || msg.type === 'sourceChangeRequest') && msg.source) {
+      // Switching the source reloads the form from that source (a non-external init
+      // bypassing the dirty guard), so a dirty form confirms first — mirroring the
+      // scope-switch guard (P70). The webview reverts its UI optimistically and only a
+      // confirmed request proceeds.
+      if (msg.type === 'sourceChangeRequest') {
+        const choice = await vscode.window.showWarningMessage(
+          'Discard unsaved changes and switch the configuration source?',
+          { modal: true },
+          'Discard changes',
+        );
+        if (choice !== 'Discard changes') {
+          return;
+        }
+      }
+      // Only the editable kinds are accepted as a target; the read-only home config
+      // can never become a load/save target here (REQ-6).
+      if (msg.source === 'settings' || msg.source === 'mcpJson') {
+        await switchSource(msg.source);
+      }
+    } else if (msg.type === 'revertFileRequest') {
+      // Reload the wcli0 entry from disk, discarding unsaved form edits. The webview
+      // only sends this when the form is dirty (a clean form has nothing to revert and
+      // gives its own inline feedback), so always confirm before discarding. Uses
+      // revert-specific wording rather than the generic source-switch prompt, and
+      // signals 'reverted' on success so the webview can flash a confirmation.
+      const choice = await vscode.window.showWarningMessage(
+        'Discard unsaved changes and reload the wcli0 entry from .vscode/mcp.json?',
+        { modal: true },
+        'Discard changes',
+      );
+      if (choice === 'Discard changes' && (await switchSource('mcpJson'))) {
+        webview.postMessage({ type: 'reverted' });
+      }
+    } else if (msg.type === 'openHomeConfig') {
+      // Open the server's implicit ~/.win-cli-mcp/config.json as a read-only preview.
+      // It is never an editable/save target here (REQ-6); the menu row just opens it so
+      // the user can inspect what can silently override their settings. Recompute the
+      // path host-side rather than trusting the message so this can only open that file,
+      // and mark the editor read-only in-session to prevent accidental edits.
+      const home = path.join(os.homedir(), '.win-cli-mcp', 'config.json');
+      try {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(home));
+        await vscode.window.showTextDocument(doc, { preview: true });
+        await vscode.commands.executeCommand(
+          'workbench.action.files.setActiveEditorReadonlyInSession',
+        );
+      } catch {
+        void vscode.window.showErrorMessage(
+          'wcli0: could not open ~/.win-cli-mcp/config.json.',
+        );
+      }
+    } else if (msg.type === 'saveToFile' && msg.values) {
+      const folder = primaryWorkspaceFolder();
+      if (!folder) {
+        void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
+        return;
+      }
+      // Reject a stale file-source save. If the primary workspace folder changed while the
+      // form had unsaved edits, the host already reset the file source (wsSub) but a dirty
+      // webview ignores that external init and still posts saveToFile. Writing the stale form
+      // values to the NEW folder would overwrite ITS .vscode/mcp.json with the previous
+      // folder's config — the very wrong-folder overwrite the reset avoids (P6). Only proceed
+      // while still in mcpJson mode for THIS folder, with the loaded entry intact.
+      if (
+        currentSource !== 'mcpJson' ||
+        loadedFileFolder !== folder.uri.fsPath ||
+        !loadedFileEntry
+      ) {
+        void vscode.window.showErrorMessage(
+          'wcli0: the workspace folder changed, so the loaded .vscode/mcp.json is no longer ' +
+            'active. Switch the source to .vscode/mcp.json again to reload it before saving.',
+        );
+        return;
+      }
+      // Overlay the form's changed values onto the loaded file baseline so unmodeled
+      // fields survive, then merge the regenerated entry onto the loaded raw entry (so
+      // unmodeled VS Code keys are preserved, P7/P12) and write it back to
+      // .vscode/mcp.json. Never touches wcli0.* settings.
+      const settings = overlaySettings(loadedFileSettings ?? defaultSettings(), msg.values);
+      const ok = await writeMcpJsonFromSettings(settings, folder, { baseEntry: loadedFileEntry });
+      if (!ok) {
+        return;
+      }
+      // Re-baseline from what was actually written to disk rather than the pre-write
+      // form state, so fields the form does not model match the file. In particular,
+      // when the user chose "Omit environment" the written entry has no env; reusing
+      // `settings` (which still carries the old env) as the baseline would let
+      // overlaySettings resurrect that omitted secret on a later unrelated save (P4).
+      const written = await readWcli0Entry(folder);
+      if (written) {
+        const reparsed = parseMcpEntry(written);
+        loadedFileSettings = reparsed.settings;
+        loadedFileEntry = written;
+        loadedFileNotes = reparsed.notes;
+      } else {
+        loadedFileSettings = settings;
+        loadedFileNotes = [];
+      }
+      loadedFileFolder = folder.uri.fsPath;
+      await refreshDetection();
+      post();
+      webview.postMessage({ type: 'saved' });
+      void vscode.window.showInformationMessage('wcli0: saved to .vscode/mcp.json.');
     } else if (msg.type === 'scopeChange' && msg.target) {
       currentScope = msg.target;
       post();
@@ -138,6 +449,14 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
         post();
       }
     } else if (msg.type === 'save' && msg.values && msg.target) {
+      // After a file-source reset (folder change), the form still holds the now-gone
+      // file's values and a file-relative dirty baseline. Writing them into wcli0.*
+      // settings would silently corrupt the scope with file-shaped edits the user made
+      // for a file, not for settings — so confirm before doing it (P28). The webview only
+      // sets this flag while that stale baseline is in effect; a clean re-baseline clears it.
+      if (msg.fromResetFileSource && !(await confirmStaleFileSourceWrite())) {
+        return; // declined — leave settings untouched
+      }
       // A refused save (e.g. Workspace target with no folder open, P89) leaves the
       // form untouched: skip the re-post, saved indicator and success toast.
       if (!(await applySettings(msg as SavePayload))) {
@@ -165,11 +484,31 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       msg.type === 'writeMcpJson' ||
       msg.type === 'showCommand'
     ) {
+      // Export actions read and persist wcli0.* settings. While editing a file source
+      // the form holds the .vscode/mcp.json entry, not settings, so persisting its
+      // values would corrupt wcli0.* settings and the export would be generated from
+      // settings rather than the loaded file. The webview disables the export buttons
+      // in file mode; refuse here too as defense in depth (P1).
+      if (currentSource === 'mcpJson') {
+        void vscode.window.showErrorMessage(
+          'wcli0: export actions are unavailable while editing a .vscode/mcp.json source. ' +
+            'Switch to VS Code Settings to export.',
+        );
+        return;
+      }
       // Export actions operate on persisted settings. Persist the form's current
       // edits first so what the user sees in the form is what gets exported —
       // otherwise unsaved changes (e.g. Limits & Safety) would be silently
       // dropped from the generated config.json / mcp.json / launch command.
       if (msg.values && msg.target) {
+        // After a file-source reset (folder change) the form still holds the now-gone
+        // file's values; the export's applySettings would write them into wcli0.*
+        // settings just like a plain save would, so confirm first — matching the save
+        // path's guard. Without this the re-enabled export buttons bypass the P28
+        // confirmation and silently persist stale file-source edits into settings.
+        if (msg.fromResetFileSource && !(await confirmStaleFileSourceWrite())) {
+          return; // declined — leave settings untouched, skip the export
+        }
         // A refused save (Workspace target with no folder open, P89) must abort the
         // export too: it would otherwise operate on unsaved/stale persisted settings.
         if (!(await applySettings(msg as SavePayload))) {
@@ -212,7 +551,39 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
     if (!primaryWorkspaceFolder() && currentScope === 'Workspace') {
       currentScope = 'Global';
     }
+    // A file source is workspace-relative and tied to the folder it was loaded from.
+    // Reset it whenever the primary folder no longer matches that folder — either no
+    // folder remains, or a multi-root removal/reorder changed the primary. Keeping the
+    // stale source would let the next "Save to file" overwrite the new folder's
+    // .vscode/mcp.json with the previously loaded folder's config (P2).
+    let sourceWasReset = false;
+    if (currentSource === 'mcpJson' && primaryWorkspaceFolder()?.uri.fsPath !== loadedFileFolder) {
+      currentSource = 'settings';
+      loadedFileSettings = undefined;
+      loadedFileEntry = undefined;
+      loadedFileNotes = [];
+      loadedFileFolder = undefined;
+      sourceWasReset = true;
+    }
+    // Post synchronously from the cached detection (a test asserts the re-post happens
+    // synchronously on folder change). Then refresh the detection cache and push a
+    // detection-only update so a folder added/changed while the panel is open updates the
+    // source switcher and the "Load & edit" banner for a workspace that already has
+    // .vscode/mcp.json (P16) — without it the detection only appears on the next unrelated
+    // post. A dedicated `detected` message (not a full init) is used so it cannot race a
+    // concurrent save's scope realignment by re-posting a stale scope (P96).
     post(true);
+    // The post above is an external reload, which a DIRTY form ignores so it does not discard
+    // unsaved edits — but that also means it never applies the source reset, leaving the UI
+    // showing and saving as the now-gone file source until a save is rejected. Push a
+    // dedicated source-reset message that switches the UI off the file source even while
+    // dirty (field values and dirty state are left untouched, P25).
+    if (sourceWasReset) {
+      webview.postMessage({ type: 'sourceReset', source: 'settings', detected: detectedSources });
+    }
+    void refreshDetection().then(() =>
+      webview.postMessage({ type: 'detected', detected: detectedSources }),
+    );
   });
 
   return {
@@ -402,12 +773,33 @@ function renderHtml(webview: vscode.Webview): string {
     background: var(--vscode-button-background); color: var(--vscode-button-foreground);
     border: 1px solid var(--vscode-button-border, transparent); border-radius: 4px;
   }
-  button:hover { background: var(--vscode-button-hoverBackground); }
+  button:not(:disabled):hover { background: var(--vscode-button-hoverBackground); }
+  button:disabled { opacity: .5; cursor: default; }
   button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-  button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button.secondary:not(:disabled):hover { background: var(--vscode-button-secondaryHoverBackground); }
   .scope-radio { display: inline-flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   .scope-radio > span { font-weight: 600; }
-  .scope-radio label { display: inline-flex; align-items: center; gap: 5px; font-weight: 400; margin: 0; }
+  .scope-radio label {
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 400; margin: 0;
+    padding: 3px 9px; border-radius: 4px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  /* Native radios render as dark-on-dark in most VS Code themes, so the selected
+     option is nearly invisible. Tint the control with the theme focus color and
+     visibly highlight the checked label (chip outline + accent text). */
+  .scope-radio input[type=radio] {
+    accent-color: var(--vscode-focusBorder, var(--vscode-button-background));
+    width: 15px; height: 15px; margin: 0; cursor: pointer;
+  }
+  .scope-radio label:hover { background: var(--vscode-list-hoverBackground, transparent); }
+  .scope-radio label:has(input:checked) {
+    border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+    background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-background));
+    color: var(--vscode-list-activeSelectionForeground, var(--vscode-button-foreground));
+    font-weight: 600;
+  }
+  .scope-radio input[type=radio]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+  .scope-radio label:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   details.shell-block {
     margin-top: 10px; padding: 10px 12px; border-radius: 5px;
     border: 1px solid var(--vscode-panel-border, var(--vscode-editorWidget-border, transparent));
@@ -467,6 +859,15 @@ function renderHtml(webview: vscode.Webview): string {
 </head>
 <body>
   <div class="scopebar">
+    <div class="source-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <span class="hint">Editing:</span>
+      <span id="sourceChip" class="statuschip sc-ok" title="The configuration source the form is editing">VS Code Settings</span>
+      <span id="sourcePath" class="hint" style="font-family:var(--vscode-editor-font-family);max-width:360px;overflow-wrap:anywhere;word-break:break-word"></span>
+      <span class="switcher" style="position:relative">
+        <button type="button" id="switchSourceBtn" class="secondary">Switch source &#9662;</button>
+        <div id="sourceMenu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:320px;padding:6px;border-radius:6px;background:var(--vscode-editorWidget-background,#252526);border:1px solid var(--vscode-panel-border,#3c3c3c);box-shadow:0 6px 24px #0008"></div>
+      </span>
+    </div>
     <div class="savebar">
       <div class="scope-radio">
         <span>Save to:</span>
@@ -475,13 +876,26 @@ function renderHtml(webview: vscode.Webview): string {
       </div>
       <div class="saveactions">
         <span id="isolationChip" class="statuschip sc-warn" title="Whether an implicit config.json could override these settings. Open the Config source tab.">Overridable</span>
+        <span id="dirtyMsg" class="saved-msg" style="display:none;color:var(--vscode-charts-yellow,#d7a930)">Unsaved changes</span>
         <span id="savedMsg" class="saved-msg" style="display:none">Saved &#10003;</span>
+        <button id="revertFile" class="secondary" style="display:none">Revert to file</button>
         <button id="save">Save settings</button>
       </div>
     </div>
-    <div class="hint" style="margin-top:6px">
+    <div id="settingsHint" class="hint" style="margin-top:6px">
       Workspace: this project's .vscode/settings.json &middot; User: your global settings.
     </div>
+    <div id="fileHint" class="hint" style="display:none;margin-top:6px">
+      Editing a file directly. Save writes the wcli0 entry back to this file; other servers are preserved.
+    </div>
+    <div id="detectBanner" class="hint" style="display:none;margin-top:8px;padding:10px 12px;border-radius:6px;border:1px solid var(--vscode-panel-border,#3c3c3c);border-left:3px solid var(--vscode-charts-blue,#6fb3e0);background:var(--vscode-editorWidget-background,#252526)">
+      <span>You are editing <strong>VS Code Settings</strong>. A <strong>wcli0</strong> server also exists in <code>.vscode/mcp.json</code> &mdash; its values are <strong>not loaded here</strong>. Load it to edit that file instead.</span>
+      <span style="display:inline-flex;gap:8px;margin-left:8px">
+        <button type="button" id="loadMcpJson">Load &amp; edit .vscode/mcp.json</button>
+        <button type="button" id="dismissBanner" class="secondary">Dismiss</button>
+      </span>
+    </div>
+    <div id="sourceNotes" class="hint" style="display:none;margin-top:8px;color:var(--vscode-charts-yellow,#d7a930)"></div>
     <div id="noWorkspace" class="hint" style="display:none;color:var(--vscode-errorForeground)">
       No workspace folder open — only User scope is available.
     </div>
@@ -1058,6 +1472,22 @@ function renderHtml(webview: vscode.Webview): string {
     return Object.keys(collectChanged()).length > 0;
   }
 
+  // Enable "Revert to file" only when the form has unsaved edits — a clean form already
+  // matches the file, so there is nothing to revert. The button is also hidden entirely
+  // outside the file source (see setActiveSource). Called on every reload/save (via
+  // setActiveSource) and live on each field edit (delegated input/change listeners).
+  function reflectDirty() {
+    const dirty = isDirty();
+    const rb = $('revertFile');
+    if (rb) rb.disabled = !dirty;
+    // Surface the "Unsaved changes" indicator only while editing the file source, where
+    // there is no per-scope Save cue: a clean form (or any settings-source form) hides it,
+    // a dirty file form shows it. Toggled live via the delegated input/change listeners and
+    // on every reload/save through setActiveSource (P22).
+    const dm = $('dirtyMsg');
+    if (dm) dm.style.display = dirty && currentSourceClient === 'mcpJson' ? '' : 'none';
+  }
+
   function updateLaunchRows() {
     const m = $('launch.method').value;
     // '' is Inherit (no method chosen): hide all method-specific rows.
@@ -1272,17 +1702,48 @@ function renderHtml(webview: vscode.Webview): string {
     return true;
   }
 
+  // The active configuration source ('settings' or 'mcpJson'), set from each init.
+  let currentSourceClient = 'settings';
+  let bannerDismissed = false;
+  // True after a sourceReset switched the form off a file source while it was dirty: the
+  // form still holds the (now-gone) file's values and a file-relative dirty baseline, so a
+  // plain "Save settings" would silently write those file edits into wcli0.* settings.
+  // Guarded in the save handler; cleared whenever the form re-baselines to real values.
+  let resetFromFileSource = false;
+
   $('save').addEventListener('click', () => {
     if (!validateNumbers() || !validateProfiles()) return;
+    if (currentSourceClient === 'mcpJson') {
+      // Editing a file: write the entry back to .vscode/mcp.json, not to settings.
+      vscode.postMessage({ type: 'saveToFile', values: collectChanged() });
+      return;
+    }
     const target = document.querySelector('input[name=scope]:checked').value;
-    vscode.postMessage({ type: 'save', target, values: collectChanged() });
+    // After a file-source reset the form's values/baseline are file-derived; flag the
+    // save so the host confirms before writing them into settings rather than doing it
+    // silently (P28). isDirty() guards against a no-op save re-prompting needlessly.
+    vscode.postMessage({
+      type: 'save',
+      target,
+      values: collectChanged(),
+      fromResetFileSource: resetFromFileSource && isDirty(),
+    });
   });
   // Export actions carry the current form state so the host can persist unsaved
   // edits before generating, keeping the output in sync with what is on screen.
   function exportAction(type) {
     if (!validateNumbers() || !validateProfiles()) return;
     const target = document.querySelector('input[name=scope]:checked').value;
-    vscode.postMessage({ type, target, values: collectChanged() });
+    // After a file-source reset the form's values/baseline are file-derived; flag the
+    // export so the host confirms before applySettings writes them into settings,
+    // matching the Save button's guard — otherwise an export would silently persist
+    // stale file-source edits into wcli0.* settings (P28).
+    vscode.postMessage({
+      type,
+      target,
+      values: collectChanged(),
+      fromResetFileSource: resetFromFileSource && isDirty(),
+    });
   }
   $('genConfig').addEventListener('click', () => exportAction('generateConfig'));
   $('writeMcp').addEventListener('click', () => exportAction('writeMcpJson'));
@@ -1307,14 +1768,23 @@ function renderHtml(webview: vscode.Webview): string {
   }
 
   let savedTimer;
-  function showSaved() {
+  // Check-mark glyph built from its code point so the source stays ASCII (no literal
+  // non-ASCII characters in code, matching the HTML template's &#10003; convention).
+  const CHECK = String.fromCharCode(0x2713);
+  // Briefly show a transient status message in the shared indicator span, then restore
+  // its default "Saved" label. Used for save, revert, and "nothing to revert" feedback.
+  function flashStatus(text) {
     const el = $('savedMsg');
     if (!el) return;
-    // Re-baseline so the indicator clears once further edits are made.
-    initial = collect();
+    el.textContent = text;
     el.style.display = '';
     clearTimeout(savedTimer);
-    savedTimer = setTimeout(() => { el.style.display = 'none'; }, 2500);
+    savedTimer = setTimeout(() => { el.style.display = 'none'; el.textContent = 'Saved ' + CHECK; }, 2500);
+  }
+  function showSaved() {
+    // Re-baseline so the indicator clears once further edits are made.
+    initial = collect();
+    flashStatus('Saved ' + CHECK);
   }
 
   // Reflect whether a workspace folder is available: enable/disable the Workspace
@@ -1375,10 +1845,205 @@ function renderHtml(webview: vscode.Webview): string {
     }
   }
 
+  // ---- Configuration source switcher (source bar) ----
+  // Request a switch to the given editable source, guarding unsaved edits with the
+  // host modal (mirrors the scope-switch guard). A clean form switches immediately.
+  function requestSource(target) {
+    if (target === currentSourceClient) { hideSourceMenu(); return; }
+    hideSourceMenu();
+    vscode.postMessage({ type: isDirty() ? 'sourceChangeRequest' : 'sourceChange', source: target });
+  }
+  function hideSourceMenu() { const m = $('sourceMenu'); if (m) m.style.display = 'none'; }
+  // Build the switcher menu from the detected sources. Editable entries post a switch;
+  // the read-only home config is shown disabled and never becomes a target.
+  function renderSourceMenu(detected) {
+    const menu = $('sourceMenu');
+    if (!menu) return;
+    // The menu is built with createElement; the unit-test DOM harness has none, so
+    // no-op there (menu interaction is not unit-tested). Real webview builds it.
+    if (typeof document.createElement !== 'function') return;
+    menu.textContent = '';
+    const add = (label, sub, onClick, opts) => {
+      opts = opts || {};
+      const row = document.createElement('div');
+      // The active (currently loaded) source gets a highlighted row + an "active"
+      // badge so it is unmistakable which source the form values come from. A bare
+      // checkmark was too easy to miss and competed with the detection banner's
+      // highlight on a different file.
+      row.style.cssText = 'padding:8px 10px;border-radius:4px;' +
+        (opts.disabled ? 'opacity:.55;' : 'cursor:pointer;') +
+        (opts.active ? 'background:var(--vscode-list-activeSelectionBackground,#04395e);border-left:3px solid var(--vscode-focusBorder,#0078d4);' : '');
+      const main = document.createElement('div');
+      main.style.cssText = 'font-weight:600;display:flex;align-items:center;gap:8px';
+      const labelEl = document.createElement('span');
+      labelEl.textContent = label;
+      main.appendChild(labelEl);
+      if (opts.active) {
+        const badge = document.createElement('span');
+        badge.textContent = 'active';
+        badge.style.cssText = 'font-size:.72em;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:8px;background:var(--vscode-focusBorder,#0078d4);color:var(--vscode-button-foreground,#fff)';
+        main.appendChild(badge);
+      }
+      row.appendChild(main);
+      if (sub) {
+        const s = document.createElement('div');
+        s.style.cssText = 'opacity:.7;font-size:.83em;font-family:var(--vscode-editor-font-family)';
+        s.textContent = sub;
+        row.appendChild(s);
+      }
+      if (!opts.disabled && onClick && !opts.active) {
+        row.addEventListener('mouseenter', () => { row.style.background = '#ffffff14'; });
+        row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+        row.addEventListener('click', onClick);
+      } else if (!opts.disabled && onClick) {
+        // Active row: clicking the already-loaded source is a no-op, so keep its
+        // highlight static and don't rebind hover (which would wipe the background).
+        row.addEventListener('click', onClick);
+      }
+      menu.appendChild(row);
+    };
+    add('VS Code Settings', 'wcli0.* · User & Workspace', () => requestSource('settings'), { active: currentSourceClient === 'settings' });
+    for (const d of (detected || [])) {
+      if (d.kind === 'mcpJson') {
+        const tag = d.hasWcli0 ? ' (wcli0 entry)' : (d.exists ? ' (no wcli0 entry)' : ' (not present)');
+        add('.vscode/mcp.json' + tag, d.fsPath || '', d.hasWcli0 ? () => requestSource('mcpJson') : null, { disabled: !d.hasWcli0, active: currentSourceClient === 'mcpJson' });
+      } else if (d.kind === 'homeConfig') {
+        // Not an editable source, but clicking opens it read-only so the row is not a
+        // dead item — it lets the user inspect the global config that can override them.
+        add(d.label, 'read-only · click to open (never a save target)', () => {
+          hideSourceMenu();
+          vscode.postMessage({ type: 'openHomeConfig' });
+        }, {});
+      }
+    }
+  }
+  // Reflect the active source: scope radio + hints + Save button label/behavior.
+  function setActiveSource(source, detected) {
+    currentSourceClient = source || 'settings';
+    const isFile = currentSourceClient === 'mcpJson';
+    const chip = $('sourceChip');
+    if (chip) {
+      chip.textContent = isFile ? 'mcp.json' : 'VS Code Settings';
+      chip.className = 'statuschip ' + (isFile ? 'sc-warn' : 'sc-ok');
+    }
+    const fileEntry = (detected || []).find((d) => d.kind === 'mcpJson');
+    const sp = $('sourcePath');
+    if (sp) {
+      const pathLabel = isFile && fileEntry ? (fileEntry.fsPath || '') + ' (servers.wcli0)' : '';
+      sp.textContent = pathLabel;
+      // Full path as a hover tooltip (it wraps but can still be long); empty string
+      // clears it when not editing a file.
+      sp.title = pathLabel;
+    }
+    const sr = document.querySelector('.scope-radio');
+    if (sr) sr.style.display = isFile ? 'none' : '';
+    if ($('settingsHint')) $('settingsHint').style.display = isFile ? 'none' : '';
+    if ($('fileHint')) $('fileHint').style.display = isFile ? '' : 'none';
+    if ($('revertFile')) {
+      $('revertFile').style.display = isFile ? '' : 'none';
+      $('revertFile').title = 'Discard unsaved edits and reload the wcli0 entry from the file on disk.';
+    }
+    if ($('save')) {
+      $('save').textContent = isFile ? 'Save to file' : 'Save settings';
+      $('save').title = isFile
+        ? 'Write the wcli0 entry back to the loaded file. Other servers in the file are preserved.'
+        : 'Save these values to your VS Code settings at the selected scope.';
+    }
+    // Export actions read/write wcli0.* settings, so they do not apply while editing a
+    // file source — disable them to match the host's refusal (P1). Off the file source,
+    // restore them: writeMcp additionally depends on a workspace folder being open.
+    for (const id of ['showCommand', 'genConfig', 'writeMcp']) {
+      const btn = $(id);
+      if (!btn) continue;
+      btn.disabled = isFile || (id === 'writeMcp' && !currentHasWorkspace);
+      btn.title = isFile
+        ? 'Switch to VS Code Settings to export. Export actions operate on settings, not a file source.'
+        : '';
+    }
+    applyDetected(detected);
+    // The just-loaded form is clean (baseline === values), so disable Revert until an
+    // edit is made. Live edits re-evaluate via the delegated input/change listeners.
+    reflectDirty();
+  }
+  // Update the detection-dependent UI (source-switcher rows + the "Load & edit" banner) from
+  // the current detected sources, using the active source already on screen. Kept separate
+  // from setActiveSource so a background detection refresh (e.g. after a workspace-folder
+  // change, P16) can refresh just this without re-posting scope/field values.
+  function applyDetected(detected) {
+    const fileEntry = (detected || []).find((d) => d.kind === 'mcpJson');
+    // The detection banner only makes sense while editing settings and a wcli0 entry
+    // exists in the workspace mcp.json (and the user has not dismissed it).
+    const banner = $('detectBanner');
+    if (banner) {
+      const show =
+        currentSourceClient !== 'mcpJson' && !bannerDismissed && !!(fileEntry && fileEntry.hasWcli0);
+      banner.style.display = show ? '' : 'none';
+    }
+    renderSourceMenu(detected);
+  }
+  // Re-evaluate the Revert button's enabled state on any field edit. input/change
+  // bubble, so a single delegated listener covers every control in the form. Guarded
+  // for the unit-test DOM harness, which has no document-level addEventListener.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('input', reflectDirty);
+    document.addEventListener('change', reflectDirty);
+  }
+  const switchBtn = $('switchSourceBtn');
+  if (switchBtn) switchBtn.addEventListener('click', () => {
+    const m = $('sourceMenu');
+    if (m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  });
+  const loadBtn = $('loadMcpJson');
+  if (loadBtn) loadBtn.addEventListener('click', () => requestSource('mcpJson'));
+  const dismissBtn = $('dismissBanner');
+  if (dismissBtn) dismissBtn.addEventListener('click', () => {
+    bannerDismissed = true;
+    if ($('detectBanner')) $('detectBanner').style.display = 'none';
+  });
+  const revertBtn = $('revertFile');
+  if (revertBtn) revertBtn.addEventListener('click', () => {
+    // The button is disabled on a clean form (reflectDirty), so a click means there are
+    // unsaved edits. Guard anyway, then ask the host to confirm and reload from disk (it
+    // flashes "Reverted" on success).
+    if (!isDirty()) return;
+    vscode.postMessage({ type: 'revertFileRequest' });
+  });
+
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'saved') {
       showSaved();
+      return;
+    }
+    if (msg.type === 'reverted') {
+      // The host already re-posted the file values (re-baselining the form via init);
+      // just flash a confirmation so the click has a visible effect.
+      flashStatus('Reverted from file ' + CHECK);
+      return;
+    }
+    if (msg.type === 'detected') {
+      // A background detection refresh (workspace folder added/changed). Update only the
+      // switcher rows and the "Load & edit" banner; never touches scope/fields, so it cannot
+      // disturb a dirty form or a just-saved scope (P16/P96).
+      applyDetected(msg.detected);
+      return;
+    }
+    if (msg.type === 'sourceReset') {
+      // The host reset the active source because the loaded .vscode/mcp.json's folder is no
+      // longer the primary one. Switch the UI off the file source even while the form is
+      // dirty — the file is gone, so continuing to show and save as it is wrong (P25). Field
+      // values and the dirty state are left untouched so unsaved edits are not discarded;
+      // setActiveSource re-evaluates the dirty indicator for the new (settings) source.
+      setActiveSource(msg.source, msg.detected);
+      // The form keeps the file's values and a file-relative dirty baseline (P25), so a
+      // subsequent "Save settings" must be confirmed before writing them into settings (P28).
+      resetFromFileSource = true;
+      // Off the file source there are never parse notes — clear any left from the file (P11).
+      const notesEl = $('sourceNotes');
+      if (notesEl) {
+        notesEl.textContent = '';
+        notesEl.style.display = 'none';
+      }
       return;
     }
     if (msg.type === 'init') {
@@ -1407,11 +2072,28 @@ function renderHtml(webview: vscode.Webview): string {
       }
       setVal(msg.settings, msg.setKeys, msg.setSelectKeys, msg.setArrayKeys);
       initial = collect();
+      // The form now reflects real persisted values (settings or a freshly loaded file),
+      // so the post-reset file-derived baseline is gone — drop the P28 save guard.
+      resetFromFileSource = false;
       // Record the scope the form now reflects so a cancelled scope switch can
       // revert the radio to it (P70).
       formScope = msg.scope || formScope;
       // Enable/disable the Workspace-only inherited-shell mask for the loaded scope (P97).
       applyScopeAvailability(formScope);
+      // Reflect the active configuration source (source bar, switcher, banner, Save
+      // button) from this init. Clear stale parse notes when not on a file source.
+      setActiveSource(msg.source, msg.detected);
+      // Render the file-source parse notes from this init. Every file-source init carries
+      // the current notes (empty when none apply), so a clean reload or save clears stale
+      // notes rather than leaving an obsolete warning visible (P11); off the file source
+      // there are never notes.
+      const notesEl = $('sourceNotes');
+      if (notesEl) {
+        const notes =
+          currentSourceClient === 'mcpJson' && Array.isArray(msg.notes) ? msg.notes : [];
+        notesEl.textContent = notes.join(' ');
+        notesEl.style.display = notes.length ? '' : 'none';
+      }
     }
   });
   vscode.postMessage({ type: 'ready' });

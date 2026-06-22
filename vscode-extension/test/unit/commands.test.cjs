@@ -5,10 +5,12 @@ const vscode = require('../stubs/vscode.cjs');
 const {
   generateConfigFile,
   writeWorkspaceMcpJson,
+  writeMcpJsonFromSettings,
   showLaunchCommand,
   refreshServerDefinition,
   parseJsonc,
 } = require('../../dist/commands.js');
+const { defaultSettings } = require('../../dist/settings.js');
 
 const WS = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
 
@@ -673,4 +675,343 @@ test('P58: a workspace child whose name starts with ".." keeps a portable config
     vscode.workspace.getConfiguration('wcli0').get('configFile', ''),
     '${workspaceFolder}/..generated/wcli0.config.json',
   );
+});
+
+// ---- writeMcpJsonFromSettings (file-source "Save to file") ----
+
+test('writeMcpJsonFromSettings writes the entry from explicit settings and returns true', async () => {
+  const s = defaultSettings();
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.type, 'stdio');
+  assert.ok(parsed.servers.wcli0.args.includes('--shell'));
+  // It writes the file only — no wcli0.* setting is persisted.
+  assert.equal(vscode.__state.configWorkspace.has('wcli0.shell'), false);
+});
+
+test('writeMcpJsonFromSettings preserves other servers in the file', async () => {
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { other: { type: 'stdio' } } })),
+  );
+  const ok = await writeMcpJsonFromSettings(defaultSettings(), WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.ok(parsed.servers.other, 'existing server preserved');
+  assert.ok(parsed.servers.wcli0, 'wcli0 server written');
+});
+
+test('P5: writeMcpJsonFromSettings preserves a loaded http url verbatim when host/port are unchanged', async () => {
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'gateway.example';
+  s.transportPort = 0; // default port — only valid because the URL is preserved
+  s.transportUrl = 'https://gateway.example/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.url, 'https://gateway.example/custom/mcp');
+});
+
+test('P5: writeMcpJsonFromSettings rebuilds the url when the host/port were edited', async () => {
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 8123; // edited away from the preserved URL's host/port
+  s.transportUrl = 'https://gateway.example/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0]);
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.url, 'http://127.0.0.1:8123/mcp');
+});
+
+test('writeMcpJsonFromSettings returns false and does not write a malformed file', async () => {
+  vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from('not json'));
+  const before = vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8');
+  const ok = await writeMcpJsonFromSettings(defaultSettings(), WS[0]);
+  assert.equal(ok, false);
+  assert.equal(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'), before);
+  assert.ok(vscode.__state.calls.error.length >= 1);
+});
+
+// ---- writeMcpJsonFromSettings file-source merge (baseEntry) ----
+
+const wcli0Entry = () =>
+  JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8')).servers.wcli0;
+
+test('P7: a file save merges onto the loaded http entry, preserving headers/oauth', async () => {
+  const base = {
+    type: 'http',
+    url: 'http://127.0.0.1:9444/mcp',
+    headers: { Authorization: 'Bearer x' },
+    oauth: { clientId: 'abc' },
+  };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 9444;
+  s.transportUrl = 'http://127.0.0.1:9444/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.deepEqual(e.headers, { Authorization: 'Bearer x' }, 'headers preserved');
+  assert.deepEqual(e.oauth, { clientId: 'abc' }, 'oauth preserved');
+  assert.equal(e.url, 'http://127.0.0.1:9444/mcp');
+});
+
+test('P12: a file save preserves unmodeled stdio fields (envFile, dev, sandboxEnabled)', async () => {
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    envFile: '.env',
+    dev: { watch: true },
+    sandboxEnabled: false,
+  };
+  const s = defaultSettings();
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.equal(e.envFile, '.env', 'envFile preserved');
+  assert.deepEqual(e.dev, { watch: true }, 'dev preserved');
+  assert.equal(e.sandboxEnabled, false, 'sandboxEnabled preserved');
+  assert.ok(e.args.includes('--shell'), 'the edited flag is still written');
+});
+
+test('P9: a file save round-trips non-string env values', async () => {
+  vscode.__state.calls.warnReturn = 'Include environment';
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    env: { PORT: 3000, FLAG: null, NAME: 'x' },
+  };
+  const ok = await writeMcpJsonFromSettings(defaultSettings(), WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.deepEqual(wcli0Entry().env, { PORT: 3000, FLAG: null, NAME: 'x' });
+});
+
+test('P9/P4: omitting env on a file save drops it even when the baseline had non-string values', async () => {
+  vscode.__state.calls.warnReturn = 'Omit environment';
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    env: { PORT: 3000 },
+  };
+  const ok = await writeMcpJsonFromSettings(defaultSettings(), WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().env, undefined, 'env omitted from the written entry');
+});
+
+test('P10: a file save preserves a socket url it cannot decompose', async () => {
+  const base = { type: 'http', url: 'unix:///tmp/server.sock#/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportUrl = 'unix:///tmp/server.sock#/mcp';
+  // host/port stay at their defaults, as parseMcpEntry leaves them for a socket URL.
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'unix:///tmp/server.sock#/mcp');
+});
+
+test('P8: a file save round-trips a default-port url without a port error', async () => {
+  const base = { type: 'http', url: 'https://gateway.example/custom/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'gateway.example'; // as parseMcpEntry sets for a default-port URL
+  s.transportUrl = 'https://gateway.example/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'the default port (9444) does not trip the port check');
+  assert.equal(wcli0Entry().url, 'https://gateway.example/custom/mcp');
+});
+
+test('P8: editing the host of a default-port url rebuilds the canonical url', async () => {
+  const base = { type: 'http', url: 'https://gateway.example/custom/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'other.example'; // host edited away from the loaded URL's host
+  s.transportPort = 9444;
+  s.transportUrl = 'https://gateway.example/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://other.example:9444/mcp');
+});
+
+test('P13: a file save allows a VS Code variable --config path that cannot be read locally', async () => {
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--config', '${input:cfg}'] };
+  const s = defaultSettings();
+  s.configFile = '${input:cfg}';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'the unresolved ${input:...} path is not treated as blocking');
+  const e = wcli0Entry();
+  assert.ok(e.args.includes('--config'), 'the --config flag is kept');
+  assert.ok(e.args.includes('${input:cfg}'), 'the variable path is round-tripped verbatim');
+});
+
+test('P29: a file save refuses per-shell/profile edits that cannot be persisted to the file', async () => {
+  // A loaded file source referencing a config file. parseMcpEntry never loads
+  // shells/profiles back from that file, so any in the form are unsaved edits this save
+  // (which only writes the entry, not the referenced file) would silently drop on the
+  // post-write reparse — refuse instead of reporting a false success.
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', '${workspaceFolder}/wcli0.json'],
+  };
+  const s = defaultSettings();
+  s.configFile = '${workspaceFolder}/wcli0.json';
+  s.profiles = { ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } } };
+  const ok = await writeMcpJsonFromSettings(s, WS[0], {
+    baseEntry: base,
+    configFileLoadable: () => true,
+  });
+  assert.equal(ok, false, 'the save is refused');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /live in the referenced config file/.test(m)),
+    'explains the edits cannot be saved from a file-source form',
+  );
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
+});
+
+test('P29: a file save with no shell/profile edits is not blocked by the P29 refusal', async () => {
+  // The refusal must only fire on actual shells/profiles edits, not every file save.
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  const s = defaultSettings();
+  s.shell = 'cmd'; // a normal modeled edit, not per-shell config
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'an ordinary file save still succeeds');
+  assert.ok(wcli0Entry().args.includes('--shell'), 'the edit is written');
+});
+
+test('P27: a file save preserves a cwd-relative --config instead of re-anchoring it', async () => {
+  // A loaded entry whose server resolves config.json under a non-workspace cwd.
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', 'config.json'],
+    cwd: '${workspaceFolder}/server',
+  };
+  const s = defaultSettings();
+  s.configFile = 'config.json'; // as parseMcpEntry sets from the relative --config
+  s.cwd = '${workspaceFolder}/server';
+  // An unrelated edit triggers a regenerate; the relative --config must round-trip.
+  s.shell = 'cmd';
+  // The referenced config exists under the server's cwd at launch; inject loadability
+  // so the test isolates the written-entry behavior from the on-disk validation check.
+  const ok = await writeMcpJsonFromSettings(s, WS[0], {
+    baseEntry: base,
+    configFileLoadable: () => true,
+  });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.ok(e.args.includes('config.json'), 'relative --config kept verbatim');
+  assert.equal(
+    e.args.includes('${workspaceFolder}/config.json'),
+    false,
+    'not re-anchored to the workspace root (would load a different file)',
+  );
+  assert.equal(e.cwd, '${workspaceFolder}/server', 'cwd preserved');
+});
+
+test('a file save switching http->stdio drops the stale url field', async () => {
+  const base = { type: 'http', url: 'http://127.0.0.1:9444/mcp', headers: { A: '1' } };
+  const s = defaultSettings(); // stdio (npx)
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.equal(e.type, 'stdio');
+  assert.equal(e.url, undefined, 'the http url is removed on a mode switch');
+  assert.equal(e.command, 'npx');
+});
+
+test('P19: switching http->stdio drops the other transport unmodeled fields (headers/oauth)', async () => {
+  const base = {
+    type: 'http',
+    url: 'http://127.0.0.1:9444/mcp',
+    headers: { A: '1' },
+    oauth: { id: 'x' },
+  };
+  const s = defaultSettings(); // stdio (npx)
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.equal(e.type, 'stdio');
+  assert.equal(e.headers, undefined, 'http headers removed on switch to stdio');
+  assert.equal(e.oauth, undefined, 'http oauth removed on switch to stdio');
+});
+
+test('P19: switching stdio->http drops the other transport unmodeled fields (envFile/dev)', async () => {
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    envFile: '.env',
+    dev: { watch: true },
+  };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 9444;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  const e = wcli0Entry();
+  assert.equal(e.type, 'http');
+  assert.equal(e.envFile, undefined, 'stdio envFile removed on switch to http');
+  assert.equal(e.dev, undefined, 'stdio dev removed on switch to http');
+  assert.ok(e.url, 'an http url is written');
+});
+
+test('P18: a file save allows a VS Code variable in cwd', async () => {
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'], cwd: '${env:PROJECT}' };
+  const s = defaultSettings();
+  s.cwd = '${env:PROJECT}';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'a variable cwd does not block the save');
+  assert.equal(wcli0Entry().cwd, '${env:PROJECT}', 'the variable cwd round-trips verbatim');
+});
+
+test('P18: a file save allows a VS Code variable node script path', async () => {
+  const base = { type: 'stdio', command: 'node', args: ['${input:script}', '--shell', 'cmd'] };
+  const s = defaultSettings();
+  s.launchMethod = 'node';
+  s.nodeScriptPath = '${input:script}';
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'a variable node script does not block the save');
+  assert.ok(wcli0Entry().args.includes('${input:script}'), 'the variable script round-trips');
+});
+
+test('P20: a file save merges onto the CURRENT on-disk entry, preserving external additions', async () => {
+  // The panel loaded a snapshot with no headers...
+  const loaded = { type: 'http', url: 'http://127.0.0.1:9444/mcp' };
+  // ...but the file was edited externally afterwards to add headers to the same entry.
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: {
+          wcli0: { type: 'http', url: 'http://127.0.0.1:9444/mcp', headers: { A: '1' } },
+          other: { type: 'stdio' },
+        },
+      }),
+    ),
+  );
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 9444;
+  s.transportUrl = 'http://127.0.0.1:9444/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.deepEqual(
+    parsed.servers.wcli0.headers,
+    { A: '1' },
+    'externally added headers preserved via the on-disk merge',
+  );
+  assert.ok(parsed.servers.other, 'other server preserved');
 });
