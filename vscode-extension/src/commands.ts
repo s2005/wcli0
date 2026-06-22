@@ -14,6 +14,8 @@ import {
   ConfigScope,
   hasPerShellConfig,
   hasProfilesConfig,
+  hasRawPerShellConfig,
+  hasRawProfilesConfig,
   hasUnresolvedExtensionVariables,
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
@@ -384,10 +386,20 @@ function fileSourceConfigPath(
   }
   const resolved = resolveVariables(raw);
   if (hasUnresolvedVariables(resolved)) {
+    // A VS Code launch variable (`${input:cfg}`, …) VS Code resolves at launch — unknowable
+    // and unreadable locally, so there is nothing to check.
     return undefined;
   }
   if (isAbsolutePath(resolved)) {
     return resolved;
+  }
+  // Relative: the server resolves it against the entry's launch cwd. But if the cwd ITSELF is
+  // a VS Code variable (e.g. `${input:cwd}`) resolved at launch, we cannot know where that is,
+  // so anchoring to the workspace root would validate the wrong file (or wrongly reject an
+  // unchanged entry). Skip the check in that case (P-varcwd).
+  const cwd = s.cwd.trim();
+  if (cwd && hasUnresolvedVariables(resolveVariables(cwd))) {
+    return undefined;
   }
   return vscode.Uri.joinPath(launchCwdUri(folder, s), ...resolved.split(/[\\/]/).filter(Boolean))
     .fsPath;
@@ -424,10 +436,13 @@ export async function writeMcpJsonFromSettings(
   // are therefore unsaved edits the post-write reparse would silently drop while still
   // reporting success. Refuse for BOTH transport modes so the loss is explicit; previously
   // only the stdio branch guarded this, so http/sse file edits on the Shells/Profiles tabs
-  // disappeared with a misleading "Saved" (P29/P-httpshells). The settings-driven export is
-  // handled per-mode below: there shells/profiles persist in wcli0.* settings and the
-  // provider builds its own managed config, so they get a sync warning, not a hard block.
-  if (fileSource && (hasPerShellConfig(settings) || hasProfilesConfig(settings))) {
+  // disappeared with a misleading "Saved" (P29/P-httpshells). Use the RAW helpers (ignoring
+  // the ignoreInheritedShells/Profiles mask): the mask is a settings-only opt-out and does
+  // not make the edits storable in the entry, so masked-but-edited shells/profiles must still
+  // be refused (P-maskedshells). The settings-driven export is handled per-mode below: there
+  // shells/profiles persist in wcli0.* settings and the provider builds its own managed
+  // config, so they get a sync warning, not a hard block.
+  if (fileSource && (hasRawPerShellConfig(settings) || hasRawProfilesConfig(settings))) {
     void vscode.window.showErrorMessage(
       'wcli0: per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles) cannot ' +
         'be written to a .vscode/mcp.json entry, so they cannot be saved from this form. They live ' +
@@ -456,8 +471,11 @@ export async function writeMcpJsonFromSettings(
     // the workspace root, so check loadability there — otherwise a no-op save is wrongly
     // refused when only <cwd>/config.json exists, or wrongly accepted because an unrelated
     // <workspace>/config.json exists while the real cwd-relative file is missing (P-cwdconfig).
+    // Use the ORIGINAL settings (not the variable-neutralized copy) so fileSourceConfigPath
+    // can see whether the entry's cwd is a VS Code variable and skip the check accordingly
+    // (P-varcwd). A variable --config is still reported as undefined either way.
     const cfgPath = fileSource
-      ? fileSourceConfigPath(validateSettings, folder)
+      ? fileSourceConfigPath(settings, folder)
       : resolvedConfigFilePath(validateSettings);
     const cfgLoadable = !cfgPath || configFileLoadable(cfgPath);
     const hasLoadableConfigFile = !!cfgPath && cfgLoadable;

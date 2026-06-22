@@ -328,6 +328,17 @@ export function hasPerShellConfig(s: Wcli0Settings): boolean {
   if (s.ignoreInheritedShells) {
     return false;
   }
+  return hasRawPerShellConfig(s);
+}
+
+/**
+ * Like {@link hasPerShellConfig} but IGNORING the `ignoreInheritedShells` mask. The mask is a
+ * settings-only opt-out (it suppresses inherited User-scope shells at launch); it cannot make
+ * the raw `shells` edits in a file-source form representable in a `.vscode/mcp.json` entry. So
+ * a file-source save must gate on the raw objects — otherwise enabling the mask AND editing
+ * Shells lets the save "succeed" while the reparse silently drops those edits (P-maskedshells).
+ */
+export function hasRawPerShellConfig(s: Wcli0Settings): boolean {
   const shells = s.shells ?? {};
   return SHELL_NAMES.some((name) => isMeaningfulShellConfig(shells[name]));
 }
@@ -393,8 +404,19 @@ export function hasProfilesConfig(s: Wcli0Settings): boolean {
   if (s.ignoreInheritedProfiles) {
     return false;
   }
+  return hasRawProfilesConfig(s);
+}
+
+/**
+ * Like {@link hasProfilesConfig} but IGNORING the `ignoreInheritedProfiles` mask — the
+ * profiles twin of {@link hasRawPerShellConfig}, used by file-source saves so the mask cannot
+ * mask away profile edits that the entry still cannot store (P-maskedshells).
+ */
+export function hasRawProfilesConfig(s: Wcli0Settings): boolean {
   const profiles = s.profiles ?? {};
-  return Object.keys(profiles).some((name) => name.trim() !== '' && isMeaningfulProfile(profiles[name]));
+  return Object.keys(profiles).some(
+    (name) => name.trim() !== '' && isMeaningfulProfile(profiles[name]),
+  );
 }
 
 /**

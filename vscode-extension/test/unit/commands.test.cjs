@@ -1022,6 +1022,47 @@ test('P-httpshells: a file save to an http source refuses unsavable per-shell/pr
   assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
 });
 
+test('P-maskedshells: a file save refuses profile edits even when ignoreInheritedProfiles is set', async () => {
+  // The mask is a settings-only opt-out; it must not let the guard pass while the raw profile
+  // edits (which the entry still cannot store) are silently dropped on the post-save reparse.
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  const s = defaultSettings();
+  s.ignoreInheritedProfiles = true; // masked helper would report no profiles
+  s.profiles = { ora19: { env: { ORACLE_HOME: 'C:/oracle/19' } } }; // raw edit the entry can't store
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false, 'masked profile edits are still refused for a file source');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /cannot be saved from this form/.test(m)),
+    'explains the edits cannot be saved from a file-source form',
+  );
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
+});
+
+test('P-varcwd: a file save skips --config loadability when the cwd is a VS Code variable', async () => {
+  // The server resolves config.json under a cwd VS Code expands at launch, so the config
+  // cannot (and must not) be located/validated against the workspace root.
+  const base = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--config', 'config.json'],
+    cwd: '${input:cwd}',
+  };
+  const s = defaultSettings();
+  s.configFile = 'config.json';
+  s.cwd = '${input:cwd}';
+  let consulted = false;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], {
+    baseEntry: base,
+    configFileLoadable: () => {
+      consulted = true;
+      return false; // would block the save if the check ran
+    },
+  });
+  assert.equal(ok, true, 'a variable-cwd relative config is not blocked by a local check');
+  assert.equal(consulted, false, 'loadability was not consulted for the variable-cwd config');
+  assert.ok(wcli0Entry().args.includes('config.json'), 'the relative --config round-trips');
+});
+
 test('a file save switching http->stdio drops the stale url field', async () => {
   const base = { type: 'http', url: 'http://127.0.0.1:9444/mcp', headers: { A: '1' } };
   const s = defaultSettings(); // stdio (npx)
