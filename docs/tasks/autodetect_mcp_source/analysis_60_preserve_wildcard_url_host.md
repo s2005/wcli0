@@ -1,6 +1,6 @@
 # Analysis 60 - Preserve a user-authored wildcard URL host on a port-only file save
 
-## Decision: Valid — fix pending
+## Decision: Valid — fixed
 
 For a loaded http/sse file source, `writeMcpJsonFromSettings` writes the URL as
 `preservedFileUrl(settings, urlBase)`, falling back to a freshly built
@@ -35,5 +35,12 @@ one), or skip `clientHost` for a file source so a wildcard host round-trips; alt
 note from `parseMcpEntry` for a wildcard URL so the bind -> loopback rewrite on a port edit is at
 least surfaced. Add a file-source unit test: load `http://0.0.0.0:9444/mcp`, edit only the port,
 assert the saved URL keeps `0.0.0.0` (and `[::]` -> `[::]`).
+
+**Fix applied:** the file-source URL rebuild now uses a new `fileSourceUrlHost` helper (the
+verbatim connect host, with only syntactic IPv6 bracketing) instead of `clientHost`, so a
+port-only edit of `http://0.0.0.0:9444/mcp` keeps `0.0.0.0` (and `[::]` keeps `[::]`) rather
+than the bind->loopback rewrite. The settings-driven export still uses `clientHost`. This
+also makes a host edit round-trip verbatim, so no parse-time note is needed. File-source
+unit tests added for the IPv4 and IPv6 wildcard cases (`commands.test.cjs`).
 
 **Commit:** (pending)

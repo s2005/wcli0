@@ -1071,8 +1071,8 @@ function renderHtml(webview: vscode.Webview): string {
   <section>
   <h2>Limits & Safety</h2>
   <div class="row">
-    <div><label>Command timeout (s)</label><input type="number" id="commandTimeout" min="1" step="any" /></div>
-    <div><label>Max command length</label><input type="number" id="maxCommandLength" min="1" step="any" /></div>
+    <div><label>Command timeout (s)</label><input type="number" id="commandTimeout" min="0" step="any" /></div>
+    <div><label>Max command length</label><input type="number" id="maxCommandLength" min="0" step="any" /></div>
     <div><label>Max output lines</label><input type="number" id="maxOutputLines" min="1" max="10000" step="any" /></div>
   </div>
   <div class="row">
@@ -1742,13 +1742,19 @@ function renderHtml(webview: vscode.Webview): string {
   }
 
   // Block any out-of-range numeric input before a save or export posts values. The
-  // port (1..65535), the global/per-shell timeouts and command lengths (>= 1) and
-  // maxOutputLines (1..10000) all carry min/max constraints; without this only the
-  // port was checked, so an invalid value such as commandTimeout=0 or
-  // maxOutputLines=10001 would persist and then make validateLaunchSpec register no
-  // server (and the export handlers would emit a config the server rejects at
-  // startup). Mirror the host-side validateLaunchSpec bounds with native validity UI
-  // so the form fails fast on the first offending control. (P100)
+  // port (1..65535) and maxOutputLines (1..10000) carry min/max constraints; without this
+  // only the port was checked, so an invalid value such as maxOutputLines=10001 would persist
+  // and then make validateLaunchSpec register no server (and the export handlers would emit a
+  // config the server rejects at startup). Mirror the host-side validateLaunchSpec bounds with
+  // native validity UI so the form fails fast on the first offending control. (P100)
+  //
+  // commandTimeout / maxCommandLength carry only min="0": the strict managed bound is >= 1
+  // (the value is written into a generated config validateConfig re-checks), but the server
+  // accepts any CLI value > 0 (applied verbatim by applyCliSecurityOverrides). A hand-authored
+  // file-source entry can carry a sub-1-second value (e.g. --commandTimeout 0.5) that the
+  // typed field must be able to re-submit; min="0" lets it pass here while the host's
+  // managed/non-managed bound (validateLaunchSpec) still rejects an actually-invalid value
+  // (<= 0, or < 1 in managed mode) with a precise message (P58).
   function validateNumbers() {
     for (const el of document.querySelectorAll('input[type=number]')) {
       if (el.disabled || el.value === '') continue;

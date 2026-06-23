@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { isValidLogLimit, isValidMaxOutputLines } from './argsBuilder';
 import { parseJsonc } from './commands';
 import { defaultSettings, TransportMode, TriState, Wcli0Settings } from './settings';
 
@@ -388,6 +389,28 @@ export function parseServerArgs(
         (out as Record<string, unknown>)[spec.key] = value;
     }
   };
+  // Whether a numeric option's value should be preserved verbatim in extraArgs rather than
+  // modeled into the typed field. An unparseable value would poison the typed field and then
+  // block every save (P34). A log limit (maxReturnLines / maxOutputLines) the typed field
+  // cannot faithfully re-emit — finite but outside the config-file bound the forward builder
+  // and validateLaunchSpec enforce (1..10000, integer for maxReturnLines) — is also diverted:
+  // the server still applies any such CLI value > 0 via applyCliLogging (no re-validation), so
+  // a hand-authored `--maxReturnLines 50000` or `--maxOutputLines 0` must round-trip rather
+  // than strand the save (maxReturnLines has no form control, so it is otherwise unfixable). A
+  // value the field CAN hold is modeled normally so the form stays editable (P59).
+  const divertNumber = (spec: OptionSpec, raw: string): boolean => {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      return true;
+    }
+    if (spec.key === 'maxReturnLines') {
+      return !isValidLogLimit(n);
+    }
+    if (spec.key === 'maxOutputLines') {
+      return !isValidMaxOutputLines(n);
+    }
+    return false;
+  };
 
   for (let i = 0; i < args.length; i++) {
     const token = args[i];
@@ -434,9 +457,10 @@ export function parseServerArgs(
       const spec = optionFor(flag);
       if (spec) {
         const v = token.slice(eq + 1);
-        if (spec.kind === 'number' && !Number.isFinite(Number(v))) {
-          // An unparseable numeric value cannot be modeled without poisoning the typed
-          // field (which would then block every save); preserve it verbatim (P34).
+        if (spec.kind === 'number' && divertNumber(spec, v)) {
+          // A numeric value the typed field cannot faithfully hold: an unparseable value
+          // (P34) or an out-of-range log limit (P59). Preserve it verbatim so it round-trips
+          // instead of poisoning the field and blocking every save.
           extraArgs.push(token);
           continue;
         }
@@ -477,9 +501,10 @@ export function parseServerArgs(
     // extraArgs and the flag is parsed on the next iteration.
     const spec = optionFor(token);
     if (spec && i + 1 < args.length && !args[i + 1].startsWith('-')) {
-      if (spec.kind === 'number' && !Number.isFinite(Number(args[i + 1]))) {
-        // Unparseable numeric value: don't consume it. The flag is preserved here, and the
-        // following value token falls through to extraArgs on the next iteration (P34).
+      if (spec.kind === 'number' && divertNumber(spec, args[i + 1])) {
+        // A numeric value the typed field cannot faithfully hold (unparseable, P34; or an
+        // out-of-range log limit, P59): don't consume it. The flag is preserved here, and the
+        // following value token falls through to extraArgs on the next iteration.
         extraArgs.push(token);
         continue;
       }

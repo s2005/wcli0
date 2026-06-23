@@ -263,6 +263,26 @@ function preservedFileUrl(
     : undefined;
 }
 
+/**
+ * The host to write into a REBUILT file-source http/sse URL (when {@link preservedFileUrl}
+ * declines to round-trip the verbatim URL because the host or port was edited). A file
+ * source's `transportHost` came from a user-authored CONNECT URL, so it must round-trip
+ * verbatim — unlike {@link clientHost}, which maps a server BIND host (`0.0.0.0`, `::`) to a
+ * connectable loopback address for the settings-driven export. Applying that bind->connect
+ * mapping here would silently rewrite an untouched wildcard host (`0.0.0.0`->`127.0.0.1`,
+ * `[::]`->`[::1]`) on a port-only edit (P60). Only the syntactic bracketing of a bare IPv6
+ * literal is kept so the rebuilt authority stays valid; an empty host falls back to loopback.
+ */
+function fileSourceUrlHost(host: string): string {
+  const h = (host ?? '').trim() || '127.0.0.1';
+  // Bracket a bare IPv6 literal (contains ':' and isn't already bracketed); leave wildcard
+  // binds, bracketed literals, and plain hostnames/IPv4 exactly as authored.
+  if (h.includes(':') && !h.startsWith('[')) {
+    return `[${h}]`;
+  }
+  return h;
+}
+
 // The wcli0-entry keys the form regenerates per transport mode (replaced from the form on
 // a file save). Other VS Code-supported keys present on the entry are left untouched
 // (see mergeEntryOntoBase).
@@ -722,13 +742,19 @@ export async function writeMcpJsonFromSettings(
   } else {
     // Prefer the CURRENT on-disk entry's verbatim URL when host/port are unchanged so a
     // custom scheme/path or default-port URL is not silently downgraded (P5/P8/P10) and a
-    // concurrent edit to an unmodeled URL part survives (P41); otherwise normalize
-    // wildcard/IPv6 bind hosts into a connectable client URL.
+    // concurrent edit to an unmodeled URL part survives (P41). Otherwise rebuild from the
+    // host/port: a settings export normalizes a wildcard/IPv6 BIND host into a connectable
+    // client URL (clientHost), but a file source's host came from a user-authored CONNECT
+    // URL and must round-trip verbatim, so a port-only edit keeps the untouched host instead
+    // of rewriting `0.0.0.0`->`127.0.0.1` / `[::]`->`[::1]` (fileSourceUrlHost, P60).
+    const rebuiltHost = fileSource
+      ? fileSourceUrlHost(settings.transportHost)
+      : clientHost(settings.transportHost);
     const url =
       (fileSource
         ? preservedFileUrl(settings, urlBase)
         : preservedTransportUrl(settings)) ??
-      `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
+      `http://${rebuiltHost}:${settings.transportPort}${
         settings.transportMode === 'http' ? '/mcp' : '/sse'
       }`;
     const generated: Record<string, unknown> = {

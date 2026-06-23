@@ -545,6 +545,21 @@ test('P103: fraction-accepting numeric inputs set step=any so valid 1.5 values a
   assert.match(port, /step="1"/, 'port stays integer');
 });
 
+test('P58: commandTimeout/maxCommandLength inputs use min="0" so a loaded sub-1s value can save', () => {
+  openConfigPanel(makeContext());
+  const html = vscode.__state.lastWebviewPanel.webview.html;
+  // The server accepts any CLI commandTimeout/maxCommandLength > 0 (the >= 1 bound is the
+  // managed/config-file one). A hand-authored file-source entry can carry e.g.
+  // --commandTimeout 0.5, which the typed field must be able to re-submit; min="1" would make
+  // validateNumbers reject the untouched value and strand every save. The host's
+  // validateLaunchSpec still rejects an actually-invalid value with a precise message.
+  for (const id of ['commandTimeout', 'maxCommandLength']) {
+    const input = html.match(new RegExp(`<input type="number" id="${id}"[^>]*>`))[0];
+    assert.match(input, /min="0"/, `${id} should allow sub-1s values`);
+    assert.doesNotMatch(input, /min="1"/, `${id} must not carry the managed >= 1 client bound`);
+  }
+});
+
 test('P100: save and export validate all numeric inputs before posting', () => {
   openConfigPanel(makeContext());
   const html = vscode.__state.lastWebviewPanel.webview.html;

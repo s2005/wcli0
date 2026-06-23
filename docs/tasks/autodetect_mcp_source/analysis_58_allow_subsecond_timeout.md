@@ -1,6 +1,6 @@
 # Analysis 58 - Don't strand file saves on a sub-1-second commandTimeout/maxCommandLength
 
-## Decision: Valid — fix pending
+## Decision: Valid — fixed
 
 The `commandTimeout` / `maxCommandLength` number inputs are rendered with `min="1"`
 (webview.ts:1074-1075), and the save handler gates on `validateNumbers()` (which
@@ -34,5 +34,13 @@ managed-bound client check for a file/stdio source) so a server-valid `> 0` valu
 `validateNumbers`, matching the host's non-managed acceptance; keep the managed-mode (>= 1)
 enforcement on the host. Add a webview test that loads `--commandTimeout 0.5` and asserts an
 unrelated edit can be saved.
+
+**Fix applied:** the `commandTimeout`/`maxCommandLength` inputs now carry `min="0"` (not
+`min="1"`), so a loaded server-valid `> 0` value passes `validateNumbers`; the host
+`validateLaunchSpec` keeps the per-mode bound (`> 0` non-managed CLI, `>= 1` managed). The
+per-shell timeout inputs are untouched (their values are config-file-bound `>= 1`). Webview
+test added (`webview.test.cjs`). Server claim re-verified: `applyCliSecurityOverrides` applies
+any `> 0`; the `< 1` rejection is in `validateConfig`, which runs only inside `loadConfig`
+before the CLI override.
 
 **Commit:** (pending)

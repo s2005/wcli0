@@ -617,6 +617,39 @@ test('P34: an invalid numeric value falls through to extraArgs instead of blocki
   assert.equal(settings.shell, 'cmd');
 });
 
+// ---- P59: an out-of-range log limit round-trips via extraArgs ----------------------
+
+test('P59: a finite out-of-range maxReturnLines falls through to extraArgs', () => {
+  // The server applies any CLI maxReturnLines > 0 (applyCliLogging, no re-validation), but the
+  // typed field's bound (1..10000, integer) cannot hold 50000 and validateLaunchSpec would
+  // refuse it. maxReturnLines has no form control, so modeling it would strand every save;
+  // preserve it verbatim instead. Both the space-separated and attached forms divert.
+  const a = parseServerArgs(['--maxReturnLines', '50000', '--shell', 'cmd']);
+  assert.equal(a.settings.maxReturnLines, undefined);
+  assert.deepEqual(a.extraArgs, ['--maxReturnLines', '50000']);
+  assert.equal(a.settings.shell, 'cmd');
+
+  const b = parseServerArgs(['--max-return-lines=0']);
+  assert.equal(b.settings.maxReturnLines, undefined);
+  assert.deepEqual(b.extraArgs, ['--max-return-lines=0']);
+
+  // An in-range value is still modeled into the typed field so the form stays editable.
+  const c = parseServerArgs(['--maxReturnLines', '200']);
+  assert.equal(c.settings.maxReturnLines, 200);
+  assert.deepEqual(c.extraArgs, []);
+});
+
+test('P59: a finite out-of-range maxOutputLines falls through to extraArgs', () => {
+  const a = parseServerArgs(['--maxOutputLines', '50000']);
+  assert.equal(a.settings.maxOutputLines, undefined);
+  assert.deepEqual(a.extraArgs, ['--maxOutputLines', '50000']);
+
+  // A fractional value in range is accepted by the field (validateLoggingConfig allows it).
+  const b = parseServerArgs(['--maxOutputLines', '1.5']);
+  assert.equal(b.settings.maxOutputLines, 1.5);
+  assert.deepEqual(b.extraArgs, []);
+});
+
 // ---- P42: multiple unknown value-bearing extras in the suffix ---------------------
 
 test('P42: a suffix with several valued extras still recovers the modeled flags', () => {

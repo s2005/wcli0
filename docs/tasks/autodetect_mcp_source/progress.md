@@ -271,23 +271,29 @@ save round trip (five finders across the parser / forward-builder / save-path /
 webview / url surfaces, each candidate adversarially double-verified for reality
 and novelty against the P1-P56 + P-named baseline, and cross-checked against the
 server's own CLI/config behavior). Each has an `analysis_N_*.md` + `comment_N_*.md`
-pair in this folder. These are newly found; fixes are pending.
+pair in this folder. All four are now fixed; each fix's load-bearing claim about the
+server's CLI/config behavior was independently re-verified against `src/utils/config.ts`
+and `src/index.ts`.
 
-- [ ] P57: Preserve --allowAllDirs on a file save when --initialDir is set (found —
-  `buildServerArgs` drops the modeled, form-editable `--allowAllDirs` whenever
-  `dirsConfigured` includes a non-empty `initialDir`; the server applies
-  `--allowAllDirs` before the CLI `--initialDir`, so the round-tripped entry silently
-  tightens an unrestricted server to restricted-to-initialDir, reported as "Saved")
-- [ ] P58: Don't strand file saves on a sub-1-second commandTimeout/maxCommandLength
-  (found — the number inputs carry `min="1"` (the managed/config-file bound), but the
-  server accepts any CLI value `> 0`, so `validateNumbers` refuses every file-source
-  save of a loaded `--commandTimeout 0.5` until the user corrupts the value)
-- [ ] P59: Don't refuse file saves over an out-of-range CLI log limit (found —
-  `validateLaunchSpec` applies the config-file 1..10000 bound to `maxReturnLines` /
-  `maxOutputLines` even on the non-managed file path; `maxReturnLines` has no form
-  control, so a loaded `--maxReturnLines 50000` blocks every save and is unfixable in
-  the form, though the server applies any `> 0` via `applyCliLogging`)
-- [ ] P60: Preserve a user-authored wildcard URL host on a port-only file save (found
-  — editing only the port of an `http://0.0.0.0:9444/mcp` entry makes `preservedFileUrl`
-  fall back to the `clientHost` rebuild, silently rewriting the untouched `0.0.0.0` host
-  to `127.0.0.1` (and `[::]` to `[::1]`) with no note)
+- [x] P57: Preserve --allowAllDirs on a file save when --initialDir is set (fixed —
+  `buildServerArgs` emits `--allowAllDirs` whenever the form shows it set on a file-source
+  round trip (`opts.preserveRelativePaths`), so a hand-authored flag survives an unrelated
+  save instead of being dropped; the server applies `--allowAllDirs` before the CLI
+  `--initialDir`, so dropping it had silently re-restricted an unrestricted server. The
+  provider/settings-export paths keep the suppression)
+- [x] P58: Don't strand file saves on a sub-1-second commandTimeout/maxCommandLength
+  (fixed — the `commandTimeout`/`maxCommandLength` number inputs use `min="0"` instead of
+  `min="1"`, so a loaded server-valid `> 0` value passes the client `validateNumbers` guard;
+  the host `validateLaunchSpec` still enforces the per-mode bound (`> 0` CLI / `>= 1`
+  managed), so an actually-invalid value is rejected with a precise message)
+- [x] P59: Don't refuse file saves over an out-of-range CLI log limit (fixed —
+  `parseServerArgs` diverts a finite-but-out-of-range `maxReturnLines`/`maxOutputLines` to
+  `extraArgs` verbatim (`divertNumber`), so it round-trips without poisoning the typed field
+  or tripping `validateLaunchSpec`; `buildServerArgs` strips a duplicate diverted flag via
+  `stripValueFlag` when it emits the same log limit from the typed field, avoiding a
+  yargs-array hazard for the form-editable `maxOutputLines`)
+- [x] P60: Preserve a user-authored wildcard URL host on a port-only file save (fixed — the
+  file-source URL rebuild uses `fileSourceUrlHost` (the verbatim connect host, IPv6-bracketed)
+  instead of `clientHost`, so editing only the port keeps `0.0.0.0`/`[::]` instead of
+  rewriting it to `127.0.0.1`/`[::1]`; the settings-driven export keeps the `clientHost`
+  bind->connect mapping)

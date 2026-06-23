@@ -1,6 +1,6 @@
 # Analysis 57 - Preserve --allowAllDirs on a file save when --initialDir is set
 
-## Decision: Valid — fix pending
+## Decision: Valid — fixed
 
 `buildServerArgs` emits `--allowAllDirs` only when `!dirsConfigured`, where
 `dirsConfigured = s.allowedDirectories.some((d) => d.trim()) || s.initialDir.trim().length > 0`
@@ -36,5 +36,13 @@ already set), gate the `--allowAllDirs` suppression on `allowedDirectories` only
 argv fields. Add a round-trip unit test for `--allowAllDirs --initialDir /work`. The existing
 forward-builder test (`argsBuilder.test.cjs`) currently encodes the buggy assumption and must
 be updated.
+
+**Fix applied:** `buildServerArgs` now emits `--allowAllDirs` whenever it is set on a
+file-source round trip (gated on `opts.preserveRelativePaths`), keeping the existing
+suppression for the provider/settings-export paths. Round-trip unit test added
+(`argsBuilder.test.cjs`); the prior forward-builder test was kept for the non-file-source
+paths. Server claim re-verified: `loadConfig(disableIfEmpty)` (src/index.ts:1603) runs before
+`applyCliInitialDir` (src/index.ts:1606), so dropping the flag confines an otherwise
+unrestricted server.
 
 **Commit:** (pending)

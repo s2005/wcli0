@@ -11,6 +11,7 @@ const {
   parseJsonc,
 } = require('../../dist/commands.js');
 const { defaultSettings } = require('../../dist/settings.js');
+const { parseMcpEntry } = require('../../dist/configSource.js');
 
 const WS = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
 
@@ -1280,6 +1281,63 @@ test('P48: a no-op save of an uppercase HTTP entry preserves the custom url', as
   const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
   assert.equal(ok, true);
   assert.equal(wcli0Entry().url, 'https://127.0.0.1:9444/custom/mcp');
+});
+
+test('P59: a file save round-trips a loaded out-of-range --maxReturnLines without refusing', async () => {
+  // A hand-authored stdio entry carries a server-valid-but-typed-field-invalid --maxReturnLines
+  // (the server applies any CLI value > 0; 50000 is outside the config-file 1..10000 bound the
+  // typed field enforces). Loading it through parseMcpEntry diverts it to extraArgs (it has no
+  // form control), so validateLaunchSpec no longer refuses, and an unrelated edit round-trips
+  // the value verbatim with no duplicate.
+  const loaded = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--maxReturnLines', '50000'],
+  };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { wcli0: loaded } })),
+  );
+  const s = parseMcpEntry(loaded).settings;
+  s.shell = 'cmd'; // edit an unrelated field
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  const args = wcli0Entry().args;
+  assert.ok(args.includes('--shell'), 'the edited flag is written');
+  assert.equal(
+    args.filter((a) => a === '--maxReturnLines').length,
+    1,
+    'the out-of-range log limit is not duplicated',
+  );
+  assert.equal(args[args.indexOf('--maxReturnLines') + 1], '50000', 'value preserved verbatim');
+});
+
+test('P60: a port-only edit of a wildcard http url keeps the untouched IPv4 host', async () => {
+  // The host came from a user-authored CONNECT url, so a port-only edit must not apply the
+  // bind->connect mapping (0.0.0.0 -> 127.0.0.1) that the settings export uses.
+  const loaded = { type: 'http', url: 'http://0.0.0.0:9444/mcp' };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { wcli0: loaded } })),
+  );
+  const s = parseMcpEntry(loaded).settings;
+  s.transportPort = 8080; // edit ONLY the port
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://0.0.0.0:8080/mcp');
+});
+
+test('P60: a port-only edit of an IPv6 wildcard http url keeps the untouched host', async () => {
+  const loaded = { type: 'http', url: 'http://[::]:9444/mcp' };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { wcli0: loaded } })),
+  );
+  const s = parseMcpEntry(loaded).settings;
+  s.transportPort = 8080;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://[::]:8080/mcp');
 });
 
 test('P-fileextratransport: a stdio file save preserves a hand-authored --transport flag', async () => {

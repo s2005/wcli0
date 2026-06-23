@@ -86,8 +86,10 @@ export function resolvedConfigFilePath(s: Wcli0Settings): string | undefined {
 /**
  * A logging line limit the server requires as an integer in 1..10000. Used for
  * `maxReturnLines`, whose `validateLoggingConfig` check enforces `Number.isInteger`.
+ * Exported so the reverse parser can decide whether a loaded value fits the typed
+ * field or must round-trip verbatim through extraArgs (P59).
  */
-function isValidLogLimit(n: number): boolean {
+export function isValidLogLimit(n: number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= 10000;
 }
 
@@ -95,9 +97,10 @@ function isValidLogLimit(n: number): boolean {
  * The server's `validateLoggingConfig` only enforces the 1..10000 range for
  * `maxOutputLines` (no integer requirement), so a fractional value like 1.5 is
  * accepted. Validate it on that looser constraint to avoid blocking a config the
- * server would run.
+ * server would run. Exported alongside {@link isValidLogLimit} for the parser's
+ * extraArgs round-trip decision (P59).
  */
-function isValidMaxOutputLines(n: number): boolean {
+export function isValidMaxOutputLines(n: number): boolean {
   return n >= 1 && n <= 10000;
 }
 
@@ -281,6 +284,34 @@ function stripConfigArgs(extraArgs: string[]): string[] {
 }
 
 /**
+ * Remove a value-carrying option (and its value) from a raw extraArgs list, matching any of
+ * the given long-flag spellings in `--flag value`, `--flag=value`, and bare `--flag` forms.
+ * Used to drop a log limit the parser diverted into extraArgs (a finite-but-out-of-range
+ * value round-trips verbatim there, P59) once the builder emits the SAME flag from the typed
+ * field: keeping both would make yargs parse the option as an array the server applies none
+ * of. Mirrors the next-token guard in {@link stripTransportArgs} so a following option is not
+ * swallowed as a value.
+ */
+function stripValueFlag(extraArgs: string[], names: string[]): string[] {
+  const exact = new Set(names);
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i++) {
+    const a = extraArgs[i];
+    if (exact.has(a)) {
+      if (i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+        i++;
+      }
+      continue;
+    }
+    if (names.some((n) => a.startsWith(`${n}=`))) {
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
+
+/**
  * Build the minimal arg list for an auto-managed-config launch: point the server
  * at the generated config file and force stdio (a provider-launched process must
  * not start an HTTP listener even if the file selected one). Everything else the
@@ -387,9 +418,13 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   for (const op of s.blockedOperators) {
     pushOption(args, '--blockedOperator', op);
   }
-  // Only emit log limits the server accepts; an out-of-range value makes
-  // validateLoggingConfig throw on startup (surfaced by validateLaunchSpec).
-  if (s.maxOutputLines != null && isValidMaxOutputLines(s.maxOutputLines)) {
+  // Only emit log limits the server accepts as a config-file value; an out-of-range value
+  // makes validateLoggingConfig throw on startup (surfaced by validateLaunchSpec). A loaded
+  // file-source value the server still accepts as a CLI flag (any > 0, applied by
+  // applyCliLogging without re-validation) is preserved verbatim via extraArgs by the parser
+  // (P59), so it round-trips even though the typed field cannot hold it.
+  const emitMaxOutputLines = s.maxOutputLines != null && isValidMaxOutputLines(s.maxOutputLines);
+  if (emitMaxOutputLines) {
     args.push('--maxOutputLines', String(s.maxOutputLines));
   }
   if (s.enableTruncation === 'enabled') {
@@ -402,7 +437,8 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   } else if (s.enableLogResources === 'disabled') {
     args.push('--no-enableLogResources');
   }
-  if (s.maxReturnLines != null && isValidLogLimit(s.maxReturnLines)) {
+  const emitMaxReturnLines = s.maxReturnLines != null && isValidLogLimit(s.maxReturnLines);
+  if (emitMaxReturnLines) {
     args.push('--maxReturnLines', String(s.maxReturnLines));
   }
   const logDirectory = pathValue(s.logDirectory, opts);
@@ -412,8 +448,16 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   // --allowAllDirs disables the working-directory restriction before initialDir
   // is applied, and is meaningless once paths are configured. Only emit it when
   // nothing else constrains the working directory.
+  //
+  // EXCEPT for a file-source round-trip (preserveRelativePaths): a hand-authored
+  // --allowAllDirs the form shows as set must survive an unrelated save. Dropping it flips
+  // the "Allow all directories" tri-select on the post-write reparse, and combined with
+  // --initialDir it silently re-tightens the server: loadConfig applies --allowAllDirs
+  // (clearing restrictWorkingDirectory) BEFORE the CLI --initialDir is merged, so without the
+  // flag the entry confines the server to initialDir instead of staying unrestricted. The
+  // provider/settings-export paths keep the suppression (P57).
   const dirsConfigured = s.allowedDirectories.some((d) => d.trim()) || s.initialDir.trim().length > 0;
-  if (s.allowAllDirs && !dirsConfigured) {
+  if (s.allowAllDirs && (opts.preserveRelativePaths || !dirsConfigured)) {
     args.push('--allowAllDirs');
   }
   if (s.safetyMode === 'yolo') {
@@ -481,6 +525,17 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   }
   if (configFile) {
     extras = stripConfigArgs(extras);
+  }
+  // When the builder emits a log limit from the typed field, drop any same-named flag the
+  // parser diverted into extraArgs for round-trip: emitting both yields a duplicate option
+  // yargs merges into an array the server resolves to neither (e.g. the user loaded an
+  // out-of-range value that was diverted, then set an in-range one in the form — the form
+  // value must win). Only the kebab/camel spellings the parser produces need stripping (P59).
+  if (emitMaxOutputLines) {
+    extras = stripValueFlag(extras, ['--maxOutputLines', '--max-output-lines']);
+  }
+  if (emitMaxReturnLines) {
+    extras = stripValueFlag(extras, ['--maxReturnLines', '--max-return-lines']);
   }
   for (const extra of extras) {
     args.push(extra);

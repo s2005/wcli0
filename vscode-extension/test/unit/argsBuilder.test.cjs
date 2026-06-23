@@ -225,6 +225,41 @@ test('--allowAllDirs is emitted only when no dirs/initialDir are configured', ()
   );
 });
 
+test('a file-source round-trip preserves --allowAllDirs even with dirs/initialDir set (P57)', () => {
+  // For a file source (preserveRelativePaths) a hand-authored --allowAllDirs the form shows as
+  // set must survive an unrelated save: with --initialDir, dropping it silently re-tightens the
+  // server to initialDir; with --allowedDir it is server-inert but would flip the tri-select on
+  // reparse. Both keep the flag here, unlike the settings-export/provider paths above.
+  const opts = { resolvePaths: false, preserveRelativePaths: true };
+  assert.deepEqual(buildServerArgs(defaults({ allowAllDirs: true, initialDir: '/x' }), opts), [
+    '--initialDir', '/x', '--allowAllDirs',
+  ]);
+  assert.deepEqual(
+    buildServerArgs(defaults({ allowAllDirs: true, allowedDirectories: ['/srv'] }), opts),
+    ['--allowedDir', '/srv', '--allowAllDirs'],
+  );
+});
+
+test('an emitted log limit drops a duplicate diverted copy from extraArgs (P59)', () => {
+  // The parser diverts an out-of-range log limit into extraArgs to round-trip it verbatim.
+  // When the form then supplies an in-range typed value, the builder emits that and must drop
+  // the stale extraArgs copy of the same flag, or yargs would merge two into an array the
+  // server applies neither of.
+  assert.deepEqual(
+    buildServerArgs(defaults({ maxOutputLines: 50, extraArgs: ['--maxOutputLines', '99999'] })),
+    ['--maxOutputLines', '50'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ maxReturnLines: 200, extraArgs: ['--max-return-lines=50000'] })),
+    ['--maxReturnLines', '200'],
+  );
+  // A diverted log limit with no competing typed value is preserved verbatim.
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--maxReturnLines', '50000'] })),
+    ['--maxReturnLines', '50000'],
+  );
+});
+
 test('an unresolved config file path is blocking', () => {
   vscodeStub.workspace.workspaceFolders = undefined;
   const s = defaults({ configFile: '${workspaceFolder}/c.json' });
