@@ -17,3 +17,5 @@ reordering the wrapper invocation. Requiring a modeled flag mirrors the existing
 boundary logic, and suffixes that DO contain a modeled flag (P15/P24/P42/P43) still split
 exactly as before. See [[analysis_43_continue_scan_after_launcher_flag]] and
 [[analysis_15_preserve_custom_wrapper_flags]].
+
+**Commit:** 3727aec - fix(vscode): round-9 codex review follow-ups for PR #89 (P55/P56)

@@ -18,3 +18,5 @@ differences. This complements the existing host-side guards (P29/P49/P54/P-https
 P-maskfile) in `writeMcpJsonFromSettings`, which remain as defense in depth for the
 shells/profiles/mask subset and the settings-export path. See [[analysis_29_refuse_unsavable_file_edits]]
 and [[analysis_49_disable_masks_for_file_sources]].
+
+**Commit:** 3727aec - fix(vscode): round-9 codex review follow-ups for PR #89 (P55/P56)
