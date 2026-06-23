@@ -343,6 +343,53 @@ test('an emitted modeled scalar flag drops a diverted duplicate from extraArgs (
   );
 });
 
+test('an emitted scalar flag strips a preserved yargs negation of the same option (P65)', () => {
+  // A loaded file may carry a scalar negation (`--no-shell`, `--no-logDirectory`,
+  // `--no-commandTimeout`) in extraArgs; the parser does not model these. Once the form supplies
+  // a typed value the builder must drop the negation, or yargs parses the option as an array
+  // (`shell: ['cmd', false]`) the server's scalar applyCli* helpers apply none of — ignoring the
+  // edit or crashing the server. The negation carries no value, so only the token is dropped.
+  assert.deepEqual(
+    buildServerArgs(defaults({ shell: 'cmd', extraArgs: ['--no-shell'] })),
+    ['--shell', 'cmd'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ logDirectory: '/logs', extraArgs: ['--no-logDirectory'] })),
+    ['--logDirectory', '/logs'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--no-commandTimeout'] })),
+    ['--commandTimeout', '30'],
+  );
+  // The kebab-case negation the parser may have kept is stripped too.
+  assert.deepEqual(
+    buildServerArgs(defaults({ initialDir: '/start', extraArgs: ['--no-initial-dir'] })),
+    ['--initialDir', '/start'],
+  );
+  // A transport scalar negation is dropped once the form emits the positive flag.
+  assert.deepEqual(
+    buildServerArgs(
+      defaults({
+        transportMode: 'http',
+        transportHost: '',
+        transportPort: 8080,
+        extraArgs: ['--no-http-port'],
+      }),
+    ),
+    ['--transport', 'http', '--http-port', '8080'],
+  );
+  // The strip does not swallow a following unrelated extraArg.
+  assert.deepEqual(
+    buildServerArgs(defaults({ shell: 'cmd', extraArgs: ['--no-shell', '--keepme'] })),
+    ['--shell', 'cmd', '--keepme'],
+  );
+  // An UNSET field still round-trips its preserved negation verbatim (no over-strip).
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--no-shell'] })),
+    ['--no-shell'],
+  );
+});
+
 test('an unresolved config file path is blocking', () => {
   vscodeStub.workspace.workspaceFolders = undefined;
   const s = defaults({ configFile: '${workspaceFolder}/c.json' });

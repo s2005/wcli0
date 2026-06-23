@@ -291,9 +291,19 @@ function stripConfigArgs(extraArgs: string[]): string[] {
  * field: keeping both would make yargs parse the option as an array the server applies none
  * of. Mirrors the next-token guard in {@link stripTransportArgs} so a following option is not
  * swallowed as a value.
+ *
+ * The yargs negation of each scalar option (`--no-shell`, `--no-command-timeout`, ...) is
+ * stripped too: a loaded file may carry one in extraArgs (the parser does not model scalar
+ * negations), and emitting the positive flag from the typed field while it survives makes
+ * yargs parse the option as an array — `shell: ['cmd', false]`, `logDirectory: ['/tmp',
+ * false]` — that the server's scalar applyCli* helpers resolve to neither, so the edited value
+ * is ignored or crashes the server. A negation carries no value, so the token is dropped alone
+ * (P65). An UNSET field still round-trips its preserved negation: the strip is guarded by the
+ * same emission condition as the positive flag.
  */
 function stripValueFlag(extraArgs: string[], names: string[]): string[] {
   const exact = new Set(names);
+  const negated = new Set(names.map((n) => n.replace(/^--/, '--no-')));
   const out: string[] = [];
   for (let i = 0; i < extraArgs.length; i++) {
     const a = extraArgs[i];
@@ -302,6 +312,9 @@ function stripValueFlag(extraArgs: string[], names: string[]): string[] {
         i++;
       }
       continue;
+    }
+    if (negated.has(a)) {
+      continue; // boolean negation of the same option — no value token to consume
     }
     if (names.some((n) => a.startsWith(`${n}=`))) {
       continue;

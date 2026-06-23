@@ -171,9 +171,14 @@ const VALUE_OPTIONS: Record<string, OptionSpec> = {
 const BOOLEAN_FLAGS = new Set<string>([
   '--allowAllDirs',
   '--allow-all-dirs',
+  '--no-allowAllDirs',
+  '--no-allow-all-dirs',
   '--debug',
+  '--no-debug',
   '--yolo',
+  '--no-yolo',
   '--unsafe',
+  '--no-unsafe',
   '--enableTruncation',
   '--no-enableTruncation',
   '--enable-truncation',
@@ -420,7 +425,12 @@ export function parseServerArgs(
   // the server still applies any such CLI value > 0 via applyCliLogging (no re-validation), so
   // a hand-authored `--maxReturnLines 50000` or `--maxOutputLines 0` must round-trip rather
   // than strand the save (maxReturnLines has no form control, so it is otherwise unfixable). A
-  // value the field CAN hold is modeled normally so the form stays editable (P59).
+  // non-positive commandTimeout / maxCommandLength is diverted too: the server simply ignores
+  // such a value and runs on its default (applyCliShellAndAllowedDirs never lowers the limit
+  // for it), but the form's number input rejects a negative and validateLaunchSpec blocks any
+  // value <= 0, so modeling a hand-authored `--commandTimeout 0` / `--maxCommandLength=-1`
+  // would strand every save. Preserving it lets an unrelated edit round-trip the entry (P64).
+  // A value the field CAN hold is modeled normally so the form stays editable (P59).
   const divertNumber = (spec: OptionSpec, raw: string): boolean => {
     const n = Number(raw);
     if (!Number.isFinite(n)) {
@@ -431,6 +441,9 @@ export function parseServerArgs(
     }
     if (spec.key === 'maxOutputLines') {
       return !isValidMaxOutputLines(n);
+    }
+    if (spec.key === 'commandTimeout' || spec.key === 'maxCommandLength') {
+      return n <= 0;
     }
     return false;
   };
@@ -443,8 +456,21 @@ export function parseServerArgs(
       out.allowAllDirs = true;
       continue;
     }
+    // yargs accepts a negated boolean (`--no-X`) for every boolean option the server declares
+    // (allowAllDirs / debug / yolo / unsafe — see src/index.ts). Consume and model these here
+    // rather than letting them fall through to extraArgs: a preserved `--no-debug` survives a
+    // save and yargs then parses `--debug --no-debug` as debug=false, silently discarding the
+    // user's form edit (P63).
+    if (token === '--no-allowAllDirs' || token === '--no-allow-all-dirs') {
+      out.allowAllDirs = false;
+      continue;
+    }
     if (token === '--debug') {
       out.debug = true;
+      continue;
+    }
+    if (token === '--no-debug') {
+      out.debug = false;
       continue;
     }
     if (token === '--yolo') {
@@ -453,6 +479,22 @@ export function parseServerArgs(
     }
     if (token === '--unsafe') {
       out.safetyMode = 'unsafe';
+      continue;
+    }
+    // A negated safety flag clears only the matching mode. The server treats yolo/unsafe as
+    // independent booleans (`.conflicts('unsafe','yolo')` forbids both positives at once), so a
+    // `--no-yolo` alongside an `--unsafe` must leave 'unsafe' intact; clearing the mode only when
+    // it currently matches mirrors yargs' last-wins (`--yolo --no-yolo` => safe) without
+    // clobbering an unrelated selection. With no positive seen, safetyMode stays the default.
+    if (token === '--no-yolo' && out.safetyMode === 'yolo') {
+      out.safetyMode = 'safe';
+      continue;
+    }
+    if (token === '--no-unsafe' && out.safetyMode === 'unsafe') {
+      out.safetyMode = 'safe';
+      continue;
+    }
+    if (token === '--no-yolo' || token === '--no-unsafe') {
       continue;
     }
     if (
@@ -628,17 +670,22 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
           `http://host:port/${canonicalPath} form, and the port field does not affect it.`,
       );
     } else if (parsed) {
-      // An explicitly-written but unusable port (e.g. `:0`, or one above 65535 such as
-      // `:70000`), which the port field cannot hold (it is constrained to 1..65535). Show
-      // the host and keep the form's default port; unlike a default-port URL the verbatim
-      // out-of-range URL is NOT preserved on save (preservedFileUrl requires the port to be
-      // unchanged, and an out-of-range value can never match the default), so saving rebuilds
-      // the canonical http://host:port form from the port field rather than loading an invalid
-      // port that strands the form's number input and blocks unrelated saves (P-port0/P-portmax).
+      // An explicitly-written but unusable port: a number outside 1..65535 (`:0`, or one above
+      // 65535 such as `:70000`), or a non-numeric/malformed one (`:abc`, `:-1`, reported as NaN
+      // by parseHttpUrl, P66). The port field cannot hold any of these (it is constrained to
+      // 1..65535), so show the host and keep the form's default port. Unlike a default-port URL
+      // the verbatim URL is NOT preserved on save (preservedFileUrl requires the port to be
+      // unchanged, and an out-of-range or NaN value can never match the default), so saving
+      // rebuilds the canonical http://host:port form from the port field rather than loading an
+      // invalid port that strands the form's number input and blocks unrelated saves
+      // (P-port0/P-portmax/P66).
       s.transportHost = parsed.host;
+      const portText = Number.isNaN(parsed.port)
+        ? 'has a non-numeric port, which is not a usable port'
+        : `specifies port ${parsed.port}, which is not a usable port`;
       notes.push(
-        `The ${type} URL "${url}" specifies port ${parsed.port}, which is not a usable port ` +
-          '(it must be between 1 and 65535). Saving rewrites it to the ' +
+        `The ${type} URL "${url}" ${portText} ` +
+          '(it must be an integer between 1 and 65535). Saving rewrites it to the ' +
           `http://host:port/${canonicalPath} form using the port field below.`,
       );
     } else if (url) {
@@ -741,7 +788,10 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
  * port is reported as `port: undefined` (the URL relies on the scheme default), distinct
  * from an explicitly-written port — including an unusable `:0`, reported as `port: 0`. The
  * two must not be conflated: a `:0` URL is a real explicit port, not a default-port URL, so
- * it must not be preserved verbatim in a way that ignores a port-field edit (P-port0).
+ * it must not be preserved verbatim in a way that ignores a port-field edit (P-port0). An
+ * explicit but NON-NUMERIC port (`:abc`, `:-1`) is reported as `port: NaN` — also distinct
+ * from an omitted port — so the caller rebuilds the canonical URL from the port field rather
+ * than treating the malformed URL as a default-port one that a port edit cannot fix (P66).
  */
 export function parseHttpUrl(url: string): { host: string; port: number | undefined } | undefined {
   if (!url) {
@@ -750,12 +800,25 @@ export function parseHttpUrl(url: string): { host: string; port: number | undefi
   // Match `scheme://[userinfo@]host[:port]/...`, where host may be a bracketed IPv6
   // literal. The optional `userinfo@` is skipped so credentials (`user:pass@host:port`)
   // do not get mistaken for the host and an explicit port behind them is still read (P21).
-  const m = /^[a-z]+:\/\/(?:[^@/]*@)?(\[[^\]]+\]|[^:/]+)(?::(\d+))?/i.exec(url);
+  // The port group captures everything between `:` and the path/query/fragment so an explicit
+  // non-numeric port is seen (and rejected below) rather than left out of the match — which
+  // would make the URL look like it omitted its port entirely (P66).
+  const m = /^[a-z]+:\/\/(?:[^@/]*@)?(\[[^\]]+\]|[^:/]+)(?::([^/?#]*))?/i.exec(url);
   if (!m) {
     return undefined;
   }
   const host = m[1];
-  const port = m[2] !== undefined ? Number(m[2]) : undefined;
+  // No `:` after the host -> omitted port (scheme default). An explicit digit-only port -> its
+  // number (range-checked by the caller). An explicit but malformed port (`:abc`, `:-1`, or an
+  // empty `:`) -> NaN, flagged as an unusable explicit port the port field must rebuild.
+  let port: number | undefined;
+  if (m[2] === undefined) {
+    port = undefined;
+  } else if (/^\d+$/.test(m[2])) {
+    port = Number(m[2]);
+  } else {
+    port = NaN;
+  }
   return { host, port };
 }
 

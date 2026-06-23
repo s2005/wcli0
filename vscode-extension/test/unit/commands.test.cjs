@@ -954,6 +954,20 @@ test('P-port0: a file save rebuilds an explicit :0 url from the port field', asy
   assert.equal(wcli0Entry().url, 'http://host:9444/mcp');
 });
 
+test('P66: a file save rebuilds a malformed non-numeric url port from the port field', async () => {
+  // A URL with an explicit non-numeric port (`:abc`) must not be preserved verbatim as a
+  // default-port URL: editing the port field has to be able to fix it. The save rebuilds the
+  // canonical URL from the (edited) port instead of round-tripping the malformed host:abc URL.
+  const base = { type: 'http', url: 'http://host:abc/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'host';
+  s.transportPort = 8080; // the user fixes the port via the form field
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://host:8080/mcp');
+});
+
 test('P-varsyntax: a file save rejects a --config path with an unknown ${...} token', async () => {
   // `${PATH}` is a bare shell variable VS Code does not substitute, so the value is a real
   // (broken) local path and must face validation rather than be bypassed as a VS Code var.

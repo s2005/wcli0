@@ -169,6 +169,42 @@ test('parseServerArgs handles boolean, safety and tri-state flags', () => {
   assert.equal(b.settings.enableLogResources, 'enabled');
 });
 
+test('P63: parseServerArgs consumes negated boolean flags instead of preserving them in extraArgs', () => {
+  // A loaded entry may carry yargs negations for the server's boolean options. They must be
+  // modeled (and removed from extraArgs), or a preserved `--no-debug` survives a save and
+  // yargs parses `--debug --no-debug` as debug=false, silently dropping the user's form edit.
+  const a = parseServerArgs([
+    '--no-allowAllDirs',
+    '--no-debug',
+    '--no-yolo',
+    '--no-unsafe',
+    '--shell',
+    'cmd',
+  ]);
+  assert.equal(a.settings.allowAllDirs, false);
+  assert.equal(a.settings.debug, false);
+  // parseServerArgs returns a partial: with no positive safety flag it leaves safetyMode unset,
+  // so parseMcpEntry overlays the default 'safe'. The negations must not leak into extraArgs.
+  assert.equal(a.settings.safetyMode, undefined);
+  assert.equal(a.settings.shell, 'cmd');
+  assert.deepEqual(a.extraArgs, [], 'no negated boolean leaks into extraArgs');
+
+  // The kebab-case alias of the multi-word boolean is recognized too.
+  const b = parseServerArgs(['--no-allow-all-dirs']);
+  assert.equal(b.settings.allowAllDirs, false);
+  assert.deepEqual(b.extraArgs, []);
+
+  // A negated safety flag clears only the matching mode: `--unsafe --no-yolo` stays unsafe.
+  const c = parseServerArgs(['--unsafe', '--no-yolo']);
+  assert.equal(c.settings.safetyMode, 'unsafe');
+  assert.deepEqual(c.extraArgs, []);
+
+  // Mirrors yargs last-wins for a contradictory pair: `--yolo --no-yolo` resolves to safe.
+  const d = parseServerArgs(['--yolo', '--no-yolo']);
+  assert.equal(d.settings.safetyMode, 'safe');
+  assert.deepEqual(d.extraArgs, []);
+});
+
 test('parseServerArgs parses transport flags', () => {
   const { settings } = parseServerArgs([
     '--transport', 'http',
@@ -415,6 +451,19 @@ test('P-port0: parseHttpUrl distinguishes an omitted port from an explicit :0', 
   assert.equal(parseHttpUrl('http://host:9444/mcp').port, 9444);
 });
 
+test('P66: parseHttpUrl reports an explicit non-numeric port as NaN, not omitted', () => {
+  // An explicit but malformed port (`:abc`, `:-1`) must NOT collapse to the omitted-port
+  // sentinel (undefined). Reporting it as NaN keeps the host modeled while marking the port
+  // unusable, so the save path rebuilds the canonical URL from the port field instead of
+  // preserving the malformed URL as if it were a default-port one a port edit cannot fix.
+  assert.ok(Number.isNaN(parseHttpUrl('http://host:abc/mcp').port));
+  assert.ok(Number.isNaN(parseHttpUrl('http://host:-1/mcp').port));
+  assert.equal(parseHttpUrl('http://host:abc/mcp').host, 'host');
+  // An omitted port is still undefined, and a valid numeric port is unaffected.
+  assert.equal(parseHttpUrl('http://host/mcp').port, undefined);
+  assert.equal(parseHttpUrl('http://host:8080/mcp').port, 8080);
+});
+
 test('P-port0: parseMcpEntry does not preserve an explicit :0 url as a default-port url', () => {
   const { settings, notes } = parseMcpEntry({ type: 'http', url: 'http://host:0/mcp' });
   assert.equal(settings.transportMode, 'http');
@@ -435,6 +484,19 @@ test('P-portmax: parseMcpEntry keeps the default port for an out-of-range url po
   assert.equal(settings.transportHost, 'localhost');
   assert.equal(settings.transportPort, 9444, 'keeps the form default rather than the unusable 70000');
   assert.ok(notes.some((n) => /not a usable port/.test(n)));
+});
+
+test('P66: parseMcpEntry treats a non-numeric url port as unusable, not omitted', () => {
+  // A non-numeric port (`:abc`) must be handled like the unusable :0/:70000 cases: model the
+  // host, keep the form default port, and note that the canonical URL is rebuilt on save — not
+  // classified as a default-port URL preserved verbatim (which a port edit could never fix).
+  const { settings, notes } = parseMcpEntry({ type: 'http', url: 'http://host:abc/mcp' });
+  assert.equal(settings.transportMode, 'http');
+  assert.equal(settings.transportHost, 'host');
+  assert.equal(settings.transportPort, 9444, 'keeps the form default rather than the malformed port');
+  assert.ok(notes.some((n) => /not a usable port/.test(n)));
+  // The note distinguishes the malformed port from an out-of-range numeric one.
+  assert.ok(notes.some((n) => /non-numeric port/.test(n)));
 });
 
 test('P-wrapperflags: a wrapper command keeps flag-only args in the launcher portion', () => {
@@ -648,6 +710,28 @@ test('P59: a finite out-of-range maxOutputLines falls through to extraArgs', () 
   const b = parseServerArgs(['--maxOutputLines', '1.5']);
   assert.equal(b.settings.maxOutputLines, 1.5);
   assert.deepEqual(b.extraArgs, []);
+});
+
+// ---- P64: a non-positive security limit round-trips via extraArgs ------------------
+
+test('P64: a non-positive commandTimeout/maxCommandLength falls through to extraArgs', () => {
+  // The server ignores a non-positive commandTimeout/maxCommandLength and runs on its default,
+  // but the form's number input rejects negatives and validateLaunchSpec blocks any value <= 0.
+  // Modeling it would strand every save; preserve it verbatim so an unrelated edit round-trips
+  // the existing entry. Both the space-separated and attached forms divert.
+  const a = parseServerArgs(['--commandTimeout', '0', '--shell', 'cmd']);
+  assert.equal(a.settings.commandTimeout, undefined);
+  assert.deepEqual(a.extraArgs, ['--commandTimeout', '0']);
+  assert.equal(a.settings.shell, 'cmd');
+
+  const b = parseServerArgs(['--maxCommandLength=-1']);
+  assert.equal(b.settings.maxCommandLength, undefined);
+  assert.deepEqual(b.extraArgs, ['--maxCommandLength=-1']);
+
+  // A positive value is still modeled into the typed field so the form stays editable.
+  const c = parseServerArgs(['--commandTimeout', '30']);
+  assert.equal(c.settings.commandTimeout, 30);
+  assert.deepEqual(c.extraArgs, []);
 });
 
 // ---- P42: multiple unknown value-bearing extras in the suffix ---------------------

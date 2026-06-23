@@ -320,3 +320,36 @@ about yargs short-bundle parsing was verified empirically against the installed 
   `-cfoo`/`-cX` — which yargs parses as separate short boolean flags, leaving config empty — is
   preserved verbatim in `extraArgs` instead of fabricating a path a no-op save would emit as
   `--config <value>`. The P45 path cases still resolve)
+
+### Review Feedback (PR #89, round 12)
+
+P63-P66 are round-12 Codex review comments on the load -> edit -> save round trip, all about
+yargs negation/limit forms a loaded `.vscode/mcp.json` may carry. Each has an
+`analysis_N_*.md` + `comment_N_*.md` pair in this folder.
+
+- [x] P63: Consume negated boolean flags before preserving extras (fixed — `parseServerArgs`
+  now models the server's boolean negations (`--no-allowAllDirs`/`--no-allow-all-dirs`,
+  `--no-debug`, `--no-yolo`, `--no-unsafe`) instead of letting them fall through to `extraArgs`,
+  where a preserved `--no-debug` survived a save and yargs collapsed `--debug --no-debug` to
+  `debug: false`, dropping the user's edit. `allowAllDirs`/`debug` are set false; `--no-yolo`/
+  `--no-unsafe` clear `safetyMode` only when it matches, mirroring yargs last-wins without
+  clobbering an independent `--unsafe`. The tokens were added to `BOOLEAN_FLAGS` so the suffix
+  detector treats them like their positive forms)
+- [x] P64: Preserve ignored security-limit values instead of blocking saves (fixed —
+  `divertNumber` now diverts a non-positive `commandTimeout`/`maxCommandLength` to `extraArgs`
+  like the other unrepresentable numerics. The server ignores such a value and runs on its
+  default, but the form's number input rejects a negative and `validateLaunchSpec` blocks any
+  value <= 0, so modeling a loaded `--commandTimeout 0`/`--maxCommandLength=-1` stranded every
+  save; preserving it lets an unrelated edit round-trip the entry)
+- [x] P65: Strip negated scalar aliases when replacing preserved flags (fixed — `stripValueFlag`
+  now also drops the yargs negation of each scalar option it strips (`--no-shell`,
+  `--no-logDirectory`, `--no-commandTimeout`, ...). A loaded negation that survived made yargs
+  parse the option as an array (`shell: ['cmd', false]`) the server's scalar `applyCli*` helpers
+  apply none of; the strip is guarded by the same emit condition, so an UNSET field still
+  round-trips its preserved negation)
+- [x] P66: Reject non-numeric URL ports instead of treating them as omitted (fixed —
+  `parseHttpUrl` now captures an explicit port token even when malformed and reports `:abc`/`:-1`
+  as `NaN` (distinct from an omitted `undefined`). That routes a malformed-port URL through the
+  existing unusable-port branch — host modeled, default port kept, canonical URL rebuilt on save
+  from the editable port field — instead of preserving it verbatim as a default-port URL a port
+  edit could never fix. The port group stops at `/?#` so a valid numeric port is still read)
