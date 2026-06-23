@@ -1205,3 +1205,79 @@ test('P41: a file save preserves the CURRENT on-disk url when host/port match', 
   // The current on-disk URL (custom scheme/path) is preserved, not the stale canonical one.
   assert.equal(wcli0Entry().url, 'https://127.0.0.1:9444/custom/mcp');
 });
+
+test('P46: the merge base and preservation data come from one on-disk snapshot', async () => {
+  // The panel snapshot and the single up-front on-disk read both see env {A} plus an
+  // unmodeled envFile. An external edit then lands DURING the env modal (adding a var,
+  // dropping envFile, adding an unmodeled `dev`). The save must merge from that single
+  // up-front snapshot, so the written entry is a coherent view of it (env {A} + envFile) and
+  // never an incoherent mix of the stale generated env with a freshly re-read base.
+  const loaded = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    env: { A: '1' },
+    envFile: '.env',
+  };
+  const seed = (entry) =>
+    vscode.__state.files.set(
+      '/ws/.vscode/mcp.json',
+      Buffer.from(JSON.stringify({ servers: { wcli0: entry } })),
+    );
+  seed(loaded);
+  // Mutate the on-disk file at the moment the env modal is shown (warnReturn is read then).
+  Object.defineProperty(vscode.__state.calls, 'warnReturn', {
+    configurable: true,
+    get() {
+      seed({
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'wcli0@latest'],
+        env: { A: '1', B: '2' },
+        dev: { watch: true },
+      });
+      return 'Include environment';
+    },
+  });
+  try {
+    const s = defaultSettings();
+    s.shell = 'cmd';
+    const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+    assert.equal(ok, true);
+    const e = wcli0Entry();
+    // Coherent up-front snapshot: the generated env {A} AND that snapshot's envFile, with no
+    // leak of the concurrently-added unmodeled `dev` field from the later read.
+    assert.deepEqual(e.env, { A: '1' });
+    assert.equal(e.envFile, '.env');
+    assert.equal(e.dev, undefined);
+  } finally {
+    Object.defineProperty(vscode.__state.calls, 'warnReturn', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+  }
+});
+
+test('P48: a no-op save of an uppercase HTTP entry preserves the custom url', async () => {
+  // The entry's type is written uppercase (HTTP) with a custom scheme/path; parseMcpEntry
+  // models it as http, so a no-op save must preserve the URL rather than read the case
+  // difference as a mode switch and rebuild the canonical http://host:port/mcp form.
+  const loaded = { type: 'HTTP', url: 'https://127.0.0.1:9444/custom/mcp' };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: { wcli0: { type: 'HTTP', url: 'https://127.0.0.1:9444/custom/mcp' } },
+      }),
+    ),
+  );
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '127.0.0.1';
+  s.transportPort = 9444;
+  s.transportUrl = 'https://127.0.0.1:9444/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'https://127.0.0.1:9444/custom/mcp');
+});

@@ -121,22 +121,39 @@ interface OptionSpec {
 // alias (`-c`, `--c`) is included so a hand-written entry that uses the short form is
 // modeled like `--config` instead of dumped to extraArgs (matching the forward
 // builder's stripConfigArgs, which recognizes the same alias forms — P32).
+//
+// The server defines its multi-word options in camelCase, but yargs camel-case
+// expansion ALSO accepts the kebab-case spelling, so a hand-written entry may use
+// `--max-command-length` etc.; the kebab-case aliases below are modeled identically to
+// their camelCase forms so such a value is recognized rather than hidden in extraArgs and
+// then re-emitted in both spellings on save (which yargs parses as an array — P47).
 const VALUE_OPTIONS: Record<string, OptionSpec> = {
   '--config': { key: 'configFile', kind: 'string' },
   '-c': { key: 'configFile', kind: 'string' },
   '--c': { key: 'configFile', kind: 'string' },
   '--shell': { key: 'shell', kind: 'string' },
   '--allowedDir': { key: 'allowedDirectories', kind: 'array' },
+  '--allowed-dir': { key: 'allowedDirectories', kind: 'array' },
   '--initialDir': { key: 'initialDir', kind: 'string' },
+  '--initial-dir': { key: 'initialDir', kind: 'string' },
   '--commandTimeout': { key: 'commandTimeout', kind: 'number' },
+  '--command-timeout': { key: 'commandTimeout', kind: 'number' },
   '--maxCommandLength': { key: 'maxCommandLength', kind: 'number' },
+  '--max-command-length': { key: 'maxCommandLength', kind: 'number' },
   '--wslMountPoint': { key: 'wslMountPoint', kind: 'string' },
+  '--wsl-mount-point': { key: 'wslMountPoint', kind: 'string' },
   '--blockedCommand': { key: 'blockedCommands', kind: 'array' },
+  '--blocked-command': { key: 'blockedCommands', kind: 'array' },
   '--blockedArgument': { key: 'blockedArguments', kind: 'array' },
+  '--blocked-argument': { key: 'blockedArguments', kind: 'array' },
   '--blockedOperator': { key: 'blockedOperators', kind: 'array' },
+  '--blocked-operator': { key: 'blockedOperators', kind: 'array' },
   '--maxOutputLines': { key: 'maxOutputLines', kind: 'number' },
+  '--max-output-lines': { key: 'maxOutputLines', kind: 'number' },
   '--maxReturnLines': { key: 'maxReturnLines', kind: 'number' },
+  '--max-return-lines': { key: 'maxReturnLines', kind: 'number' },
   '--logDirectory': { key: 'logDirectory', kind: 'string' },
+  '--log-directory': { key: 'logDirectory', kind: 'string' },
   '--transport': { key: 'transportMode', kind: 'string' },
   '--http-host': { key: 'transportHost', kind: 'string' },
   '--sse-host': { key: 'transportHost', kind: 'string' },
@@ -148,15 +165,22 @@ const VALUE_OPTIONS: Record<string, OptionSpec> = {
 
 // Boolean / tri-state / safety flags the forward builder emits with no value. Shared by
 // parseServerArgs (which models them) and isRecognizedServerFlag (the suffix detector).
+// The kebab-case spellings are yargs camel-case-expansion aliases of the camelCase
+// options, accepted just like their camelCase forms (P47).
 const BOOLEAN_FLAGS = new Set<string>([
   '--allowAllDirs',
+  '--allow-all-dirs',
   '--debug',
   '--yolo',
   '--unsafe',
   '--enableTruncation',
   '--no-enableTruncation',
+  '--enable-truncation',
+  '--no-enable-truncation',
   '--enableLogResources',
   '--no-enableLogResources',
+  '--enable-log-resources',
+  '--no-enable-log-resources',
 ]);
 
 // The value-option flags that select/override transport. For a stdio entry the
@@ -265,9 +289,16 @@ function isPureServerFlagRun(tokens: string[]): boolean {
  * Defaults to `args.length` (no server flags). Scanning for the longest such suffix keeps
  * launcher options whose names collide with wcli0 flags (a wrapper's `--config`, node's
  * `--inspect`) in the launcher portion (P15).
+ *
+ * `allowIndexZero` is true only when the command IS the wcli0 binary, so an index-0 run
+ * really is server flags. For a non-wcli0 (wrapper) command an index-0 flag run is
+ * ambiguous — `mywrapper --transport fast` is the wrapper's own option, not a wcli0 flag
+ * (P-wrapperflags) — so scanning starts at index 1: the leading token stays in the
+ * launcher portion and the scan still finds a LATER modeled-flag suffix, e.g. the
+ * `--shell` in `wrapper --no-cache --shell bash`, instead of stranding it (P43).
  */
-function serverFlagSuffixStart(args: string[]): number {
-  for (let i = 0; i < args.length; i++) {
+function serverFlagSuffixStart(args: string[], allowIndexZero: boolean): number {
+  for (let i = allowIndexZero ? 0 : 1; i < args.length; i++) {
     if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i))) {
       return i;
     }
@@ -342,8 +373,9 @@ export function parseServerArgs(
 
   for (let i = 0; i < args.length; i++) {
     const token = args[i];
-    // Boolean / tri-state / safety flags carry no value.
-    if (token === '--allowAllDirs') {
+    // Boolean / tri-state / safety flags carry no value. Each accepts both the camelCase
+    // spelling and its yargs kebab-case alias (P47).
+    if (token === '--allowAllDirs' || token === '--allow-all-dirs') {
       out.allowAllDirs = true;
       continue;
     }
@@ -359,11 +391,21 @@ export function parseServerArgs(
       out.safetyMode = 'unsafe';
       continue;
     }
-    if (token === '--enableTruncation' || token === '--no-enableTruncation') {
+    if (
+      token === '--enableTruncation' ||
+      token === '--no-enableTruncation' ||
+      token === '--enable-truncation' ||
+      token === '--no-enable-truncation'
+    ) {
       out.enableTruncation = (token.startsWith('--no-') ? 'disabled' : 'enabled') as TriState;
       continue;
     }
-    if (token === '--enableLogResources' || token === '--no-enableLogResources') {
+    if (
+      token === '--enableLogResources' ||
+      token === '--no-enableLogResources' ||
+      token === '--enable-log-resources' ||
+      token === '--no-enable-log-resources'
+    ) {
       out.enableLogResources = (token.startsWith('--no-') ? 'disabled' : 'enabled') as TriState;
       continue;
     }
@@ -386,9 +428,37 @@ export function parseServerArgs(
       extraArgs.push(token);
       continue;
     }
-    // Space-separated `--opt value` form.
+    // Short-option bundle carrying the `c` config alias without `=` (yargs reads the `c`
+    // alias anywhere in a single-dash bundle as --config): `-c/other.json`, `-cX`,
+    // `-xc/other.json`, `-dc /other.json`. Mirror argsBuilder.stripConfigArgs so a bundled
+    // config pin is modeled as configFile instead of being hidden in extraArgs, where the
+    // Config file field and loadability checks would miss it (P45). The `--config`/`--c`
+    // long forms and every `=` form are handled by the value-option paths above/below.
+    if (token.length > 1 && token[0] === '-' && token[1] !== '-' && token.includes('c')) {
+      const attached = token.slice(token.indexOf('c') + 1);
+      if (attached) {
+        out.configFile = attached; // value attached to the bundle, e.g. `-c/other.json`
+        continue;
+      }
+      if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        out.configFile = args[i + 1]; // `c` is the bundle's last char; the next token is its value
+        i++;
+        continue;
+      }
+      // `c` is the bundle's last char with no following value (the next token is another
+      // flag, or there is none): yargs would read config as empty. Preserve the token
+      // verbatim so it round-trips rather than fabricating a value (mirrors P44/P86).
+      extraArgs.push(token);
+      continue;
+    }
+    // Space-separated `--opt value` form. Consume the next token as the value ONLY when it
+    // is a real value, not another option: yargs parses e.g. `--blockedCommand --debug` as
+    // an empty `blockedCommand` plus a still-applied `--debug`, so swallowing the flag would
+    // drop it and rewrite the option with a bogus value on save (P44, mirroring
+    // stripConfigArgs). A value-option whose next token is a flag is preserved verbatim in
+    // extraArgs and the flag is parsed on the next iteration.
     const spec = optionFor(token);
-    if (spec && i + 1 < args.length) {
+    if (spec && i + 1 < args.length && !args[i + 1].startsWith('-')) {
       if (spec.kind === 'number' && !Number.isFinite(Number(args[i + 1]))) {
         // Unparseable numeric value: don't consume it. The flag is preserved here, and the
         // following value token falls through to extraArgs on the next iteration (P34).
@@ -548,18 +618,14 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     // token, so a launcher option that collides with a wcli0 flag name (a wrapper's own
     // `--config`/`--transport`, node's `--inspect`, uvx's `--from`) stays in customArgs
     // and a load/save round-trip preserves the command order (P15).
-    let start = serverFlagSuffixStart(args);
-    // A suffix that begins at index 0 has NO launcher token before it, so for a wrapper
-    // command the leading flags are ambiguous: `mywrapper --transport fast` or
-    // `mywrapper --config wrapper.json` are the wrapper's own options, but a flag-only run
-    // parses cleanly as wcli0 flags and would be misread as wcli0 settings — a no-op save
-    // could then rewrite the entry as a network server or validate the wrapper's path as
-    // wcli0.configFile (P-wrapperflags). Only trust an index-0 boundary when the command IS
-    // the wcli0 binary (its args really are server flags); otherwise keep every arg in the
-    // launcher portion, where it round-trips verbatim.
-    if (start === 0 && !isWcli0Command(command)) {
-      start = args.length;
-    }
+    //
+    // Only trust an index-0 boundary when the command IS the wcli0 binary (its args really
+    // are server flags). For a wrapper command an index-0 flag run is ambiguous —
+    // `mywrapper --transport fast` is the wrapper's own option, not wcli0's — so the scan
+    // skips index 0 and keeps looking for a later modeled-flag suffix, so the `--shell` in
+    // `wrapper --no-cache --shell bash` is still recovered instead of stranded in customArgs
+    // (P-wrapperflags / P43).
+    const start = serverFlagSuffixStart(args, isWcli0Command(command));
     s.customArgs = args.slice(0, start);
     serverArgs = args.slice(start);
   }

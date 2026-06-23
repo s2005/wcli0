@@ -203,3 +203,29 @@ were satisfied by the prior commits and the rest are added here.
   `isPureServerFlagRun` lets every unknown `--flag` consume one following value
   once the modeled portion has begun, so a suffix with several `--unknown value`
   pairs no longer hides the modeled flags)
+
+### Review Feedback (PR #89, round 7)
+
+P43-P48 are the unresolved Codex review threads from the round-6 re-review. Each
+has an `analysis_N_*.md` + `comment_N_*.md` pair in this folder.
+
+- [x] P43: Keep scanning after ambiguous launcher-only flags (fixed —
+  `serverFlagSuffixStart` takes `allowIndexZero` and skips index 0 for non-wcli0
+  commands, so a wrapper flag before the modeled flags no longer strands the
+  server suffix in `customArgs`)
+- [x] P44: Don't consume another flag as a missing option value (fixed — the
+  space-separated value path consumes the next token only when it is not another
+  flag, so `--blockedCommand --debug` preserves both instead of swallowing
+  `--debug`)
+- [x] P45: Parse bundled config aliases as configFile (fixed — `parseServerArgs`
+  handles single-dash bundles carrying the `c` alias, e.g. `-c/other.json` /
+  `-xc /other.json`, mirroring the forward `stripConfigArgs`)
+- [x] P46: Merge from a single file snapshot (fixed — the write-step merge base
+  is the same up-front on-disk read used for env/argv/url preservation, so a
+  concurrent edit cannot pair a fresh base with stale generated env/args)
+- [x] P47: Recognize yargs kebab-case option aliases (fixed — kebab-case aliases
+  for the modeled camelCase value options and boolean flags are added to the
+  reverse parser tables, so `--max-command-length` etc. are modeled, not hidden)
+- [x] P48: Compare file source transport types case-insensitively (fixed —
+  `preservedFileUrl` lowercases `base.type` before comparing, so a no-op save of
+  an uppercase `HTTP`/`SSE` entry preserves its URL instead of rebuilding it)

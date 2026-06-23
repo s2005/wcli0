@@ -620,3 +620,69 @@ test('P42: a suffix with several valued extras still recovers the modeled flags'
   assert.equal(settings.shell, 'cmd');
   assert.deepEqual(settings.extraArgs, ['--future', 'x', '--another', 'y']);
 });
+
+// ---- P43: keep scanning past an ambiguous leading wrapper flag --------------------
+
+test('P43: a wrapper flag before the modeled flags still recovers the server suffix', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['--no-cache', '--shell', 'bash'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  // The index-0 run is ambiguous for a non-wcli0 command, but instead of stranding the whole
+  // argv in the launcher the scan continues and splits at --shell: --no-cache stays in
+  // customArgs and --shell is modeled (so a shell edit replaces it, not appends a second).
+  assert.deepEqual(settings.customArgs, ['--no-cache']);
+  assert.equal(settings.shell, 'bash');
+  assert.deepEqual(settings.extraArgs, []);
+});
+
+test('P43: a leading colliding wrapper flag still keeps a later modeled flag editable', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['--config', 'wrapper.json', '--shell', 'cmd'],
+  });
+  // The wrapper's own --config stays in customArgs (not misread as wcli0.configFile), while
+  // the later --shell is modeled.
+  assert.deepEqual(settings.customArgs, ['--config', 'wrapper.json']);
+  assert.equal(settings.configFile, '');
+  assert.equal(settings.shell, 'cmd');
+});
+
+// ---- P44: a value option followed by another flag must not swallow it -------------
+
+test('P44: a value option followed by another flag preserves both', () => {
+  const { settings, extraArgs } = parseServerArgs(['--blockedCommand', '--debug']);
+  // --blockedCommand has no value (next token is a flag): it round-trips verbatim and --debug
+  // is still applied, instead of modeling blockedCommands=['--debug'] and dropping debug.
+  assert.equal(settings.debug, true);
+  assert.equal(settings.blockedCommands, undefined);
+  assert.deepEqual(extraArgs, ['--blockedCommand']);
+});
+
+// ---- P45: bundled -c config alias forms ------------------------------------------
+
+test('P45: bundled short config aliases are modeled as configFile', () => {
+  // -c with an attached value, and the c alias bundled with other letters (value attached
+  // or as the next token) — all set the server's config, mirroring stripConfigArgs.
+  assert.equal(parseServerArgs(['-c/ws/a.json']).settings.configFile, '/ws/a.json');
+  assert.equal(parseServerArgs(['-xc', '/ws/b.json']).settings.configFile, '/ws/b.json');
+  assert.equal(parseServerArgs(['-xc/ws/c.json']).settings.configFile, '/ws/c.json');
+});
+
+// ---- P47: yargs kebab-case option aliases ----------------------------------------
+
+test('P47: kebab-case option aliases are modeled like their camelCase forms', () => {
+  const { settings } = parseServerArgs([
+    '--max-command-length', '1000',
+    '--blocked-command', 'rm',
+    '--allow-all-dirs',
+    '--no-enable-truncation',
+  ]);
+  assert.equal(settings.maxCommandLength, 1000);
+  assert.deepEqual(settings.blockedCommands, ['rm']);
+  assert.equal(settings.allowAllDirs, true);
+  assert.equal(settings.enableTruncation, 'disabled');
+});

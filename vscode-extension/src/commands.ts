@@ -235,7 +235,12 @@ function preservedFileUrl(
   if (!rawUrl) {
     return undefined;
   }
-  const baseType = typeof base.type === 'string' ? base.type : 'stdio';
+  // Compare against the lowercased type: parseMcpEntry models an entry written as
+  // `HTTP`/`SSE` as http/sse, so settings.transportMode is already lowercase. Comparing the
+  // raw type would treat a no-op save of an uppercase entry as a mode switch and rebuild the
+  // URL to the canonical form, losing the custom/default-port URL shape the parser preserved
+  // (P48).
+  const baseType = typeof base.type === 'string' ? base.type.toLowerCase() : 'stdio';
   if (settings.transportMode !== baseType) {
     // The user switched the transport mode; rebuild the URL for the new mode.
     return undefined;
@@ -749,13 +754,17 @@ export async function writeMcpJsonFromSettings(
   }
 
   const servers = (existing.servers as Record<string, unknown>) ?? {};
-  // For a file source, re-merge the form-owned fields onto the CURRENT on-disk wcli0 entry
-  // rather than the snapshot loaded into the panel, so an external edit made to the same
-  // entry after it was loaded (e.g. new headers/envFile/oauth) is preserved instead of being
-  // silently discarded (P20). Falls back to the loaded baseEntry when no entry is on disk.
+  // For a file source, merge the form-owned fields onto the SAME on-disk snapshot that
+  // supplied the env/argv/url preservation data — the single read taken up front
+  // (onDiskEntry) — rather than re-reading servers.wcli0 here. The up-front read already
+  // captures an external edit made after the panel loaded (e.g. new headers/envFile/oauth),
+  // so it still satisfies P20; using a SECOND, later read for the merge base would pair a
+  // fresh base with the stale generated env/args built from the up-front read, producing an
+  // incoherent mix that drops externally added env or flags (P46). Falls back to the loaded
+  // baseEntry when no entry was on disk.
   if (fileSource && generatedForMerge) {
-    const onDisk = isPlainObject(servers.wcli0) ? servers.wcli0 : baseEntry!;
-    entry = mergeEntryOntoBase(onDisk, generatedForMerge, settings.transportMode);
+    const mergeBase = (onDiskEntry ?? baseEntry!) as Record<string, unknown>;
+    entry = mergeEntryOntoBase(mergeBase, generatedForMerge, settings.transportMode);
   }
   servers.wcli0 = entry;
   existing.servers = servers;
