@@ -163,6 +163,20 @@ export interface BuildOptions {
    * would conflict with the file's per-shell `enabled`/security settings.
    */
   managedConfigPath?: string;
+
+  /**
+   * When true, a hand-authored `--transport` token kept in `extraArgs` is NOT stripped from a
+   * stdio launch. Set only for a file-source round-trip ("Save to file"), where the entry's
+   * `type: stdio` is authoritative and the user's verbatim argv — including a stray
+   * `--transport http`/`--transport=sse` they wrote alongside `--http-*` options — must survive
+   * an unrelated save rather than being silently dropped (P-fileextratransport). The safety
+   * strip still applies to the provider and settings-export paths, which must never let an
+   * extraArgs `--transport http` turn a stdio registration into a network listener. It is
+   * still stripped here when a `--config` is emitted (the builder also pushes `--transport
+   * stdio`, and two `--transport` tokens yargs-merge into an array the server applies neither
+   * of).
+   */
+  preserveExtraTransport?: boolean;
 }
 
 /**
@@ -426,8 +440,17 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     // below so it cannot start a network listener.
     if (configFile) {
       args.push('--transport', 'stdio');
+      // A --transport stdio is now emitted, so a conflicting extraArgs --transport must be
+      // stripped even for a file-source round-trip — two tokens would yargs-merge into an
+      // array the server resolves to neither, silently keeping the referenced config's mode.
+      stripExtraTransport = true;
+    } else {
+      // No --transport is emitted. The provider/settings-export paths still strip a stray
+      // extraArgs --transport so a stdio registration cannot become a network listener; a
+      // file-source round-trip instead preserves the user's authored token verbatim
+      // (P-fileextratransport).
+      stripExtraTransport = !opts.preserveExtraTransport;
     }
-    stripExtraTransport = true;
   } else {
     args.push('--transport', s.transportMode);
     stripExtraTransport = true;

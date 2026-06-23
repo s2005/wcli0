@@ -1865,18 +1865,24 @@ function renderHtml(webview: vscode.Webview): string {
   // persisting them globally (P97).
   function applyScopeAvailability(scope) {
     const isUser = scope === 'Global';
+    // The masks are VS Code settings-only opt-outs that no .vscode/mcp.json entry can store,
+    // so disable them on ANY file source regardless of mode — editing one on a stdio file
+    // source would otherwise let Save to file "succeed" while the post-save reparse drops the
+    // edit and reports Saved (P-maskfile). http/sse file sources already disable the whole
+    // Shells/Profiles panels via applyFileTransportLock; this also covers the stdio case.
+    const isFile = currentSourceClient === 'mcpJson';
     const ign = $('ignoreInheritedShells');
     if (ign) {
-      ign.disabled = isUser;
+      ign.disabled = isUser || isFile;
       const note = $('ignoreInheritedShellsUserNote');
       if (note) note.style.display = isUser ? '' : 'none';
     }
     // The inherited-profiles mask is Workspace-only for the same reason (a Global
     // value would suppress the user's own profiles everywhere), so disable it while
-    // editing User scope and show why.
+    // editing User scope and show why; disable it on a file source too (P-maskfile).
     const ignProf = $('ignoreInheritedProfiles');
     if (ignProf) {
-      ignProf.disabled = isUser;
+      ignProf.disabled = isUser || isFile;
       const noteProf = $('ignoreInheritedProfilesUserNote');
       if (noteProf) noteProf.style.display = isUser ? '' : 'none';
     }

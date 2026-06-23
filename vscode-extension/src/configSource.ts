@@ -529,7 +529,7 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     }
     const canonicalPath = type === 'http' ? 'mcp' : 'sse';
     const parsed = parseHttpUrl(url);
-    if (parsed && parsed.port !== undefined && parsed.port > 0) {
+    if (parsed && parsed.port !== undefined && parsed.port >= 1 && parsed.port <= 65535) {
       // Fully modeled: an explicit host AND usable port the form's fields can edit.
       s.transportHost = parsed.host;
       s.transportPort = parsed.port;
@@ -552,12 +552,13 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
           `http://host:port/${canonicalPath} form, and the port field does not affect it.`,
       );
     } else if (parsed) {
-      // An explicitly-written but unusable port (e.g. `:0`), which the port field cannot
-      // hold (min=1). Show the host and keep the form's default port; unlike a default-port
-      // URL the verbatim `:0` URL is NOT preserved on save (preservedFileUrl requires the
-      // port to be unchanged, and 0 can never match the default), so saving rebuilds the
-      // canonical http://host:port form from the port field rather than writing back an
-      // invalid port that ignores edits (P-port0).
+      // An explicitly-written but unusable port (e.g. `:0`, or one above 65535 such as
+      // `:70000`), which the port field cannot hold (it is constrained to 1..65535). Show
+      // the host and keep the form's default port; unlike a default-port URL the verbatim
+      // out-of-range URL is NOT preserved on save (preservedFileUrl requires the port to be
+      // unchanged, and an out-of-range value can never match the default), so saving rebuilds
+      // the canonical http://host:port form from the port field rather than loading an invalid
+      // port that strands the form's number input and blocks unrelated saves (P-port0/P-portmax).
       s.transportHost = parsed.host;
       notes.push(
         `The ${type} URL "${url}" specifies port ${parsed.port}, which is not a usable port ` +

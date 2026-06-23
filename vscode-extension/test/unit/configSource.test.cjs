@@ -425,6 +425,18 @@ test('P-port0: parseMcpEntry does not preserve an explicit :0 url as a default-p
   assert.ok(notes.some((n) => /not a usable port/.test(n)));
 });
 
+test('P-portmax: parseMcpEntry keeps the default port for an out-of-range url port (>65535)', () => {
+  // A port above 65535 cannot be held by the form's number input (max=65535); loading it
+  // verbatim would strand the form in an invalid state and block unrelated saves. It is
+  // treated like the unusable :0 case: the host is modeled, the port keeps the form default,
+  // and a note explains the canonical URL is rebuilt on save.
+  const { settings, notes } = parseMcpEntry({ type: 'http', url: 'http://localhost:70000/mcp' });
+  assert.equal(settings.transportMode, 'http');
+  assert.equal(settings.transportHost, 'localhost');
+  assert.equal(settings.transportPort, 9444, 'keeps the form default rather than the unusable 70000');
+  assert.ok(notes.some((n) => /not a usable port/.test(n)));
+});
+
 test('P-wrapperflags: a wrapper command keeps flag-only args in the launcher portion', () => {
   // `mywrapper --transport fast` is the wrapper's own option, not a wcli0 flag; with no
   // launcher positional before it there is no unambiguous server-flag boundary, so it must

@@ -1281,3 +1281,127 @@ test('P48: a no-op save of an uppercase HTTP entry preserves the custom url', as
   assert.equal(ok, true);
   assert.equal(wcli0Entry().url, 'https://127.0.0.1:9444/custom/mcp');
 });
+
+test('P-fileextratransport: a stdio file save preserves a hand-authored --transport flag', async () => {
+  // The panel loaded a stdio entry whose args carry a hand-written `--transport http` and a
+  // companion `--http-port` (parseMcpEntry keeps both in extraArgs without flipping the mode,
+  // P30). An unrelated edit must round-trip those verbatim, not strip --transport and orphan
+  // the --http-port.
+  const loaded = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--transport', 'http', '--http-port', '9000'],
+  };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { wcli0: loaded } })),
+  );
+  const s = defaultSettings();
+  s.shell = 'cmd'; // an unrelated modeled edit triggers a regenerate
+  s.extraArgs = ['--transport', 'http', '--http-port', '9000']; // as parseMcpEntry models it
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  const args = wcli0Entry().args;
+  assert.ok(args.includes('--shell'), 'the modeled edit is written');
+  const ti = args.indexOf('--transport');
+  assert.ok(ti !== -1 && args[ti + 1] === 'http', 'the authored --transport http is preserved');
+  const pi = args.indexOf('--http-port');
+  assert.ok(pi !== -1 && args[pi + 1] === '9000', 'the companion --http-port is not orphaned');
+});
+
+test('P-fileextratransport: the settings export still strips a stray --transport from a stdio entry', async () => {
+  // The safety strip must remain for the settings-driven export (no baseEntry): a stray
+  // extraArgs --transport must never turn a stdio registration into a network listener.
+  const s = defaultSettings();
+  s.extraArgs = ['--transport', 'http'];
+  const ok = await writeMcpJsonFromSettings(s, WS[0]);
+  assert.equal(ok, true);
+  const args = wcli0Entry().args;
+  assert.equal(args.includes('--transport'), false, 'the stray --transport is stripped on export');
+});
+
+test('P-wslmount: a stdio file save carries forward an on-disk --wslMountPoint change', async () => {
+  // --wslMountPoint round-trips but has no form control, so it must be re-derived from the
+  // CURRENT on-disk entry — an unrelated save must not rebuild args from the stale loaded value
+  // and drop a --wslMountPoint another process changed after the panel loaded.
+  const loaded = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--wslMountPoint', '/mnt'],
+  };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: {
+          wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--wslMountPoint', '/wsl'] },
+        },
+      }),
+    ),
+  );
+  const s = defaultSettings();
+  s.shell = 'cmd'; // an unrelated modeled edit triggers a regenerate
+  s.wslMountPoint = '/mnt'; // the stale loaded value the form holds
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+  assert.equal(ok, true);
+  const args = wcli0Entry().args;
+  const i = args.indexOf('--wslMountPoint');
+  assert.ok(i !== -1 && args[i + 1] === '/wsl', 'the current on-disk /wsl value is carried forward');
+  assert.equal(args.includes('/mnt'), false, 'the stale loaded /mnt value is not re-emitted');
+});
+
+test('P-unknowntype: a file save refuses an unknown transport type instead of normalizing it to stdio', async () => {
+  // A future/custom transport such as "websocket" is parsed as stdio for its editable fields,
+  // but saving would overwrite the original type with stdio. Refuse rather than silently
+  // normalize after an unrelated edit.
+  const base = { type: 'websocket', command: 'npx', args: ['-y', 'wcli0@latest'], url: 'ws://x' };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { wcli0: base } })),
+  );
+  const before = vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8');
+  const s = defaultSettings();
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false, 'the unknown-type save is refused');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /not stdio\/http\/sse/.test(m)),
+    'explains the type cannot be saved from the form',
+  );
+  assert.equal(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+    before,
+    'the file is left untouched',
+  );
+});
+
+test('P-emptyprofile: a file save refuses a non-empty but non-emittable profile', async () => {
+  // The Profiles editor accepts any JSON object, so a profile with no emittable env
+  // (`{"p":{"description":"x","env":{}}}`) is not launch-meaningful yet is still an unsaved
+  // edit the entry cannot store; the reparse would drop it while reporting Saved. Refuse it.
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  const s = defaultSettings();
+  s.profiles = { p: { description: 'x', env: {} } };
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false, 'the non-emittable profile edit is refused');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /cannot be saved from this form/.test(m)),
+    'explains the edit cannot be saved from a file-source form',
+  );
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
+});
+
+test('P-maskfile: a file save refuses a non-default ignoreInheritedShells mask', async () => {
+  // The masks are settings-only opt-outs no entry can store; a non-default value reaching the
+  // save is an unsaved edit the reparse would drop while reporting Saved. Refuse it.
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  const s = defaultSettings();
+  s.ignoreInheritedShells = true;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false, 'the masked-edit save is refused');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /ignore inherited/i.test(m)),
+    'explains the mask is a settings-only option',
+  );
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
+});

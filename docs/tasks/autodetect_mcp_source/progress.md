@@ -229,3 +229,29 @@ has an `analysis_N_*.md` + `comment_N_*.md` pair in this folder.
 - [x] P48: Compare file source transport types case-insensitively (fixed —
   `preservedFileUrl` lowercases `base.type` before comparing, so a no-op save of
   an uppercase `HTTP`/`SSE` entry preserves its URL instead of rebuilding it)
+
+### Review Feedback (PR #89, round 8)
+
+P49-P54 are the unresolved Codex review threads from the round-7 re-review. Each
+has an `analysis_N_*.md` + `comment_N_*.md` pair in this folder.
+
+- [x] P49: Disable settings-only masks for file sources (fixed —
+  `applyScopeAvailability` disables `ignoreInheritedShells`/`ignoreInheritedProfiles`
+  on any file source, and `writeMcpJsonFromSettings` refuses a file save carrying a
+  non-default mask, so a stdio file source can no longer "Save" a dropped mask edit)
+- [x] P50: Treat oversized URL ports as invalid (fixed — `parseMcpEntry` gates the
+  fully-modeled branch on `1..65535`, so a `:70000` URL falls to the unusable-port
+  recovery like `:0` instead of stranding the form's number input)
+- [x] P51: Preserve stdio transport flags on file saves (fixed — a new
+  `preserveExtraTransport` build option skips the stdio `--transport` strip for a
+  file-source round-trip when no `--config` is emitted, so a hand-authored
+  `--transport http` and its companion `--http-*` args round-trip verbatim)
+- [x] P52: Refuse saves for unknown transport types (fixed —
+  `writeMcpJsonFromSettings` refuses a file save when the merge-base entry's `type`
+  is not stdio/http/sse, so a `websocket` entry is not silently normalized to stdio)
+- [x] P53: Preserve current wslMountPoint on file saves (fixed — `wslMountPoint` is
+  added to the on-disk uneditable-argv carry-forward, so an externally changed
+  `--wslMountPoint` survives an unrelated save instead of reverting to the stale load)
+- [x] P54: Reject all profile edits for file sources (fixed — the file-source guard
+  gates on any non-empty `settings.profiles` instead of only launch-meaningful ones,
+  so a non-emittable profile is refused rather than reported Saved and dropped)

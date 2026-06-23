@@ -15,7 +15,6 @@ import {
   hasPerShellConfig,
   hasProfilesConfig,
   hasRawPerShellConfig,
-  hasRawProfilesConfig,
   hasUnresolvedExtensionVariables,
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
@@ -447,12 +446,33 @@ export async function writeMcpJsonFromSettings(
   // be refused (P-maskedshells). The settings-driven export is handled per-mode below: there
   // shells/profiles persist in wcli0.* settings and the provider builds its own managed
   // config, so they get a sync warning, not a hard block.
-  if (fileSource && (hasRawPerShellConfig(settings) || hasRawProfilesConfig(settings))) {
+  //
+  // For profiles, gate on ANY non-empty profiles object, not only launch-MEANINGFUL ones
+  // (hasRawProfilesConfig): the Profiles editor accepts any JSON object, so a non-emittable
+  // profile such as {"p":{"description":"x","env":{}}} is still an unsaved edit the entry
+  // cannot store and the reparse drops while reporting "Saved" (P-emptyprofile). Emptiness
+  // is the right gate because a clean file load never populates profiles (parseMcpEntry leaves
+  // them {}), so this only fires on a real edit, never on an untouched save.
+  const hasFileProfileEdit = Object.keys(settings.profiles ?? {}).length > 0;
+  if (fileSource && (hasRawPerShellConfig(settings) || hasFileProfileEdit)) {
     void vscode.window.showErrorMessage(
       'wcli0: per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles) cannot ' +
         'be written to a .vscode/mcp.json entry, so they cannot be saved from this form. They live ' +
         "in the server's config file; edit it directly (and reference it via --config for stdio), " +
         'then reload the source.',
+    );
+    return false;
+  }
+  // The inherited-config masks (ignoreInheritedShells / ignoreInheritedProfiles) are
+  // settings-only opt-outs that no .vscode/mcp.json entry can store. The form disables their
+  // controls on a file source, but guard the host too: a non-default mask reaching this save is
+  // an unsaved edit the post-write reparse would silently drop while reporting "Saved", so
+  // refuse it explicitly (P-maskfile).
+  if (fileSource && (settings.ignoreInheritedShells || settings.ignoreInheritedProfiles)) {
+    void vscode.window.showErrorMessage(
+      'wcli0: the "ignore inherited per-shell config / profiles" options are VS Code settings ' +
+        'and cannot be written to a .vscode/mcp.json entry, so they cannot be saved from this ' +
+        'form. Switch to VS Code Settings to change them.',
     );
     return false;
   }
@@ -465,6 +485,23 @@ export async function writeMcpJsonFromSettings(
   // still match the form (P41). Falls back to the loaded baseEntry when nothing is on disk.
   const onDiskEntry = fileSource ? await readWcli0Entry(folder) : undefined;
   const urlBase = (onDiskEntry ?? baseEntry) as Record<string, unknown>;
+  // An entry whose `type` the form cannot model (a future/custom transport such as
+  // "websocket") is parsed as stdio for its editable fields, but saving would let
+  // mergeEntryOntoBase overwrite that original `type` with "stdio" (and strip the other
+  // transport's URL-like fields) after an unrelated edit — silently normalizing a transport
+  // the user deliberately chose. Refuse rather than corrupt it; the parse note already directs
+  // the user to edit .vscode/mcp.json directly to change the type (P-unknowntype). Check the
+  // CURRENT on-disk entry (the actual merge base) so a type changed after load is honored.
+  const rawBaseType = fileSource && typeof urlBase.type === 'string' ? urlBase.type : '';
+  const baseType = rawBaseType ? rawBaseType.toLowerCase() : 'stdio';
+  if (fileSource && baseType !== 'stdio' && baseType !== 'http' && baseType !== 'sse') {
+    void vscode.window.showErrorMessage(
+      `wcli0: the entry's transport type "${rawBaseType}" is not stdio/http/sse and cannot be ` +
+        'saved from this form (saving would normalize it to stdio). Edit .vscode/mcp.json ' +
+        'directly to change the transport type.',
+    );
+    return false;
+  }
   // Validate only what the generated entry actually uses. A stdio entry needs a
   // working launch command; an http/sse entry only contains a URL, so local
   // launch settings (method, allowed dirs) are irrelevant and only the port
@@ -600,6 +637,11 @@ export async function writeMcpJsonFromSettings(
         blockedOperators: onDisk.blockedOperators,
         maxReturnLines: onDisk.maxReturnLines,
         transportAllowedOrigins: onDisk.transportAllowedOrigins,
+        // --wslMountPoint is parsed and re-emitted but has no form control, so it is carried
+        // forward from the current on-disk entry like the other uneditable argv fields —
+        // otherwise an unrelated save rebuilds args from the stale loaded value and drops a
+        // --wslMountPoint another process added/changed after the panel loaded (P-wslmount).
+        wslMountPoint: onDisk.wslMountPoint,
         extraArgs: onDisk.extraArgs,
       };
     } else {
@@ -615,6 +657,11 @@ export async function writeMcpJsonFromSettings(
   const spec = buildLaunchSpec(buildSettings, {
     resolvePaths: false,
     preserveRelativePaths: fileSource,
+    // A file-source save round-trips the entry's verbatim argv, so a hand-authored
+    // --transport kept in extraArgs (P30) must not be stripped from the stdio launch and
+    // leave its companion --http-* options orphaned (P-fileextratransport). The provider and
+    // settings-export paths still strip it for safety.
+    preserveExtraTransport: fileSource,
   });
 
   let entry: Record<string, unknown>;
