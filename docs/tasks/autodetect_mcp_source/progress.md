@@ -263,3 +263,31 @@ has an `analysis_N_*.md` + `comment_N_*.md` pair in this folder.
   `serverFlagSuffixStart` now requires a modeled wcli0 flag in a non-wcli0 wrapper
   suffix, so `wrapper target --verbose` keeps `--verbose` in customArgs instead of
   reordering it after the generated server flags on save)
+
+### Review Feedback (PR #89, round 10)
+
+P57-P60 were found by an exhaustive multi-agent re-audit of the load -> edit ->
+save round trip (five finders across the parser / forward-builder / save-path /
+webview / url surfaces, each candidate adversarially double-verified for reality
+and novelty against the P1-P56 + P-named baseline, and cross-checked against the
+server's own CLI/config behavior). Each has an `analysis_N_*.md` + `comment_N_*.md`
+pair in this folder. These are newly found; fixes are pending.
+
+- [ ] P57: Preserve --allowAllDirs on a file save when --initialDir is set (found —
+  `buildServerArgs` drops the modeled, form-editable `--allowAllDirs` whenever
+  `dirsConfigured` includes a non-empty `initialDir`; the server applies
+  `--allowAllDirs` before the CLI `--initialDir`, so the round-tripped entry silently
+  tightens an unrestricted server to restricted-to-initialDir, reported as "Saved")
+- [ ] P58: Don't strand file saves on a sub-1-second commandTimeout/maxCommandLength
+  (found — the number inputs carry `min="1"` (the managed/config-file bound), but the
+  server accepts any CLI value `> 0`, so `validateNumbers` refuses every file-source
+  save of a loaded `--commandTimeout 0.5` until the user corrupts the value)
+- [ ] P59: Don't refuse file saves over an out-of-range CLI log limit (found —
+  `validateLaunchSpec` applies the config-file 1..10000 bound to `maxReturnLines` /
+  `maxOutputLines` even on the non-managed file path; `maxReturnLines` has no form
+  control, so a loaded `--maxReturnLines 50000` blocks every save and is unfixable in
+  the form, though the server applies any `> 0` via `applyCliLogging`)
+- [ ] P60: Preserve a user-authored wildcard URL host on a port-only file save (found
+  — editing only the port of an `http://0.0.0.0:9444/mcp` entry makes `preservedFileUrl`
+  fall back to the `clientHost` rebuild, silently rewriting the untouched `0.0.0.0` host
+  to `127.0.0.1` (and `[::]` to `[::1]`) with no note)
