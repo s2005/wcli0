@@ -663,6 +663,49 @@ test('P43: a leading colliding wrapper flag still keeps a later modeled flag edi
   assert.equal(settings.shell, 'cmd');
 });
 
+// ---- P56: an unknown-only wrapper suffix stays with the launcher ------------------
+
+test('P56: an unknown-only wrapper suffix after a positional stays in customArgs', () => {
+  // `wrapper target --verbose`: --verbose is the wrapper's own option and the suffix carries no
+  // modeled wcli0 flag, so it must stay in customArgs. Moving it into extraArgs would reorder it
+  // after the generated server flags on a later save (target --shell cmd --verbose), changing
+  // the wrapper invocation.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--verbose'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, ['target', '--verbose']);
+  assert.deepEqual(settings.extraArgs, []);
+});
+
+test('P56: a wrapper suffix with a modeled flag among unknown flags still splits', () => {
+  // Evidence of a modeled flag (--shell) means the suffix IS wcli0's, so it is still recovered
+  // even when an unknown flag precedes it; only the truly unknown-only suffix stays put.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--verbose', '--shell', 'cmd'],
+  });
+  assert.deepEqual(settings.customArgs, ['target']);
+  assert.equal(settings.shell, 'cmd');
+  assert.deepEqual(settings.extraArgs, ['--verbose']);
+});
+
+test('P56: the wcli0 binary still models an unknown-only arg run as extraArgs', () => {
+  // For the wcli0 binary the index-0 run is genuinely wcli0's, so an unknown-only flag is a
+  // legitimate extraArg, not a launcher positional — requireModeled does not apply.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: '/usr/local/bin/wcli0',
+    args: ['--verbose'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, []);
+  assert.deepEqual(settings.extraArgs, ['--verbose']);
+});
+
 // ---- P44: a value option followed by another flag must not swallow it -------------
 
 test('P44: a value option followed by another flag preserves both', () => {

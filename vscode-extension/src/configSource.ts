@@ -232,8 +232,17 @@ function isRecognizedServerFlag(token: string): boolean {
  * value-option is an "orphan" and disqualifies the run. Used to find where the wcli0
  * flags begin so launcher options that collide with wcli0 flag names stay in the launcher
  * portion (see {@link serverFlagSuffixStart}).
+ *
+ * When `requireModeled` is true the run must contain at least one MODELED wcli0 flag to
+ * qualify: an unknown-only run such as `--verbose` is then NOT a server-flag suffix and is
+ * left in the launcher portion. This guards a non-wcli0 wrapper whose own trailing option
+ * follows a positional (`wrapper target --verbose`) — without evidence of a modeled flag the
+ * suffix is the wrapper's, not wcli0's, so moving it into extraArgs would reorder it after the
+ * generated server flags on save (`target --shell cmd --verbose`) and change the invocation
+ * (P56). For the wcli0 binary itself (the index-0 case) `requireModeled` stays false: its args
+ * really are wcli0's, so an unknown-only run is a legitimate extraArg.
  */
-function isPureServerFlagRun(tokens: string[]): boolean {
+function isPureServerFlagRun(tokens: string[], requireModeled = false): boolean {
   let seenModeled = false;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
@@ -278,7 +287,10 @@ function isPureServerFlagRun(tokens: string[]): boolean {
       i++; // consume this extraArg's value
     }
   }
-  return true;
+  // A pure flag run qualifies unconditionally, except when the caller demands evidence of a
+  // modeled wcli0 flag (a wrapper scan): an unknown-only run is then not a server-flag suffix
+  // and stays in the launcher portion (P56).
+  return requireModeled ? seenModeled : true;
 }
 
 /**
@@ -296,10 +308,16 @@ function isPureServerFlagRun(tokens: string[]): boolean {
  * (P-wrapperflags) — so scanning starts at index 1: the leading token stays in the
  * launcher portion and the scan still finds a LATER modeled-flag suffix, e.g. the
  * `--shell` in `wrapper --no-cache --shell bash`, instead of stranding it (P43).
+ *
+ * A wrapper scan additionally requires the suffix to contain a modeled wcli0 flag
+ * (`requireModeled`), so an unknown-only run such as the wrapper's own `--verbose` in
+ * `wrapper target --verbose` is NOT mistaken for a server-flag suffix and stays in the
+ * launcher portion (P56). The wcli0 binary itself (allowIndexZero) does not require this: its
+ * args are genuinely wcli0's, including unknown-only extraArgs.
  */
 function serverFlagSuffixStart(args: string[], allowIndexZero: boolean): number {
   for (let i = allowIndexZero ? 0 : 1; i < args.length; i++) {
-    if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i))) {
+    if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i), !allowIndexZero)) {
       return i;
     }
   }

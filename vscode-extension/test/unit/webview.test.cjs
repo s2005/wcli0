@@ -923,6 +923,76 @@ test('P7: saving a file source preserves unmodeled http headers on disk', async 
   assert.equal(parsed.servers.wcli0.url, 'http://127.0.0.1:9444/mcp', 'url round-trips unchanged');
 });
 
+test('P55: a network file save refuses a stale non-transport edit', async () => {
+  // The form disables the non-transport tabs for an http entry, but a value edited while the
+  // entry was still stdio is still submitted by collectChanged(). The network save would write
+  // only {type,url} and report "Saved" while silently dropping the edit, so it must be refused.
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'http', url: 'http://127.0.0.1:9444/mcp' } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'saveToFile', values: { safetyMode: 'yolo' } });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'saved'), undefined, 'no false Saved');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /stores only the transport type and URL/.test(m)),
+    'explains a network entry cannot store the non-transport edit',
+  );
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.url, 'http://127.0.0.1:9444/mcp', 'the entry is unchanged');
+  assert.equal(parsed.servers.wcli0.safetyMode, undefined, 'the stale edit was not written');
+});
+
+test('P55: a network file save allows a pure transport edit', async () => {
+  // Only transport.mode/host/port are storable in a network entry, so a host change alone is a
+  // legitimate save and must not be refused by the stale-edit guard.
+  seedWorkspaceMcpJson({ servers: { wcli0: { type: 'http', url: 'http://127.0.0.1:9444/mcp' } } });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'saveToFile', values: { 'transport.host': '10.0.0.5' } });
+  assert.ok(panel.webview.posted.find((m) => m.type === 'saved'), 'a transport-only edit saves');
+  assert.equal(vscode.__state.calls.error.length, 0, 'no refusal for a transport-only edit');
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.match(parsed.servers.wcli0.url, /10\.0\.0\.5/, 'the new host is written');
+});
+
+test('P55: a stdio->http switch refuses a non-transport edit but allows the pure switch', async () => {
+  // Switching transport is storable, but a non-transport field changed in the same save is not,
+  // so the guard refuses the mixed save and accepts the pure switch.
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  // Mixed save: switch to http AND change safety -> refused.
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  await panel.webview._handler({
+    type: 'saveToFile',
+    values: { 'transport.mode': 'http', 'transport.host': '127.0.0.1', 'transport.port': 9000, safetyMode: 'yolo' },
+  });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'saved'), undefined, 'mixed save refused');
+  assert.ok(vscode.__state.calls.error.some((m) => /stores only the transport type and URL/.test(m)));
+  // Pure switch: transport fields only -> written as an http entry.
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  await panel.webview._handler({
+    type: 'saveToFile',
+    values: { 'transport.mode': 'http', 'transport.host': '127.0.0.1', 'transport.port': 9000 },
+  });
+  assert.ok(panel.webview.posted.find((m) => m.type === 'saved'), 'the pure switch saves');
+  const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+  assert.equal(parsed.servers.wcli0.type, 'http', 'the entry is now http');
+});
+
 test('P16: a folder change pushes a detection update so the banner can appear', async () => {
   // Start with no workspace folder open.
   vscode.__state.workspaceFolders = undefined;

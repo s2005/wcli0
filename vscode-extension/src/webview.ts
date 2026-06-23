@@ -405,6 +405,27 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // unmodeled VS Code keys are preserved, P7/P12) and write it back to
       // .vscode/mcp.json. Never touches wcli0.* settings.
       const settings = overlaySettings(loadedFileSettings ?? defaultSettings(), msg.values);
+      // An http/sse entry stores only {type, url}; no other field round-trips through it. The
+      // form disables the non-transport tabs when the mode is network (applyFileTransportLock),
+      // but disabling a control does not discard an edit made while the entry was still stdio:
+      // collectChanged() still submits it, the network save writes only {type, url}, and the
+      // post-save reparse silently drops it under a misleading "Saved". Refuse while any
+      // non-transport field is among the submitted changes so the loss is explicit (P55). Use
+      // the changed-field keys (collectChanged), which name exactly the user's edits, rather
+      // than re-deriving them from the settings — only transport.mode/host/port are storable.
+      if (settings.transportMode === 'http' || settings.transportMode === 'sse') {
+        const NETWORK_SAVABLE_KEYS = new Set(['transport.mode', 'transport.host', 'transport.port']);
+        const stale = Object.keys(msg.values).filter((k) => !NETWORK_SAVABLE_KEYS.has(k));
+        if (stale.length > 0) {
+          void vscode.window.showErrorMessage(
+            'wcli0: an http/sse .vscode/mcp.json entry stores only the transport type and URL, so ' +
+              'other edits (launch command, config file, per-shell config, profiles, safety, limits, ' +
+              '...) cannot be saved from this form. Revert them, or switch the entry back to stdio ' +
+              '(or use VS Code Settings) to keep them.',
+          );
+          return;
+        }
+      }
       const ok = await writeMcpJsonFromSettings(settings, folder, { baseEntry: loadedFileEntry });
       if (!ok) {
         return;

@@ -255,3 +255,11 @@ has an `analysis_N_*.md` + `comment_N_*.md` pair in this folder.
 - [x] P54: Reject all profile edits for file sources (fixed — the file-source guard
   gates on any non-empty `settings.profiles` instead of only launch-meaningful ones,
   so a non-emittable profile is refused rather than reported Saved and dropped)
+- [x] P55: Refuse stale edits before locking network file fields (fixed — the
+  `saveToFile` handler refuses a file save when the transport mode is http/sse and
+  `collectChanged()` carries any non-transport key, so a safety/config/launch edit made
+  while the entry was stdio is no longer dropped behind a misleading Saved)
+- [x] P56: Keep unknown-only suffix flags with wrapper args (fixed —
+  `serverFlagSuffixStart` now requires a modeled wcli0 flag in a non-wcli0 wrapper
+  suffix, so `wrapper target --verbose` keeps `--verbose` in customArgs instead of
+  reordering it after the generated server flags on save)
