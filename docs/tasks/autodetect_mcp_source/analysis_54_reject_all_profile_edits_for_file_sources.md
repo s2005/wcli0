@@ -24,4 +24,4 @@ so no analogous non-meaningful gap exists there.)
 **Proposed fix:** Replace `hasRawProfilesConfig(settings)` in the guard with a
 non-empty `settings.profiles` check.
 
-**Commit:** 8be428b — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)
+**Commit:** 378cffb — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)

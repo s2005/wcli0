@@ -23,4 +23,4 @@ stale loaded snapshot) keeps the decision consistent with what the save would ov
 **Proposed fix:** Refuse a file-source save when the merge-base entry's `type` is not
 stdio/http/sse.
 
-**Commit:** 8be428b — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)
+**Commit:** 378cffb — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)

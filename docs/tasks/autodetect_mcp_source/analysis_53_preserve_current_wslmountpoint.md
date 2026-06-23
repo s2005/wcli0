@@ -20,4 +20,4 @@ that breaks the same guarantee P40 establishes for the other flags.
 **Proposed fix:** Add `wslMountPoint` to the on-disk carry-forward in
 `writeMcpJsonFromSettings`.
 
-**Commit:** 8be428b — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)
+**Commit:** 378cffb — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)

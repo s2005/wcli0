@@ -25,4 +25,4 @@ only in the real webview and is not exercised by the minimal test DOM).
 **Proposed fix:** `applyScopeAvailability` disables the masks for a file source;
 `writeMcpJsonFromSettings` adds a P-maskfile refusal.
 
-**Commit:** 8be428b — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)
+**Commit:** 378cffb — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)

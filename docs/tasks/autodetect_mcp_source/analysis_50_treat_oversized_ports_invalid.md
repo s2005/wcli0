@@ -23,4 +23,4 @@ behavior and the note consistent (P-port0/P-portmax).
 **Proposed fix:** In `parseMcpEntry`, gate the fully-modeled branch on
 `parsed.port >= 1 && parsed.port <= 65535`.
 
-**Commit:** 8be428b — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)
+**Commit:** 378cffb — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)

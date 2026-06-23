@@ -27,4 +27,4 @@ keeps both behaviors intact.
 **Proposed fix:** Add `BuildOptions.preserveExtraTransport`; pass it from
 `writeMcpJsonFromSettings` for a file source.
 
-**Commit:** 8be428b — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)
+**Commit:** 378cffb — fix(vscode): round-8 codex review follow-ups for PR #89 (file-source save round-trip)
