@@ -297,3 +297,26 @@ and `src/index.ts`.
   instead of `clientHost`, so editing only the port keeps `0.0.0.0`/`[::]` instead of
   rewriting it to `127.0.0.1`/`[::1]`; the settings-driven export keeps the `clientHost`
   bind->connect mapping)
+
+### Review Feedback (PR #89, round 11)
+
+P61-P62 are round-11 Codex review comments on the load -> edit -> save round trip. Each has
+an `analysis_N_*.md` + `comment_N_*.md` pair in this folder. The P62 fix's load-bearing claim
+about yargs short-bundle parsing was verified empirically against the installed yargs-parser.
+
+- [x] P61: Strip preserved value flags when replacing them (fixed — `buildServerArgs` now
+  strips from `extraArgs` every modeled SCALAR value flag it emits from a typed field
+  (`--shell`, `--initialDir`, `--commandTimeout`, `--maxCommandLength`, `--wslMountPoint`,
+  `--maxOutputLines`, `--maxReturnLines`, `--logDirectory`, and the emitted transport
+  host/port/origin), not just the two log-limit lines. The parser diverts a malformed modeled
+  value (`--commandTimeout bad`, `--logDirectory --debug`) verbatim into `extraArgs`, so once
+  the field is set the form value wins instead of yargs merging duplicates into an array the
+  server's `applyCli*` helpers apply none of. Each strip is guarded by the emit condition so an
+  UNSET field still round-trips its preserved value; array options stay exempt)
+- [x] P62: Don't fabricate config paths from short bundles (fixed — `parseServerArgs` models a
+  single-dash `-c<remainder>` bundle as `configFile` only in the shapes yargs actually reads as
+  the config string (a fully numeric remainder, or a non-word non-dot path char with at least
+  one more char), via the new `yargsBundleConfigValue` helper. A word-character bundle like
+  `-cfoo`/`-cX` — which yargs parses as separate short boolean flags, leaving config empty — is
+  preserved verbatim in `extraArgs` instead of fabricating a path a no-op save would emit as
+  `--config <value>`. The P45 path cases still resolve)

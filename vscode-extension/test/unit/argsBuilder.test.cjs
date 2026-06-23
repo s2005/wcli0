@@ -260,6 +260,89 @@ test('an emitted log limit drops a duplicate diverted copy from extraArgs (P59)'
   );
 });
 
+test('an emitted modeled scalar flag drops a diverted duplicate from extraArgs (P61)', () => {
+  // The parser diverts a malformed modeled value into extraArgs to round-trip it verbatim:
+  // an unparseable number is kept as `['--commandTimeout', 'bad']` (P34), and a string flag
+  // whose value is itself a flag (`--logDirectory --debug`) is kept as the bare `--logDirectory`
+  // (the following `--debug` is parsed as the debug field, not preserved). Once the form
+  // supplies a typed value the builder emits its own flag and must drop the stale diverted
+  // copy, or yargs merges the two into an array the server's applyCli* helpers apply none of
+  // (and the edited value is ignored / crashes startup).
+
+  // Unparseable security-override number: the flag AND its diverted value token are removed.
+  // Both spellings (camel + kebab) the parser may have produced are stripped.
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--commandTimeout', 'bad'] })),
+    ['--commandTimeout', '30'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--command-timeout=bad'] })),
+    ['--commandTimeout', '30'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ maxCommandLength: 4096, extraArgs: ['--maxCommandLength', 'bad'] })),
+    ['--maxCommandLength', '4096'],
+  );
+
+  // String options the parser kept as a bare diverted flag (its value was a flag): the
+  // duplicate is dropped once the typed field re-emits it.
+  assert.deepEqual(
+    buildServerArgs(defaults({ logDirectory: '/logs', extraArgs: ['--logDirectory'] })),
+    ['--logDirectory', '/logs'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ shell: 'cmd', extraArgs: ['--shell'] })),
+    ['--shell', 'cmd'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ initialDir: '/start', extraArgs: ['--initial-dir'] })),
+    ['--initialDir', '/start'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ wslMountPoint: '/mnt/', extraArgs: ['--wslMountPoint'] })),
+    ['--wslMountPoint', '/mnt/'],
+  );
+
+  // The strip stops at the flag: an unrelated following extraArg flag is NOT swallowed.
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--commandTimeout', '--keepme'] })),
+    ['--commandTimeout', '30', '--keepme'],
+  );
+
+  // A transport scalar (http/sse port) diverted as a bad number is dropped when the form
+  // supplies a valid one.
+  assert.deepEqual(
+    buildServerArgs(
+      defaults({
+        transportMode: 'http',
+        transportHost: '',
+        transportPort: 8080,
+        extraArgs: ['--http-port', 'abc'],
+      }),
+    ),
+    ['--transport', 'http', '--http-port', '8080'],
+  );
+
+  // An UNSET field still round-trips its preserved malformed value verbatim (no over-strip).
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--commandTimeout', 'bad'] })),
+    ['--commandTimeout', 'bad'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--logDirectory'] })),
+    ['--logDirectory'],
+  );
+
+  // Array options are exempt: the server merges repeats, so a preserved --allowedDir is kept
+  // even when the form adds its own (no array-coercion hazard).
+  assert.deepEqual(
+    buildServerArgs(
+      defaults({ allowedDirectories: ['/a'], extraArgs: ['--allowedDir', '/b'] }),
+    ),
+    ['--allowedDir', '/a', '--allowedDir', '/b'],
+  );
+});
+
 test('an unresolved config file path is blocking', () => {
   vscodeStub.workspace.workspaceFolders = undefined;
   const s = defaults({ configFile: '${workspaceFolder}/c.json' });

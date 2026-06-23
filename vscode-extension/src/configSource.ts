@@ -337,6 +337,29 @@ function isWcli0Command(command: string): boolean {
 }
 
 /**
+ * The config-file string yargs derives from a single-dash bundle's remainder after the `c`
+ * alias (the part after `c` in `-c<remainder>`), or `undefined` when yargs would NOT read it
+ * as the config string. Verified against yargs-parser: it attaches the remainder as the value
+ * only when the remainder is fully numeric (`-c123`, `-c-5`, `-c5.5`) or when its first
+ * character is a non-word, non-dot character with at least one more character following
+ * (`-c/etc/x.json`, `-c~/x.json`, `-c\\srv\share`). A word-character start (`-cfoo`, `-cX`,
+ * even `-cC:/x.json`) makes yargs split the remainder into separate short boolean flags so
+ * `config` is empty; a leading `.` triggers dot-notation object parsing (`-c.foo` =>
+ * `config={foo:true}`); and a lone non-word char (`-c/`) is also read as a boolean. In every
+ * such case `config` is NOT the literal remainder, so the bundle must round-trip verbatim
+ * rather than fabricate a config path (P62).
+ */
+function yargsBundleConfigValue(remainder: string): string | undefined {
+  if (/^-?\d+(\.\d*)?(e-?\d+)?$/.test(remainder)) {
+    return remainder;
+  }
+  if (remainder.length >= 2 && /\W/.test(remainder[0]) && remainder[0] !== '.') {
+    return remainder;
+  }
+  return undefined;
+}
+
+/**
  * Reverse of {@link buildServerArgs}: parse a wcli0 flag list back into the subset
  * of settings the form models, plus the leftover (unrecognized) flags. Accepts both
  * `--opt value` and `--opt=value` forms and the boolean/tri-state/safety flags the
@@ -479,7 +502,17 @@ export function parseServerArgs(
     if (token.length > 1 && token[0] === '-' && token[1] !== '-' && token.includes('c')) {
       const attached = token.slice(token.indexOf('c') + 1);
       if (attached) {
-        out.configFile = attached; // value attached to the bundle, e.g. `-c/other.json`
+        const config = yargsBundleConfigValue(attached);
+        if (config !== undefined) {
+          out.configFile = config; // value attached to the bundle, e.g. `-c/other.json`
+          continue;
+        }
+        // yargs would NOT read this remainder as the config string (`-cfoo` parses as the
+        // separate short flags `-c -f -o -o`, leaving config empty; `-c.foo` as a
+        // dot-notation object). Modeling it as configFile would fabricate a path the server
+        // never used and let a no-op save emit a spurious `--config <value>`. Preserve the
+        // token verbatim so it round-trips instead (P62).
+        extraArgs.push(token);
         continue;
       }
       if (i + 1 < args.length && !args[i + 1].startsWith('-')) {

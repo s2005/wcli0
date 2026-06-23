@@ -760,6 +760,25 @@ test('P45: bundled short config aliases are modeled as configFile', () => {
   assert.equal(parseServerArgs(['-xc/ws/c.json']).settings.configFile, '/ws/c.json');
 });
 
+test('P62: a short bundle yargs would NOT read as config is preserved, not fabricated', () => {
+  // yargs (config alias `c`, default parser) only attaches a single-dash bundle remainder as
+  // the config string when it is fully numeric or starts with a non-word, non-dot path char.
+  // A word-character start parses as separate short boolean flags (`-cfoo` => -c -f -o -o,
+  // config=""), and a leading `.` as a dot-notation object — never as the literal remainder.
+  // Modeling those as configFile would fabricate a path the server never used and let a no-op
+  // save emit a spurious `--config <value>`, so they must round-trip verbatim in extraArgs.
+  for (const bundle of ['-cfoo', '-cX', '-cfoo.json', '-cC:/x.json', '-c.foo', '-c.config.json']) {
+    const { settings, extraArgs } = parseServerArgs([bundle]);
+    assert.equal(settings.configFile, undefined, `${bundle} must not set configFile`);
+    assert.deepEqual(extraArgs, [bundle], `${bundle} must round-trip verbatim`);
+  }
+
+  // The shapes yargs DOES read as config still resolve (path separator start, or numeric).
+  assert.equal(parseServerArgs(['-c/etc/x.json']).settings.configFile, '/etc/x.json');
+  assert.equal(parseServerArgs(['-c~/x.json']).settings.configFile, '~/x.json');
+  assert.equal(parseServerArgs(['-c123']).settings.configFile, '123');
+});
+
 // ---- P47: yargs kebab-case option aliases ----------------------------------------
 
 test('P47: kebab-case option aliases are modeled like their camelCase forms', () => {

@@ -384,7 +384,8 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   if (configFile) {
     args.push('--config', configFile);
   }
-  if (s.shell && s.shell !== 'all') {
+  const emitShell = Boolean(s.shell) && s.shell !== 'all';
+  if (emitShell) {
     args.push('--shell', s.shell);
   }
   for (const dir of s.allowedDirectories) {
@@ -400,13 +401,16 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   // The server ignores non-positive commandTimeout/maxCommandLength (uses its
   // default), so only emit positive values; invalid ones are surfaced by
   // validateLaunchSpec rather than silently falling back.
-  if (s.commandTimeout != null && s.commandTimeout > 0) {
+  const emitCommandTimeout = s.commandTimeout != null && s.commandTimeout > 0;
+  if (emitCommandTimeout) {
     args.push('--commandTimeout', String(s.commandTimeout));
   }
-  if (s.maxCommandLength != null && s.maxCommandLength > 0) {
+  const emitMaxCommandLength = s.maxCommandLength != null && s.maxCommandLength > 0;
+  if (emitMaxCommandLength) {
     args.push('--maxCommandLength', String(s.maxCommandLength));
   }
-  if (s.wslMountPoint.trim()) {
+  const emitWslMountPoint = s.wslMountPoint.trim().length > 0;
+  if (emitWslMountPoint) {
     args.push('--wslMountPoint', s.wslMountPoint.trim());
   }
   for (const cmd of s.blockedCommands) {
@@ -475,6 +479,9 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   // stdio launch: a provider/mcp.json stdio registration must never let an
   // extraArgs value such as `--transport http` turn the process into a network
   // listener the client never connects to.
+  // The transport host/port/origin scalar flags this build actually emitted, recorded so a
+  // diverted/preserved copy of the SAME flag can be stripped from extraArgs below (P61).
+  const emittedTransportScalarFlags: string[] = [];
   let stripExtraTransport = false;
   if (s.transportMode === 'stdio') {
     // When a config file is referenced it may select http/sse; emit an explicit
@@ -504,14 +511,17 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
       s.transportMode === 'http' ? '--http-allowed-origins' : '--sse-allowed-origins';
     if (s.transportHost.trim()) {
       args.push(hostFlag, s.transportHost.trim());
+      emittedTransportScalarFlags.push(hostFlag);
     }
     // Only emit a port the server will accept; an invalid one is surfaced by
     // validateLaunchSpec instead (otherwise the server silently uses its default).
     if (isValidPort(s.transportPort)) {
       args.push(portFlag, String(s.transportPort));
+      emittedTransportScalarFlags.push(portFlag);
     }
     if (s.transportAllowedOrigins.length > 0) {
       args.push(originFlag, s.transportAllowedOrigins.join(','));
+      emittedTransportScalarFlags.push(originFlag);
     }
   }
 
@@ -526,16 +536,41 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   if (configFile) {
     extras = stripConfigArgs(extras);
   }
-  // When the builder emits a log limit from the typed field, drop any same-named flag the
-  // parser diverted into extraArgs for round-trip: emitting both yields a duplicate option
-  // yargs merges into an array the server resolves to neither (e.g. the user loaded an
-  // out-of-range value that was diverted, then set an in-range one in the form — the form
-  // value must win). Only the kebab/camel spellings the parser produces need stripping (P59).
+  // When the builder emits a modeled SCALAR value flag from a typed field, drop any
+  // same-named flag the parser diverted into extraArgs for round-trip: emitting both yields a
+  // duplicate option yargs merges into an array the server's applyCli* helpers resolve to
+  // neither (e.g. a loaded `--commandTimeout bad` or `--logDirectory --debug` the parser kept
+  // verbatim, then the user sets that field in the form — the form value must win, otherwise
+  // the edited value is ignored or crashes the server). Each strip is guarded by the SAME
+  // condition as the emission so an UNSET field still round-trips its preserved (malformed)
+  // value (P34/P59/P61). Only the kebab/camel spellings the parser produces need stripping.
+  // Array options (--allowedDir / --blocked*) are exempt: the server merges repeated values.
+  if (emitShell) {
+    extras = stripValueFlag(extras, ['--shell']);
+  }
+  if (initialDir) {
+    extras = stripValueFlag(extras, ['--initialDir', '--initial-dir']);
+  }
+  if (emitCommandTimeout) {
+    extras = stripValueFlag(extras, ['--commandTimeout', '--command-timeout']);
+  }
+  if (emitMaxCommandLength) {
+    extras = stripValueFlag(extras, ['--maxCommandLength', '--max-command-length']);
+  }
+  if (emitWslMountPoint) {
+    extras = stripValueFlag(extras, ['--wslMountPoint', '--wsl-mount-point']);
+  }
   if (emitMaxOutputLines) {
     extras = stripValueFlag(extras, ['--maxOutputLines', '--max-output-lines']);
   }
   if (emitMaxReturnLines) {
     extras = stripValueFlag(extras, ['--maxReturnLines', '--max-return-lines']);
+  }
+  if (logDirectory) {
+    extras = stripValueFlag(extras, ['--logDirectory', '--log-directory']);
+  }
+  for (const flag of emittedTransportScalarFlags) {
+    extras = stripValueFlag(extras, [flag]);
   }
   for (const extra of extras) {
     args.push(extra);
