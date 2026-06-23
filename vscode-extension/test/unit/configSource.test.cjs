@@ -205,6 +205,56 @@ test('P63: parseServerArgs consumes negated boolean flags instead of preserving 
   assert.deepEqual(d.extraArgs, []);
 });
 
+test('P68: parseServerArgs honors explicit true/false values for boolean flags', () => {
+  // yargs declares these options type:'boolean' and consumes a following bare true/false as the
+  // value (e.g. `--debug false` => debug=false). The parser must model that explicit value
+  // instead of recording the flag as true and stranding `false` in extraArgs, which would show
+  // the opposite of what the server runs.
+  const a = parseServerArgs(['--debug', 'false', '--allowAllDirs', 'true', '--shell', 'bash']);
+  assert.equal(a.settings.debug, false);
+  assert.equal(a.settings.allowAllDirs, true);
+  assert.equal(a.settings.shell, 'bash');
+  assert.deepEqual(a.extraArgs, [], 'the consumed true/false do not leak into extraArgs');
+
+  // The kebab-case and tri-state spellings honor explicit values too.
+  const b = parseServerArgs(['--enable-truncation', 'false', '--enableLogResources', 'true']);
+  assert.equal(b.settings.enableTruncation, 'disabled');
+  assert.equal(b.settings.enableLogResources, 'enabled');
+  assert.deepEqual(b.extraArgs, []);
+
+  // `--yolo false` is not a positive: it leaves the default safety mode and consumes its value.
+  const c = parseServerArgs(['--yolo', 'false']);
+  assert.equal(c.settings.safetyMode, undefined);
+  assert.deepEqual(c.extraArgs, []);
+
+  // Only an exact true/false is consumed; any other following token stays a positional and the
+  // flag reads true, matching yargs (`--debug notabool` => debug=true, 'notabool' preserved).
+  const d = parseServerArgs(['--debug', 'notabool']);
+  assert.equal(d.settings.debug, true);
+  assert.deepEqual(d.extraArgs, ['notabool']);
+});
+
+test('P70: parseServerArgs preserves a conflicting --yolo/--unsafe pair verbatim', () => {
+  // The server declares yolo/unsafe mutually exclusive (.conflicts), so an entry with both is
+  // rejected. Collapsing the pair to one would let a no-op save turn that rejected entry into a
+  // valid launch, so both are preserved verbatim in extraArgs and safetyMode is left at default.
+  const a = parseServerArgs(['--shell', 'cmd', '--yolo', '--unsafe']);
+  assert.equal(a.settings.safetyMode, undefined, 'neither flag is modeled into safetyMode');
+  assert.equal(a.settings.shell, 'cmd');
+  assert.deepEqual(a.extraArgs, ['--yolo', '--unsafe'], 'both flags round-trip verbatim');
+
+  // Explicit-true positives also conflict; the true values round-trip alongside their flags.
+  const b = parseServerArgs(['--yolo', 'true', '--unsafe', 'true']);
+  assert.equal(b.settings.safetyMode, undefined);
+  assert.deepEqual(b.extraArgs, ['--yolo', 'true', '--unsafe', 'true']);
+
+  // A trailing negation removes the conflict (yargs last-wins): `--yolo --unsafe --no-yolo` is
+  // unsafe-only, so it is modeled normally and not preserved.
+  const c = parseServerArgs(['--yolo', '--unsafe', '--no-yolo']);
+  assert.equal(c.settings.safetyMode, 'unsafe');
+  assert.deepEqual(c.extraArgs, []);
+});
+
 test('parseServerArgs parses transport flags', () => {
   const { settings } = parseServerArgs([
     '--transport', 'http',

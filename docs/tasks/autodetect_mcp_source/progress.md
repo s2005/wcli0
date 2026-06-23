@@ -353,3 +353,34 @@ yargs negation/limit forms a loaded `.vscode/mcp.json` may carry. Each has an
   existing unusable-port branch — host modeled, default port kept, canonical URL rebuilt on save
   from the editable port field — instead of preserving it verbatim as a default-port URL a port
   edit could never fix. The port group stops at `/?#` so a valid numeric port is still read)
+
+### Review Feedback (PR #89, round 13)
+
+P67-P70 are round-13 Codex review comments on the load -> edit -> save round trip. Each has an
+`analysis_N_*.md` + `comment_N_*.md` pair in this folder.
+
+- [x] P67: Rebuild default-port URLs when the port changes (fixed — `preservedFileUrl`'s
+  default-port branch now preserves the verbatim URL only while the host is unchanged AND the
+  port field is still the form default (`defaultSettings().transportPort`). A port-only edit
+  therefore rebuilds the canonical `http://host:port/<mcp|sse>` URL instead of writing the
+  original back unchanged and dropping the edit on the next reparse. The `parseMcpEntry` note
+  was updated from "the port field does not affect it" to "editing the host or port rewrites it")
+- [x] P68: Honor explicit false values for boolean flags (fixed — `parseServerArgs` now consumes
+  a following bare `true`/`false` for every positive boolean/tri-state/safety flag, matching
+  yargs (`--debug false` => debug=false), instead of recording the flag as true and stranding
+  `false` in `extraArgs` where the form showed the opposite of what the server runs. Only an
+  exact `true`/`false` is consumed; any other following token stays a positional and the flag
+  reads true. The `--no-*` spellings are unchanged (they already mean false and consume nothing))
+- [x] P69: Keep file-source saves on one file snapshot (fixed — a file-source save now takes one
+  full-file snapshot up front via the new `readExistingMcpJson` helper and reuses it for the
+  merge base, the surrounding servers, and the comment-removal check. A concurrent
+  delete/recreate of `.vscode/mcp.json` during a warning modal can no longer make the write
+  start fresh and drop the file's other servers. The settings-driven export keeps its single
+  bottom read, so its behavior is unchanged)
+- [x] P70: Preserve mutually exclusive safety flags (fixed — when a loaded entry sets BOTH
+  `--yolo` and `--unsafe` (which the server rejects via `.conflicts`), `parseServerArgs` now
+  preserves both verbatim in `extraArgs` and leaves `safetyMode` at its default instead of
+  collapsing to whichever appears last. A no-op save therefore reproduces the same
+  server-rejected entry rather than silently turning it into a valid yolo/unsafe launch.
+  Conflict detection mirrors yargs last-wins, so a trailing `--no-yolo` or `--yolo false`
+  is not counted as positive)

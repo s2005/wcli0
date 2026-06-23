@@ -448,12 +448,49 @@ export function parseServerArgs(
     return false;
   };
 
+  // yargs declares allowAllDirs/debug/yolo/unsafe/enableTruncation/enableLogResources as
+  // `type:'boolean'` (src/index.ts), and a boolean option consumes a following bare
+  // `true`/`false` token as its value (verified against yargs: `--debug false` => debug=false;
+  // any OTHER following token is left as a positional and the flag reads true). Model that
+  // explicit value rather than recording every bare flag as true and stranding the `false` in
+  // extraArgs, which would make the form show the opposite of what the server runs and let the
+  // preserved value defeat a later edit (P68). The negated `--no-*` spellings already mean false
+  // and do not consume a following token, so they are matched verbatim below.
+  const boolValueFollows = (i: number): boolean =>
+    args[i + 1] === 'true' || args[i + 1] === 'false';
+  const boolValueAt = (i: number): boolean => args[i + 1] !== 'false';
+
+  // A hand-authored entry that sets BOTH --yolo and --unsafe is rejected by the server, which
+  // declares them mutually exclusive (.conflicts('unsafe','yolo') in src/index.ts). Collapsing
+  // the pair to whichever appears last would let a no-op save rewrite that previously-failing
+  // entry into a valid yolo/unsafe launch the user never chose, so when both POSITIVE flags are
+  // present neither is modeled into safetyMode — both round-trip verbatim in extraArgs, keeping
+  // the conflicting (server-rejected) state intact (P70). Mirror yargs last-wins so a trailing
+  // negation (`--yolo --no-yolo`) or an explicit `--yolo false` is not counted as positive.
+  const lastSafetyPositive = (positive: string, negative: string): boolean => {
+    let on = false;
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === positive) {
+        on = args[i + 1] !== 'false';
+      } else if (args[i] === negative) {
+        on = false;
+      }
+    }
+    return on;
+  };
+  const safetyConflict =
+    lastSafetyPositive('--yolo', '--no-yolo') && lastSafetyPositive('--unsafe', '--no-unsafe');
+
   for (let i = 0; i < args.length; i++) {
     const token = args[i];
-    // Boolean / tri-state / safety flags carry no value. Each accepts both the camelCase
-    // spelling and its yargs kebab-case alias (P47).
+    // Boolean / tri-state / safety flags. Each positive spelling accepts both the camelCase
+    // form and its yargs kebab-case alias (P47), and consumes a following explicit
+    // `true`/`false` value the way yargs does (P68).
     if (token === '--allowAllDirs' || token === '--allow-all-dirs') {
-      out.allowAllDirs = true;
+      out.allowAllDirs = boolValueAt(i);
+      if (boolValueFollows(i)) {
+        i++;
+      }
       continue;
     }
     // yargs accepts a negated boolean (`--no-X`) for every boolean option the server declares
@@ -466,19 +503,34 @@ export function parseServerArgs(
       continue;
     }
     if (token === '--debug') {
-      out.debug = true;
+      out.debug = boolValueAt(i);
+      if (boolValueFollows(i)) {
+        i++;
+      }
       continue;
     }
     if (token === '--no-debug') {
       out.debug = false;
       continue;
     }
-    if (token === '--yolo') {
-      out.safetyMode = 'yolo';
-      continue;
-    }
-    if (token === '--unsafe') {
-      out.safetyMode = 'unsafe';
+    // --yolo / --unsafe select the safety mode. When both POSITIVE flags are present the server
+    // rejects the entry, so preserve them verbatim in extraArgs rather than collapsing to one and
+    // silently turning the rejected entry into a valid launch (P70). The following true/false (if
+    // any) falls through to extraArgs on the next iteration, keeping the original tokens intact.
+    // An explicit `--yolo false` / `--unsafe false` is not a positive (it leaves the default
+    // mode) and consumes its value.
+    if (token === '--yolo' || token === '--unsafe') {
+      if (safetyConflict) {
+        extraArgs.push(token);
+        continue;
+      }
+      const on = boolValueAt(i);
+      if (boolValueFollows(i)) {
+        i++;
+      }
+      if (on) {
+        out.safetyMode = token === '--yolo' ? 'yolo' : 'unsafe';
+      }
       continue;
     }
     // A negated safety flag clears only the matching mode. The server treats yolo/unsafe as
@@ -497,22 +549,26 @@ export function parseServerArgs(
     if (token === '--no-yolo' || token === '--no-unsafe') {
       continue;
     }
-    if (
-      token === '--enableTruncation' ||
-      token === '--no-enableTruncation' ||
-      token === '--enable-truncation' ||
-      token === '--no-enable-truncation'
-    ) {
-      out.enableTruncation = (token.startsWith('--no-') ? 'disabled' : 'enabled') as TriState;
+    if (token === '--enableTruncation' || token === '--enable-truncation') {
+      out.enableTruncation = (boolValueAt(i) ? 'enabled' : 'disabled') as TriState;
+      if (boolValueFollows(i)) {
+        i++;
+      }
       continue;
     }
-    if (
-      token === '--enableLogResources' ||
-      token === '--no-enableLogResources' ||
-      token === '--enable-log-resources' ||
-      token === '--no-enable-log-resources'
-    ) {
-      out.enableLogResources = (token.startsWith('--no-') ? 'disabled' : 'enabled') as TriState;
+    if (token === '--no-enableTruncation' || token === '--no-enable-truncation') {
+      out.enableTruncation = 'disabled' as TriState;
+      continue;
+    }
+    if (token === '--enableLogResources' || token === '--enable-log-resources') {
+      out.enableLogResources = (boolValueAt(i) ? 'enabled' : 'disabled') as TriState;
+      if (boolValueFollows(i)) {
+        i++;
+      }
+      continue;
+    }
+    if (token === '--no-enableLogResources' || token === '--no-enable-log-resources') {
+      out.enableLogResources = 'disabled' as TriState;
       continue;
     }
     // Attached `--opt=value` / `-c=value` form (any single-or-double dash flag with `=`).
@@ -666,8 +722,8 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
       s.transportHost = parsed.host;
       notes.push(
         `The ${type} URL "${url}" does not specify a port (it uses the scheme default). ` +
-          'It is preserved as-is when you save; editing the host rewrites it to the ' +
-          `http://host:port/${canonicalPath} form, and the port field does not affect it.`,
+          'It is preserved as-is when you save; editing the host or port rewrites it to the ' +
+          `http://host:port/${canonicalPath} form.`,
       );
     } else if (parsed) {
       // An explicitly-written but unusable port: a number outside 1..65535 (`:0`, or one above

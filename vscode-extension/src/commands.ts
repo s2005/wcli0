@@ -9,9 +9,10 @@ import {
   validateLaunchSpec,
 } from './argsBuilder';
 import { buildConfigFile } from './configFile';
-import { parseHttpUrl, parseMcpEntry, readWcli0Entry } from './configSource';
+import { parseHttpUrl, parseMcpEntry } from './configSource';
 import {
   ConfigScope,
+  defaultSettings,
   hasPerShellConfig,
   hasProfilesConfig,
   hasRawPerShellConfig,
@@ -250,9 +251,15 @@ function preservedFileUrl(
     return rawUrl;
   }
   if (parsed.port === undefined) {
-    // Default-port URL (no explicit port): only the host is modeled (the port is implicit).
-    // Preserve while the host is unchanged; a host edit falls back to canonical reconstruction.
-    return parsed.host === settings.transportHost ? rawUrl : undefined;
+    // Default-port URL (no explicit port): parseMcpEntry models only the host and leaves the
+    // port field at the form default. Preserve the verbatim URL only while the host is unchanged
+    // AND the user has not entered a port; a host OR port edit falls back to canonical
+    // reconstruction. Without the port check a port-only edit was silently dropped — the save
+    // wrote the original URL back unchanged and the next reparse lost the edit (P67). The
+    // default-port marker is `defaultSettings().transportPort`, exactly the value parseMcpEntry
+    // leaves when the URL omits its port, so an untouched save still round-trips verbatim (P8).
+    const portUntouched = settings.transportPort === defaultSettings().transportPort;
+    return parsed.host === settings.transportHost && portUntouched ? rawUrl : undefined;
   }
   // Fully decomposable (an explicit port, including an unusable `:0` the form replaced with
   // its default): preserve only while host AND port are untouched. A `:0` URL therefore never
@@ -496,14 +503,30 @@ export async function writeMcpJsonFromSettings(
     );
     return false;
   }
-  // For a file source, re-read the CURRENT on-disk entry once, up front, and use it as the
-  // basis for every on-disk-dependent decision below: URL preservation (P41), the env
-  // round-trip (P23), and the uneditable-argv carry-forward (P40). Reading it before
-  // validation (rather than after, as before) lets the http/sse URL-preservation check use
-  // the current entry instead of the stale load snapshot, so a concurrent edit to an
-  // unmodeled part of the URL (scheme/path/default-port) survives when the modeled host/port
-  // still match the form (P41). Falls back to the loaded baseEntry when nothing is on disk.
-  const onDiskEntry = fileSource ? await readWcli0Entry(folder) : undefined;
+  // For a file source, take ONE full-file snapshot up front and use it as the basis for every
+  // on-disk-dependent decision below: URL preservation (P41), the env round-trip (P23), the
+  // uneditable-argv carry-forward (P40), the merge base (P46), AND the OTHER servers carried into
+  // the written file. Reading the WHOLE file once — not just servers.wcli0, and not a second time
+  // at the write step — closes the window in which a concurrent delete/recreate of
+  // .vscode/mcp.json during a warning modal would drop the file's other servers: the merge base
+  // and the surrounding-servers container now come from the same snapshot (P69). Reading it
+  // before validation also lets the http/sse URL-preservation check use the current entry rather
+  // than the stale load snapshot (P41). The malformed-root / non-object-`servers` guards run here
+  // too, so an invalid file is refused before any modal. Falls back to the loaded baseEntry when
+  // nothing usable is on disk.
+  const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');
+  const fileSnapshot = fileSource ? await readExistingMcpJson(mcpUri) : undefined;
+  if (fileSource && !fileSnapshot) {
+    return false; // unreadable / invalid file — readExistingMcpJson already reported why
+  }
+  const onDiskServers =
+    fileSnapshot && isPlainObject(fileSnapshot.existing.servers)
+      ? (fileSnapshot.existing.servers as Record<string, unknown>)
+      : undefined;
+  const onDiskEntry =
+    onDiskServers && isPlainObject(onDiskServers.wcli0)
+      ? (onDiskServers.wcli0 as Record<string, unknown>)
+      : undefined;
   const urlBase = (onDiskEntry ?? baseEntry) as Record<string, unknown>;
   // An entry whose `type` the form cannot model (a future/custom transport such as
   // "websocket") is parsed as stdio for its editable fields, but saving would let
@@ -770,49 +793,15 @@ export async function writeMcpJsonFromSettings(
       : generated;
   }
 
-  const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');
-  let existing: Record<string, unknown> = {};
-  let raw: Uint8Array | undefined;
-  try {
-    raw = await vscode.workspace.fs.readFile(mcpUri);
-  } catch (err) {
-    if (!isFileNotFound(err)) {
-      // A real read error (permissions, transient FS) — don't risk clobbering.
-      void vscode.window.showErrorMessage(
-        `wcli0: could not read ${mcpUri.fsPath} (${(err as Error).message}). Not writing.`,
-      );
-      return false;
-    }
-    // Not found — start fresh.
+  // Reuse the single up-front snapshot for a file source (P46/P69); the settings-driven export
+  // took no up-front snapshot, so it reads the file fresh here. Both go through the same helper,
+  // which has already applied the malformed-root / non-object-`servers` guards.
+  const writeSnapshot = fileSource ? fileSnapshot! : await readExistingMcpJson(mcpUri);
+  if (!writeSnapshot) {
+    return false; // settings-export read failed / invalid — readExistingMcpJson already reported
   }
-  if (raw) {
-    try {
-      // VS Code registers mcp.json as JSON-with-comments, so tolerate comments
-      // and trailing commas rather than refusing to merge into a valid JSONC file.
-      existing = parseJsonc(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
-    } catch (err) {
-      // The file exists but is not valid JSON/JSONC — refuse rather than clobber it.
-      void vscode.window.showErrorMessage(
-        `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
-      );
-      return false;
-    }
-  }
-  // A syntactically valid file can still have a non-object root or `servers`
-  // (e.g. `null`, or `"servers": []`); merging into those would throw or
-  // silently drop the entry, so refuse rather than corrupt the file.
-  if (!isPlainObject(existing)) {
-    void vscode.window.showErrorMessage(
-      `wcli0: ${mcpUri.fsPath} root is not a JSON object. Fix it before writing.`,
-    );
-    return false;
-  }
-  if (existing.servers !== undefined && !isPlainObject(existing.servers)) {
-    void vscode.window.showErrorMessage(
-      `wcli0: "servers" in ${mcpUri.fsPath} is not a JSON object. Fix it before writing.`,
-    );
-    return false;
-  }
+  const existing = writeSnapshot.existing;
+  const raw = writeSnapshot.raw;
   // Re-serializing with JSON.stringify drops any comments/formatting the file
   // had. Warn before discarding them rather than silently reformatting.
   if (raw && containsJsoncComments(Buffer.from(raw).toString('utf8'))) {
@@ -1176,6 +1165,62 @@ async function implicitConfigIn(dir: vscode.Uri): Promise<string | undefined> {
     // Not present — no committed override vector.
     return undefined;
   }
+}
+
+/**
+ * Read and parse `.vscode/mcp.json` into the object the wcli0 entry is merged into, applying the
+ * malformed-root / non-object-`servers` guards. Returns `{ raw, existing }` on success (with
+ * `raw` undefined and `existing` an empty object when the file does not exist yet), or `undefined`
+ * when the file cannot be used — a real read error, or invalid JSON/root/`servers` — after showing
+ * the user why. A file-source save takes this snapshot ONCE up front and reuses it for the merge
+ * base, the surrounding servers, and the comment-removal check, so a concurrent delete/recreate
+ * between two separate reads cannot drop the file's other servers (P69).
+ */
+async function readExistingMcpJson(
+  mcpUri: vscode.Uri,
+): Promise<{ raw?: Uint8Array; existing: Record<string, unknown> } | undefined> {
+  let raw: Uint8Array;
+  try {
+    raw = await vscode.workspace.fs.readFile(mcpUri);
+  } catch (err) {
+    if (!isFileNotFound(err)) {
+      // A real read error (permissions, transient FS) — don't risk clobbering.
+      void vscode.window.showErrorMessage(
+        `wcli0: could not read ${mcpUri.fsPath} (${(err as Error).message}). Not writing.`,
+      );
+      return undefined;
+    }
+    // Not found — start fresh.
+    return { raw: undefined, existing: {} };
+  }
+  let existing: Record<string, unknown>;
+  try {
+    // VS Code registers mcp.json as JSON-with-comments, so tolerate comments
+    // and trailing commas rather than refusing to merge into a valid JSONC file.
+    existing = parseJsonc(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
+  } catch (err) {
+    // The file exists but is not valid JSON/JSONC — refuse rather than clobber it.
+    void vscode.window.showErrorMessage(
+      `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
+    );
+    return undefined;
+  }
+  // A syntactically valid file can still have a non-object root or `servers`
+  // (e.g. `null`, or `"servers": []`); merging into those would throw or
+  // silently drop the entry, so refuse rather than corrupt the file.
+  if (!isPlainObject(existing)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: ${mcpUri.fsPath} root is not a JSON object. Fix it before writing.`,
+    );
+    return undefined;
+  }
+  if (existing.servers !== undefined && !isPlainObject(existing.servers)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: "servers" in ${mcpUri.fsPath} is not a JSON object. Fix it before writing.`,
+    );
+    return undefined;
+  }
+  return { raw, existing };
 }
 
 /** Whether a workspace.fs read error means the file is simply absent. */

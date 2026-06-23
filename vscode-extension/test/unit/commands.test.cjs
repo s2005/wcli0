@@ -842,6 +842,69 @@ test('P8: editing the host of a default-port url rebuilds the canonical url', as
   assert.equal(wcli0Entry().url, 'http://other.example:9444/mcp');
 });
 
+test('P67: a port-only edit of a default-port url rebuilds the canonical url', async () => {
+  // A default-port URL loads with the host modeled and the port left at the form default (9444).
+  // A port-only edit must rebuild the canonical http://host:port form rather than preserve the
+  // URL verbatim and silently drop the edit (the next reparse would lose it).
+  const base = { type: 'http', url: 'https://gateway.example/custom/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'gateway.example'; // host unchanged
+  s.transportPort = 8080; // port edited away from the default-port form value (9444)
+  s.transportUrl = 'https://gateway.example/custom/mcp';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://gateway.example:8080/mcp');
+});
+
+test('P69: a file save keeps other servers when the file is deleted during a modal', async () => {
+  // The up-front snapshot captures the whole file (wcli0 + other). A concurrent delete of
+  // .vscode/mcp.json while the env modal is open must NOT make the save start fresh and drop the
+  // other server: reusing the single snapshot writes both servers back.
+  const loaded = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    env: { SECRET: 'x' },
+  };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(
+      JSON.stringify({
+        servers: { wcli0: loaded, other: { type: 'http', url: 'http://elsewhere/mcp' } },
+      }),
+    ),
+  );
+  // Delete the file at the moment the env modal is shown (warnReturn is read then).
+  Object.defineProperty(vscode.__state.calls, 'warnReturn', {
+    configurable: true,
+    get() {
+      vscode.__state.files.delete('/ws/.vscode/mcp.json');
+      return 'Include environment';
+    },
+  });
+  try {
+    const s = defaultSettings();
+    s.shell = 'cmd';
+    const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+    assert.equal(ok, true);
+    const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+    assert.ok(parsed.servers.wcli0, 'wcli0 entry written');
+    assert.deepEqual(
+      parsed.servers.other,
+      { type: 'http', url: 'http://elsewhere/mcp' },
+      'the other server survives the delete-during-modal',
+    );
+    assert.ok(parsed.servers.wcli0.args.includes('--shell'), 'the edited flag is written');
+  } finally {
+    Object.defineProperty(vscode.__state.calls, 'warnReturn', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+  }
+});
+
 test('P13: a file save allows a VS Code variable --config path that cannot be read locally', async () => {
   const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--config', '${input:cfg}'] };
   const s = defaultSettings();
