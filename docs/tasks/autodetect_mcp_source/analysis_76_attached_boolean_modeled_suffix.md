@@ -21,4 +21,4 @@ can handle gets stranded in `customArgs`. Restricting recognition to the literal
 keeps the two in lockstep and avoids treating an unmodeled value as false evidence of a wcli0
 suffix. The fix threads alongside P77's `stdio` parameter on the same helper.
 
-**Commit:** 9243e10 — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)
+**Commit:** bb6fe6c — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)

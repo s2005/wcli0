@@ -25,4 +25,4 @@ dropping the `seenModeled` credit is the minimal change that both stops the fals
 and leaves the wcli0-binary case (which preserves the transport flags as `extraArgs` regardless)
 unchanged.
 
-**Commit:** 9243e10 — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)
+**Commit:** bb6fe6c — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)

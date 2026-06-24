@@ -19,4 +19,4 @@ to the wrapped program, which then parses its own flags. Scoping the break to `a
 fixes the reviewer's direct-entry case without regressing the npx/uvx pass-through behavior that the
 existing P17 test locks in (this was caught by that test during implementation).
 
-**Commit:** 9243e10 — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)
+**Commit:** bb6fe6c — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)

@@ -24,4 +24,4 @@ Counting through the same predicates the loop uses keeps the pre-scan and the pa
 exempting array kinds preserves the existing accumulation semantics (P47). The duplicate's
 occurrences round-trip in original order, so re-emitting them reproduces the server's array exactly.
 
-**Commit:** 9243e10 — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)
+**Commit:** bb6fe6c — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)

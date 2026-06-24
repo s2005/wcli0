@@ -20,4 +20,4 @@ faithfully modeled" approach used for unknown flags and out-of-range values. The
 suffix-detector fix is P75 (a `--` in a custom launcher's args is handled before parseServerArgs is
 even reached).
 
-**Commit:** 9243e10 — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)
+**Commit:** bb6fe6c — fix(vscode): round-15 codex review follow-ups for PR #89 (P74-P78)
