@@ -1005,3 +1005,136 @@ test('P47: kebab-case option aliases are modeled like their camelCase forms', ()
   assert.equal(settings.allowAllDirs, true);
   assert.equal(settings.enableTruncation, 'disabled');
 });
+
+// ---- P74-P78: the `--` separator, attached/transport suffix evidence, duplicate scalars ----
+
+test('P74: parseServerArgs preserves the `--` separator and the remainder verbatim', () => {
+  // yargs treats every token after `--` as a positional, not an option, so `-- --shell cmd` must
+  // NOT be modeled as shell=cmd. The parser preserves `--` and everything after it in extraArgs.
+  const a = parseServerArgs(['--', '--shell', 'cmd']);
+  assert.equal(a.settings.shell, undefined, '--shell after -- is a positional, not modeled');
+  assert.deepEqual(a.extraArgs, ['--', '--shell', 'cmd']);
+
+  // Flags BEFORE the separator are still modeled; only the post-`--` remainder is preserved.
+  const b = parseServerArgs(['--debug', '--', '--shell', 'cmd', '--maxCommandLength', '10']);
+  assert.equal(b.settings.debug, true);
+  assert.equal(b.settings.shell, undefined);
+  assert.equal(b.settings.maxCommandLength, undefined);
+  assert.deepEqual(b.extraArgs, ['--', '--shell', 'cmd', '--maxCommandLength', '10']);
+});
+
+test('P74: a plain node entry does not model server flags after a `--` separator', () => {
+  // `node dist/index.js -- --shell cmd`: yargs leaves `--shell`/`cmd` positional, so a no-op save
+  // must not re-emit an active `--shell cmd` that changes the launch behavior.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['dist/index.js', '--', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'node');
+  assert.equal(settings.nodeScriptPath, 'dist/index.js');
+  assert.equal(settings.shell, 'all', 'shell stays at its default, not cmd');
+  assert.deepEqual(settings.extraArgs, ['--', '--shell', 'cmd']);
+});
+
+test('P75: a `--` separator keeps the remainder with the launcher, not a server suffix', () => {
+  // `command: "wcli0", args: ["--", "--debug"]`: yargs treats `--debug` as a positional after the
+  // separator, so the suffix scan must not split it out and let a no-op save enable debug.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['--', '--debug'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'wcli0');
+  assert.deepEqual(settings.customArgs, ['--', '--debug']);
+  assert.equal(settings.debug, false, 'debug stays default; --debug after -- is positional');
+  assert.deepEqual(settings.extraArgs, []);
+});
+
+test('P76: an attached boolean flag proves a wcli0 server suffix for a wrapper', () => {
+  // For a wrapper command, the suffix detector must recognize an attached boolean assignment
+  // (`--debug=true`, `--enableTruncation=false`) as a modeled wcli0 flag; otherwise it stays in
+  // customArgs, the form shows the default, and a save cannot edit it.
+  const a = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--debug=true'],
+  }).settings;
+  assert.equal(a.launchMethod, 'custom');
+  assert.deepEqual(a.customArgs, ['target']);
+  assert.equal(a.debug, true);
+  assert.deepEqual(a.extraArgs, []);
+
+  const b = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--enableTruncation=false'],
+  }).settings;
+  assert.deepEqual(b.customArgs, ['target']);
+  assert.equal(b.enableTruncation, 'disabled');
+});
+
+test('P77: a stdio transport flag does not prove a wcli0 server suffix', () => {
+  // In a stdio entry the transport flags are not modeled (the entry's `type` is authoritative), so
+  // a wrapper's trailing `--transport fast` must not be split out as a server suffix and reordered
+  // before the wrapper's options on save. With no modeled wcli0 flag present it stays in customArgs.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--transport', 'fast'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, ['target', '--transport', 'fast']);
+  assert.equal(settings.transportMode, 'stdio');
+  assert.deepEqual(settings.extraArgs, []);
+});
+
+test('P77: a real wcli0 flag still splits a wrapper suffix that also carries a transport flag', () => {
+  // When the suffix DOES contain a modeled wcli0 flag (--shell), the split is legitimate; the
+  // transport flag rides along in extraArgs verbatim rather than flipping the stdio transport.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--shell', 'cmd', '--transport', 'fast'],
+  });
+  assert.deepEqual(settings.customArgs, ['target']);
+  assert.equal(settings.shell, 'cmd');
+  assert.equal(settings.transportMode, 'stdio');
+  assert.deepEqual(settings.extraArgs, ['--transport', 'fast']);
+});
+
+test('P78: a repeated scalar option is preserved verbatim, not collapsed last-wins', () => {
+  // yargs parses `--config a --config b` as config=['a','b'] and `--shell cmd --shell bash` as an
+  // array too, which the single-value fields cannot represent. Collapsing to the last value on a
+  // no-op save would silently change the launch, so every occurrence round-trips in extraArgs.
+  const a = parseServerArgs(['--config', 'a', '--config', 'b']);
+  assert.equal(a.settings.configFile, undefined, 'duplicate --config is not modeled');
+  assert.deepEqual(a.extraArgs, ['--config', 'a', '--config', 'b']);
+
+  const b = parseServerArgs(['--shell', 'cmd', '--shell', 'bash']);
+  assert.equal(b.settings.shell, undefined);
+  assert.deepEqual(b.extraArgs, ['--shell', 'cmd', '--shell', 'bash']);
+
+  // Mixed forms and yargs kebab/camel aliases that resolve to the same key are also duplicates.
+  const c = parseServerArgs(['--config', 'a', '--config=b']);
+  assert.equal(c.settings.configFile, undefined);
+  assert.deepEqual(c.extraArgs, ['--config', 'a', '--config=b']);
+
+  const d = parseServerArgs(['--maxCommandLength', '100', '--max-command-length', '200']);
+  assert.equal(d.settings.maxCommandLength, undefined);
+  assert.deepEqual(d.extraArgs, ['--maxCommandLength', '100', '--max-command-length', '200']);
+});
+
+test('P78: a single scalar occurrence is still modeled, and array options still accumulate', () => {
+  // The duplicate guard must not regress the normal single-value case...
+  const a = parseServerArgs(['--config', 'a', '--shell', 'bash']);
+  assert.equal(a.settings.configFile, 'a');
+  assert.equal(a.settings.shell, 'bash');
+  assert.deepEqual(a.extraArgs, []);
+
+  // ...nor the array-kind options, which legitimately repeat and accumulate into a list.
+  const b = parseServerArgs(['--allowedDir', '/a', '--allowedDir', '/b']);
+  assert.deepEqual(b.settings.allowedDirectories, ['/a', '/b']);
+  assert.deepEqual(b.extraArgs, []);
+});

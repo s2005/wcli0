@@ -216,17 +216,37 @@ export interface ParseServerArgsOptions {
 }
 
 /**
- * Whether a bare flag token (no `=`) is one the form models — a recognized value-option
- * or a recognized boolean/tri-state. Used by the suffix detector to know when the
- * modeled-flags portion of the run has begun, so unknown `--flag value` pairs AFTER it
- * are treated as extraArgs rather than launcher positionals (P42).
+ * Whether a flag token is one the form models as a wcli0 server flag — a recognized value-option,
+ * a recognized boolean/tri-state, or an attached `--opt=value` form of either. Used by the suffix
+ * detector to know when the modeled-flags portion of the run has begun, so unknown `--flag value`
+ * pairs AFTER it are treated as extraArgs rather than launcher positionals (P42).
+ *
+ * When `stdio` is true the transport flags (`--transport`, `--http-*`, `--sse-*`) do NOT count as
+ * modeled: a stdio entry's authoritative `type` sets the transport and those flags fall through to
+ * extraArgs verbatim (P30), so they must not "prove" a wcli0 server suffix that would otherwise be
+ * split out and reorder a wrapper's own options on save (P77).
+ *
+ * An attached boolean assignment (`--debug=true`, `--enableTruncation=false`) is recognized just
+ * like its bare spelling, so a wrapper suffix carrying only such a flag is still detected and the
+ * flag stays editable instead of being stranded in customArgs (P76). Only the literal true/false
+ * yargs round-trips count, matching the attached-boolean modeling in {@link parseServerArgs}.
  */
-function isRecognizedServerFlag(token: string): boolean {
-  if (token in VALUE_OPTIONS || BOOLEAN_FLAGS.has(token)) {
+function isRecognizedServerFlag(token: string, stdio = false): boolean {
+  const isModeledValueOption = (flag: string): boolean =>
+    flag in VALUE_OPTIONS && !(stdio && TRANSPORT_FLAGS.has(flag));
+  if (isModeledValueOption(token) || BOOLEAN_FLAGS.has(token)) {
     return true;
   }
   const eq = token.indexOf('=');
-  return eq > 0 && token.startsWith('-') && token.slice(0, eq) in VALUE_OPTIONS;
+  if (eq > 0 && token.startsWith('-')) {
+    const flag = token.slice(0, eq);
+    if (isModeledValueOption(flag)) {
+      return true;
+    }
+    const value = token.slice(eq + 1);
+    return BOOLEAN_FLAGS.has(flag) && (value === 'true' || value === 'false');
+  }
+  return false;
 }
 
 /**
@@ -248,7 +268,7 @@ function isRecognizedServerFlag(token: string): boolean {
  * (P56). For the wcli0 binary itself (the index-0 case) `requireModeled` stays false: its args
  * really are wcli0's, so an unknown-only run is a legitimate extraArg.
  */
-function isPureServerFlagRun(tokens: string[], requireModeled = false): boolean {
+function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = false): boolean {
   let seenModeled = false;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
@@ -261,7 +281,7 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false): boolean 
     const eq = t.indexOf('=');
     if (eq > 0) {
       // Attached `--opt=value` / `-c=value` (recognized modeled or an extraArg) — self-contained.
-      if (isRecognizedServerFlag(t)) {
+      if (isRecognizedServerFlag(t, stdio)) {
         seenModeled = true;
       }
       continue;
@@ -270,7 +290,12 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false): boolean 
       if (i + 1 >= tokens.length) {
         return false; // a value-option with no value cannot be a clean server flag
       }
-      seenModeled = true;
+      // A stdio entry's transport flags consume their value structurally but are NOT modeled
+      // evidence (they fall through to extraArgs verbatim, P30); counting them would let a
+      // transport-only suffix masquerade as wcli0's and reorder a wrapper's options on save (P77).
+      if (!(stdio && TRANSPORT_FLAGS.has(t))) {
+        seenModeled = true;
+      }
       i++; // consume the value
       continue;
     }
@@ -320,10 +345,25 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false): boolean 
  * `wrapper target --verbose` is NOT mistaken for a server-flag suffix and stays in the
  * launcher portion (P56). The wcli0 binary itself (allowIndexZero) does not require this: its
  * args are genuinely wcli0's, including unknown-only extraArgs.
+ *
+ * When the command is the wcli0 binary (allowIndexZero) the scan stops at a `--` options
+ * separator: yargs treats everything after the binary's own `--` as positionals, so no server-flag
+ * suffix can begin there (P75). A wrapper's `--` is instead a pass-through separator before the
+ * wrapped wcli0 binary, so the scan keeps looking past it (the P17 npx case). `stdio` is forwarded
+ * to the run check so a stdio entry's transport flags do not count as modeled evidence (P77).
  */
-function serverFlagSuffixStart(args: string[], allowIndexZero: boolean): number {
+function serverFlagSuffixStart(args: string[], allowIndexZero: boolean, stdio = false): number {
   for (let i = allowIndexZero ? 0 : 1; i < args.length; i++) {
-    if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i), !allowIndexZero)) {
+    if (allowIndexZero && args[i] === '--') {
+      // The wcli0 binary's OWN `--` separator: yargs treats every following token as a positional,
+      // so no server-flag suffix can begin at or after it. Stop scanning so the separator and its
+      // remainder stay with the launcher rather than being split out as server flags (P75). This is
+      // scoped to the wcli0 binary: for a wrapper command (allowIndexZero=false) a `--` is the
+      // wrapper's pass-through separator and the wrapped wcli0 binary's flags legitimately follow it
+      // (`npx --package=wcli0 -- wcli0 --shell cmd`), so the scan must keep looking there (P17).
+      break;
+    }
+    if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i), !allowIndexZero, stdio)) {
       return i;
     }
   }
@@ -448,6 +488,71 @@ export function parseServerArgs(
     return false;
   };
 
+  // Whether an option is a single-value (scalar) field rather than an accumulating array. yargs
+  // parses a REPEATED scalar option as an array (`--config a --config b` => ['a','b'], `--shell cmd
+  // --shell bash` => ['cmd','bash']), which a single-value form field cannot represent and which
+  // the server often treats very differently from the last value. Array-kind options legitimately
+  // repeat, so they are exempt from the duplicate handling below.
+  const isScalarOption = (spec: OptionSpec): boolean => spec.kind !== 'array';
+
+  // The scalar option keys that appear more than once in this arg list. A duplicated scalar is NOT
+  // modeled last-wins (which would silently collapse `--config a --config b` to `b` on a no-op
+  // save); instead every occurrence is preserved verbatim in extraArgs so the hand-authored entry
+  // round-trips unchanged (P78). The count mirrors the modeling paths in the loop below — it honors
+  // the stdio transport exclusion (optionFor), the number-diversion rule (divertNumber), the `-c`
+  // config bundle, and stops at the `--` separator (P74) — so a key is flagged only when two
+  // occurrences would actually have been modeled into the same field.
+  const duplicatedScalarKeys = ((): Set<keyof Wcli0Settings> => {
+    const counts = new Map<keyof Wcli0Settings, number>();
+    const bump = (key: keyof Wcli0Settings) => counts.set(key, (counts.get(key) ?? 0) + 1);
+    for (let i = 0; i < args.length; i++) {
+      const token = args[i];
+      if (token === '--') {
+        break; // options separator: the remainder is positional and is never parsed (P74)
+      }
+      const eq = token.indexOf('=');
+      if (eq > 0 && token.startsWith('-')) {
+        const spec = optionFor(token.slice(0, eq));
+        if (spec && isScalarOption(spec)) {
+          const value = token.slice(eq + 1);
+          if (!(spec.kind === 'number' && divertNumber(spec, value))) {
+            bump(spec.key);
+          }
+        }
+        continue;
+      }
+      // `-c` short bundle carrying the config alias (mirrors the bundle path in the loop below).
+      if (token.length > 1 && token[0] === '-' && token[1] !== '-' && token.includes('c')) {
+        const attached = token.slice(token.indexOf('c') + 1);
+        if (attached) {
+          if (yargsBundleConfigValue(attached) !== undefined) {
+            bump('configFile');
+          }
+        } else if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          bump('configFile');
+        }
+        continue;
+      }
+      const spec = optionFor(token);
+      if (
+        spec &&
+        isScalarOption(spec) &&
+        i + 1 < args.length &&
+        !args[i + 1].startsWith('-') &&
+        !(spec.kind === 'number' && divertNumber(spec, args[i + 1]))
+      ) {
+        bump(spec.key);
+      }
+    }
+    const dups = new Set<keyof Wcli0Settings>();
+    for (const [key, n] of counts) {
+      if (n >= 2) {
+        dups.add(key);
+      }
+    }
+    return dups;
+  })();
+
   // yargs declares allowAllDirs/debug/yolo/unsafe/enableTruncation/enableLogResources as
   // `type:'boolean'` (src/index.ts), and a boolean option consumes a following bare
   // `true`/`false` token as its value (verified against yargs: `--debug false` => debug=false;
@@ -518,6 +623,16 @@ export function parseServerArgs(
 
   for (let i = 0; i < args.length; i++) {
     const token = args[i];
+    // The `--` options separator: yargs treats every following token as a positional, not an
+    // option (`node script.js -- --shell cmd` leaves `--shell`/`cmd` positional, NOT shell=cmd).
+    // Preserve the separator and the remainder verbatim and stop parsing so a no-op save does not
+    // re-emit those positionals as active wcli0 flags and change the launch behavior (P74).
+    if (token === '--') {
+      for (let j = i; j < args.length; j++) {
+        extraArgs.push(args[j]);
+      }
+      break;
+    }
     // Boolean / tri-state / safety flags. Each positive spelling accepts both the camelCase
     // form and its yargs kebab-case alias (P47), and consumes a following explicit
     // `true`/`false` value the way yargs does (P68).
@@ -638,6 +753,13 @@ export function parseServerArgs(
           extraArgs.push(token);
           continue;
         }
+        if (isScalarOption(spec) && duplicatedScalarKeys.has(spec.key)) {
+          // A scalar option repeated in the entry: yargs makes it an array, so preserve every
+          // occurrence verbatim rather than collapsing to a last-wins value the field can't
+          // represent (P78).
+          extraArgs.push(token);
+          continue;
+        }
         applyValue(spec, v);
         continue;
       }
@@ -655,7 +777,11 @@ export function parseServerArgs(
       if (attached) {
         const config = yargsBundleConfigValue(attached);
         if (config !== undefined) {
-          out.configFile = config; // value attached to the bundle, e.g. `-c/other.json`
+          if (duplicatedScalarKeys.has('configFile')) {
+            extraArgs.push(token); // repeated --config: preserve verbatim, never last-wins (P78)
+          } else {
+            out.configFile = config; // value attached to the bundle, e.g. `-c/other.json`
+          }
           continue;
         }
         // yargs would NOT read this remainder as the config string (`-cfoo` parses as the
@@ -667,6 +793,11 @@ export function parseServerArgs(
         continue;
       }
       if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        if (duplicatedScalarKeys.has('configFile')) {
+          // repeated --config: preserve the bundle verbatim; its value falls through next (P78).
+          extraArgs.push(token);
+          continue;
+        }
         out.configFile = args[i + 1]; // `c` is the bundle's last char; the next token is its value
         i++;
         continue;
@@ -689,6 +820,12 @@ export function parseServerArgs(
         // A numeric value the typed field cannot faithfully hold (unparseable, P34; or an
         // out-of-range log limit, P59): don't consume it. The flag is preserved here, and the
         // following value token falls through to extraArgs on the next iteration.
+        extraArgs.push(token);
+        continue;
+      }
+      if (isScalarOption(spec) && duplicatedScalarKeys.has(spec.key)) {
+        // A repeated scalar option: preserve the flag verbatim; its value token is not consumed
+        // here and falls through to extraArgs on the next iteration, so both round-trip (P78).
         extraArgs.push(token);
         continue;
       }
@@ -858,7 +995,10 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     // skips index 0 and keeps looking for a later modeled-flag suffix, so the `--shell` in
     // `wrapper --no-cache --shell bash` is still recovered instead of stranded in customArgs
     // (P-wrapperflags / P43).
-    const start = serverFlagSuffixStart(args, isWcli0Command(command));
+    // This branch only ever parses a stdio entry (http/sse return earlier), so pass stdio=true:
+    // a transport flag in the args must not "prove" a server-flag suffix that reorders a wrapper's
+    // own options on save, since stdio leaves transport flags in extraArgs verbatim (P77).
+    const start = serverFlagSuffixStart(args, isWcli0Command(command), true);
     s.customArgs = args.slice(0, start);
     serverArgs = args.slice(start);
   }

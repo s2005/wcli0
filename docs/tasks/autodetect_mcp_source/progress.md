@@ -411,3 +411,33 @@ that the round-13 P70 fix modeled incorrectly (verified against the project's ya
   through `pushOption`, so a dash-prefixed value such as a directory named `--unsafe` stays
   attached as `--logDirectory=--unsafe` instead of being re-emitted space-separated and parsed by
   yargs as a separate safety flag. Non-dash values are emitted unchanged)
+
+### Review Feedback (PR #89, round 15)
+
+P74-P78 are round-15 Codex review comments on the load -> edit -> save round trip, all in
+`vscode-extension/src/configSource.ts`. Each has an `analysis_N_*.md` + `comment_N_*.md` pair in
+this folder. P74/P75 close two faces of the `--` options separator; P76/P77 correct what the
+wrapper suffix detector counts as a modeled wcli0 flag; P78 stops collapsing repeated scalar
+options. All verified against the project's yargs semantics and covered by new unit tests.
+
+- [x] P74: Stop parsing args after the `--` separator (fixed — `parseServerArgs` now preserves `--`
+  and the entire remainder verbatim in `extraArgs` and stops parsing, so a `node script.js -- --shell
+  cmd` entry is not loaded as `shell=cmd` and a no-op save does not promote the positionals to active
+  flags)
+- [x] P75: Do not scan past `--` for a server suffix (fixed — `serverFlagSuffixStart` stops the scan
+  at the wcli0 binary's own `--`, so `command:"wcli0", args:["--","--debug"]` keeps `--debug` as a
+  positional in `customArgs`. Scoped to `allowIndexZero`: a wrapper's `--` is a pass-through
+  separator and the wrapped binary's flags still follow it, preserving the P17 npx case)
+- [x] P76: Count attached boolean flags as modeled suffixes (fixed — `isRecognizedServerFlag` now
+  recognizes an attached boolean assignment `--debug=true` / `--enableTruncation=false` as a modeled
+  wcli0 flag, so a wrapper suffix carrying only such a flag is detected and stays editable instead of
+  being stranded in `customArgs`. Restricted to literal `true`/`false`, matching the parser)
+- [x] P77: Do not let stdio transport flags prove a server suffix (fixed — a `stdio` flag threads
+  through `serverFlagSuffixStart`/`isPureServerFlagRun`/`isRecognizedServerFlag`; in stdio context a
+  transport flag consumes its value but does not count as modeled evidence, so `wrapper target
+  --transport fast` stays whole in `customArgs` and is not reordered on save. A suffix with a real
+  wcli0 flag still splits)
+- [x] P78: Preserve duplicate scalar flags instead of last-wins (fixed — a `duplicatedScalarKeys`
+  pre-scan flags any scalar option that appears twice, and each occurrence is then preserved verbatim
+  in `extraArgs` instead of collapsed, so `--config a --config b` / `--shell cmd --shell bash`
+  round-trip as the arrays yargs produces. Array-kind options and single occurrences are unaffected)
