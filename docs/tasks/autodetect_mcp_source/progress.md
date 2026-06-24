@@ -384,3 +384,30 @@ P67-P70 are round-13 Codex review comments on the load -> edit -> save round tri
   server-rejected entry rather than silently turning it into a valid yolo/unsafe launch.
   Conflict detection mirrors yargs last-wins, so a trailing `--no-yolo` or `--yolo false`
   is not counted as positive)
+
+### Review Feedback (PR #89, round 14)
+
+P71-P73 are round-14 Codex review comments on the load -> edit -> save round trip. Each has an
+`analysis_N_*.md` + `comment_N_*.md` pair in this folder. P71 corrects the conflict semantics
+that the round-13 P70 fix modeled incorrectly (verified against the project's yargs).
+
+- [x] P71: Preserve false/negated safety flags in conflict round-trips (fixed — the server's
+  `.conflicts('unsafe','yolo')` rejects an entry whenever BOTH keys are defined, not just both
+  positive: `--yolo false --unsafe`, `--no-yolo --unsafe`, `--yolo=false --unsafe`, and even
+  `--no-yolo --no-unsafe` are all rejected (verified against yargs). `parseServerArgs` now detects
+  the conflict by presence of both families in any form and round-trips every safety token
+  verbatim — bare positives, consumed `true`/`false` values, `--no-*` negations, and attached
+  `--yolo=…` forms — leaving `safetyMode` at default so a no-op save reproduces the rejected entry
+  instead of collapsing it to a valid single-mode launch. The P63/P70 tests that asserted the old
+  last-wins behavior were corrected)
+- [x] P72: Model attached boolean assignments (fixed — the attached-form branch now models a yargs
+  boolean assignment such as `--debug=true` / `--enableTruncation=false` via the new
+  `applyAttachedBoolean` helper, instead of dumping it to `extraArgs` where the form showed the
+  default and a stale `--debug=false` later in argv defeated the user's edit. Safety flags are
+  modeled only when there is no conflict; a non-`true`/`false` attached value is still preserved
+  verbatim)
+- [x] P73: Keep dash-prefixed scalar path values attached (fixed — `buildServerArgs` now emits the
+  scalar path options `--config`/`--allowedDir`/`--initialDir`/`--logDirectory`/`--wslMountPoint`
+  through `pushOption`, so a dash-prefixed value such as a directory named `--unsafe` stays
+  attached as `--logDirectory=--unsafe` instead of being re-emitted space-separated and parsed by
+  yargs as a separate safety flag. Non-dash values are emitted unchanged)

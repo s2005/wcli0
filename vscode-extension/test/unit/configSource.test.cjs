@@ -177,14 +177,15 @@ test('P63: parseServerArgs consumes negated boolean flags instead of preserving 
     '--no-allowAllDirs',
     '--no-debug',
     '--no-yolo',
-    '--no-unsafe',
     '--shell',
     'cmd',
   ]);
   assert.equal(a.settings.allowAllDirs, false);
   assert.equal(a.settings.debug, false);
   // parseServerArgs returns a partial: with no positive safety flag it leaves safetyMode unset,
-  // so parseMcpEntry overlays the default 'safe'. The negations must not leak into extraArgs.
+  // so parseMcpEntry overlays the default 'safe'. A single-family negation must not leak into
+  // extraArgs. (A negation from BOTH families together defines both keys and conflicts — the
+  // server rejects it and it round-trips verbatim instead; see the P71 test.)
   assert.equal(a.settings.safetyMode, undefined);
   assert.equal(a.settings.shell, 'cmd');
   assert.deepEqual(a.extraArgs, [], 'no negated boolean leaks into extraArgs');
@@ -194,12 +195,16 @@ test('P63: parseServerArgs consumes negated boolean flags instead of preserving 
   assert.equal(b.settings.allowAllDirs, false);
   assert.deepEqual(b.extraArgs, []);
 
-  // A negated safety flag clears only the matching mode: `--unsafe --no-yolo` stays unsafe.
+  // `--unsafe --no-yolo` DEFINES both safety keys (yargs sets yolo=false for --no-yolo), so the
+  // server's .conflicts check rejects it. It is treated as a conflict and round-trips verbatim
+  // rather than collapsing to a valid `--unsafe` launch — see the dedicated P71 test. (P63 still
+  // consumes single-family negations, as the cases above and below show.)
   const c = parseServerArgs(['--unsafe', '--no-yolo']);
-  assert.equal(c.settings.safetyMode, 'unsafe');
-  assert.deepEqual(c.extraArgs, []);
+  assert.equal(c.settings.safetyMode, undefined);
+  assert.deepEqual(c.extraArgs, ['--unsafe', '--no-yolo']);
 
-  // Mirrors yargs last-wins for a contradictory pair: `--yolo --no-yolo` resolves to safe.
+  // Mirrors yargs last-wins for a contradictory SAME-family pair (not a conflict): `--yolo
+  // --no-yolo` resolves to safe and is consumed.
   const d = parseServerArgs(['--yolo', '--no-yolo']);
   assert.equal(d.settings.safetyMode, 'safe');
   assert.deepEqual(d.extraArgs, []);
@@ -248,11 +253,84 @@ test('P70: parseServerArgs preserves a conflicting --yolo/--unsafe pair verbatim
   assert.equal(b.settings.safetyMode, undefined);
   assert.deepEqual(b.extraArgs, ['--yolo', 'true', '--unsafe', 'true']);
 
-  // A trailing negation removes the conflict (yargs last-wins): `--yolo --unsafe --no-yolo` is
-  // unsafe-only, so it is modeled normally and not preserved.
+  // A trailing negation does NOT remove the conflict: yargs still defines both keys (yolo=false
+  // via --no-yolo, unsafe=true), so .conflicts rejects it. All three tokens round-trip verbatim
+  // rather than collapsing to a valid `--unsafe` launch (P71).
   const c = parseServerArgs(['--yolo', '--unsafe', '--no-yolo']);
+  assert.equal(c.settings.safetyMode, undefined);
+  assert.deepEqual(c.extraArgs, ['--yolo', '--unsafe', '--no-yolo']);
+});
+
+test('P71: parseServerArgs preserves false/negated safety flags that still conflict', () => {
+  // yargs' .conflicts('unsafe','yolo') fails whenever BOTH keys are DEFINED, and yargs-parser
+  // defines the key for `--yolo false`, `--no-yolo`, and `--yolo=false` just as for `--yolo`.
+  // So pairing --unsafe with any of these is server-rejected; the parser must round-trip every
+  // safety token verbatim rather than model the entry as a valid single-mode launch.
+
+  // Explicit `--yolo false` alongside --unsafe: both keys defined => conflict.
+  const a = parseServerArgs(['--yolo', 'false', '--unsafe']);
+  assert.equal(a.settings.safetyMode, undefined, 'neither flag is modeled into safetyMode');
+  assert.deepEqual(a.extraArgs, ['--yolo', 'false', '--unsafe']);
+
+  // Negated `--no-yolo` alongside --unsafe: yolo=false is still defined => conflict.
+  const b = parseServerArgs(['--no-yolo', '--unsafe']);
+  assert.equal(b.settings.safetyMode, undefined);
+  assert.deepEqual(b.extraArgs, ['--no-yolo', '--unsafe']);
+
+  // Attached `--unsafe=false` alongside --yolo: both keys defined => conflict.
+  const c = parseServerArgs(['--unsafe=false', '--yolo']);
+  assert.equal(c.settings.safetyMode, undefined);
+  assert.deepEqual(c.extraArgs, ['--unsafe=false', '--yolo']);
+
+  // Without the other family it is NOT a conflict: `--no-yolo` alone is consumed (resolves to
+  // safe), not preserved — only the cross-family combination round-trips verbatim.
+  const d = parseServerArgs(['--no-yolo', '--shell', 'cmd']);
+  assert.equal(d.settings.safetyMode, undefined);
+  assert.equal(d.settings.shell, 'cmd');
+  assert.deepEqual(d.extraArgs, []);
+
+  // Even two negations conflict: `--no-yolo --no-unsafe` defines both keys (both false), which
+  // .conflicts still rejects (verified against yargs), so both round-trip verbatim.
+  const e = parseServerArgs(['--no-yolo', '--no-unsafe']);
+  assert.equal(e.settings.safetyMode, undefined);
+  assert.deepEqual(e.extraArgs, ['--no-yolo', '--no-unsafe']);
+});
+
+test('P72: parseServerArgs models attached boolean assignments', () => {
+  // yargs declares these type:'boolean', so `--debug=true` / `--enableTruncation=false` set the
+  // option value. The parser must model them (not dump to extraArgs), or the form shows the
+  // default and a later edit is defeated by the stale attached value surviving in argv.
+  const a = parseServerArgs([
+    '--debug=true',
+    '--enableTruncation=false',
+    '--enableLogResources=true',
+    '--allowAllDirs=false',
+  ]);
+  assert.equal(a.settings.debug, true);
+  assert.equal(a.settings.enableTruncation, 'disabled');
+  assert.equal(a.settings.enableLogResources, 'enabled');
+  assert.equal(a.settings.allowAllDirs, false);
+  assert.deepEqual(a.extraArgs, [], 'no attached boolean leaks into extraArgs');
+
+  // Kebab-case aliases are modeled identically.
+  const b = parseServerArgs(['--enable-truncation=true', '--allow-all-dirs=true']);
+  assert.equal(b.settings.enableTruncation, 'enabled');
+  assert.equal(b.settings.allowAllDirs, true);
+  assert.deepEqual(b.extraArgs, []);
+
+  // Attached safety positives are modeled when there is no conflict; `--yolo=false` leaves the
+  // default safe mode and is consumed.
+  const c = parseServerArgs(['--unsafe=true']);
   assert.equal(c.settings.safetyMode, 'unsafe');
   assert.deepEqual(c.extraArgs, []);
+  const d = parseServerArgs(['--yolo=false']);
+  assert.equal(d.settings.safetyMode, undefined);
+  assert.deepEqual(d.extraArgs, []);
+
+  // A non-boolean attached value (not true/false) is preserved verbatim, not coerced.
+  const e = parseServerArgs(['--debug=verbose']);
+  assert.equal(e.settings.debug, undefined);
+  assert.deepEqual(e.extraArgs, ['--debug=verbose']);
 });
 
 test('parseServerArgs parses transport flags', () => {

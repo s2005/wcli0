@@ -461,25 +461,60 @@ export function parseServerArgs(
   const boolValueAt = (i: number): boolean => args[i + 1] !== 'false';
 
   // A hand-authored entry that sets BOTH --yolo and --unsafe is rejected by the server, which
-  // declares them mutually exclusive (.conflicts('unsafe','yolo') in src/index.ts). Collapsing
-  // the pair to whichever appears last would let a no-op save rewrite that previously-failing
-  // entry into a valid yolo/unsafe launch the user never chose, so when both POSITIVE flags are
-  // present neither is modeled into safetyMode — both round-trip verbatim in extraArgs, keeping
-  // the conflicting (server-rejected) state intact (P70). Mirror yargs last-wins so a trailing
-  // negation (`--yolo --no-yolo`) or an explicit `--yolo false` is not counted as positive.
-  const lastSafetyPositive = (positive: string, negative: string): boolean => {
-    let on = false;
-    for (let i = 0; i < args.length; i++) {
-      if (args[i] === positive) {
-        on = args[i + 1] !== 'false';
-      } else if (args[i] === negative) {
-        on = false;
-      }
+  // declares them mutually exclusive (.conflicts('unsafe','yolo') in src/index.ts). yargs' check
+  // fails whenever both keys are DEFINED, regardless of their boolean value — and yargs-parser
+  // defines the key for every spelling: `--yolo`, `--yolo true/false`, `--no-yolo`, and the
+  // attached `--yolo=true/false`. So pairing --unsafe with ANY yolo spelling (even `--yolo false`
+  // or `--no-yolo`) is rejected, not just the both-positive case (verified against yargs). Detect
+  // the conflict whenever both families are present in any form; the loop then preserves every
+  // safety-family token verbatim in extraArgs and leaves safetyMode at its default. Collapsing the
+  // pair to one mode would let a no-op save rewrite a previously-failing entry into a valid launch
+  // the user never chose (P70/P71).
+  const yoloPresent = args.some(
+    (t) => t === '--yolo' || t === '--no-yolo' || t.startsWith('--yolo='),
+  );
+  const unsafePresent = args.some(
+    (t) => t === '--unsafe' || t === '--no-unsafe' || t.startsWith('--unsafe='),
+  );
+  const safetyConflict = yoloPresent && unsafePresent;
+
+  // Model a yargs attached boolean assignment (`--debug=true`, `--enableTruncation=false`, the
+  // safety flags, ...) the same way the bare spellings below are modeled, so the form reflects
+  // the real setting and a later edit is not defeated by a stale attached value surviving in
+  // extraArgs (yargs parses `--debug --debug=false` as debug=false, last-wins) (P72). Returns
+  // false when the flag is not a known boolean (the caller then preserves it verbatim) — including
+  // a safety flag under a conflict, which must round-trip unchanged to keep the server-rejected
+  // state intact (P71).
+  const applyAttachedBoolean = (flag: string, on: boolean): boolean => {
+    switch (flag) {
+      case '--allowAllDirs':
+      case '--allow-all-dirs':
+        out.allowAllDirs = on;
+        return true;
+      case '--debug':
+        out.debug = on;
+        return true;
+      case '--enableTruncation':
+      case '--enable-truncation':
+        out.enableTruncation = (on ? 'enabled' : 'disabled') as TriState;
+        return true;
+      case '--enableLogResources':
+      case '--enable-log-resources':
+        out.enableLogResources = (on ? 'enabled' : 'disabled') as TriState;
+        return true;
+      case '--yolo':
+      case '--unsafe':
+        if (safetyConflict) {
+          return false; // preserve verbatim — the conflicting entry is server-rejected (P71)
+        }
+        if (on) {
+          out.safetyMode = flag === '--yolo' ? 'yolo' : 'unsafe';
+        }
+        return true; // `--yolo=false` / `--unsafe=false` leaves the default safe mode
+      default:
+        return false;
     }
-    return on;
   };
-  const safetyConflict =
-    lastSafetyPositive('--yolo', '--no-yolo') && lastSafetyPositive('--unsafe', '--no-unsafe');
 
   for (let i = 0; i < args.length; i++) {
     const token = args[i];
@@ -513,12 +548,13 @@ export function parseServerArgs(
       out.debug = false;
       continue;
     }
-    // --yolo / --unsafe select the safety mode. When both POSITIVE flags are present the server
-    // rejects the entry, so preserve them verbatim in extraArgs rather than collapsing to one and
-    // silently turning the rejected entry into a valid launch (P70). The following true/false (if
-    // any) falls through to extraArgs on the next iteration, keeping the original tokens intact.
-    // An explicit `--yolo false` / `--unsafe false` is not a positive (it leaves the default
-    // mode) and consumes its value.
+    // --yolo / --unsafe select the safety mode. Under a conflict (both safety keys defined in any
+    // form — see safetyConflict) the server rejects the entry, so the flag is preserved verbatim
+    // in extraArgs rather than collapsed to one mode that silently turns the rejected entry into a
+    // valid launch (P70/P71); the following true/false (if any) falls through to extraArgs on the
+    // next iteration, keeping the original tokens intact. With no conflict an explicit `--yolo
+    // false` / `--unsafe false` is not a positive (it leaves the default mode) and consumes its
+    // value.
     if (token === '--yolo' || token === '--unsafe') {
       if (safetyConflict) {
         extraArgs.push(token);
@@ -533,11 +569,17 @@ export function parseServerArgs(
       }
       continue;
     }
-    // A negated safety flag clears only the matching mode. The server treats yolo/unsafe as
-    // independent booleans (`.conflicts('unsafe','yolo')` forbids both positives at once), so a
-    // `--no-yolo` alongside an `--unsafe` must leave 'unsafe' intact; clearing the mode only when
-    // it currently matches mirrors yargs' last-wins (`--yolo --no-yolo` => safe) without
-    // clobbering an unrelated selection. With no positive seen, safetyMode stays the default.
+    // Under a safety conflict (both yolo and unsafe keys defined) the entry is server-rejected, so
+    // a negation must round-trip verbatim alongside the positive flags rather than be modeled or
+    // dropped — otherwise a no-op save of `--no-yolo --unsafe` collapses to a valid `--unsafe`
+    // launch (P71).
+    if (safetyConflict && (token === '--no-yolo' || token === '--no-unsafe')) {
+      extraArgs.push(token);
+      continue;
+    }
+    // A negated safety flag clears only the matching mode. With no conflict only one family is
+    // present, so a `--no-yolo` simply mirrors yargs' last-wins (`--yolo --no-yolo` => safe)
+    // without clobbering an unrelated selection. With no positive seen, safetyMode stays default.
     if (token === '--no-yolo' && out.safetyMode === 'yolo') {
       out.safetyMode = 'safe';
       continue;
@@ -575,9 +617,20 @@ export function parseServerArgs(
     const eq = token.indexOf('=');
     if (eq > 0 && token.startsWith('-')) {
       const flag = token.slice(0, eq);
+      const value = token.slice(eq + 1);
+      // A yargs attached boolean assignment (`--debug=true`, `--enableTruncation=false`, ...):
+      // model it so the form reflects the real setting and a later edit is not defeated by a
+      // stale value preserved in extraArgs (P72). Only the literal true/false yargs round-trips
+      // are modeled; any other attached value (or a safety flag under a conflict) falls through
+      // and is preserved verbatim below.
+      if (value === 'true' || value === 'false') {
+        if (applyAttachedBoolean(flag, value === 'true')) {
+          continue;
+        }
+      }
       const spec = optionFor(flag);
       if (spec) {
-        const v = token.slice(eq + 1);
+        const v = value;
         if (spec.kind === 'number' && divertNumber(spec, v)) {
           // A numeric value the typed field cannot faithfully hold: an unparseable value
           // (P34) or an out-of-range log limit (P59). Preserve it verbatim so it round-trips

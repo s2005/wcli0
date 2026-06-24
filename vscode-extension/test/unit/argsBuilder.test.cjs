@@ -240,6 +240,40 @@ test('a file-source round-trip preserves --allowAllDirs even with dirs/initialDi
   );
 });
 
+test('P73: dash-prefixed scalar path values stay attached to their flag', () => {
+  // buildServerArgs emits scalar path options space-separated, but a value that starts with a
+  // dash (e.g. a directory literally named `--unsafe`, preserved verbatim from a file-source
+  // round-trip) would be parsed by yargs as a separate flag. pushOption keeps it attached via the
+  // --opt=value form so the launch semantics are not changed (P73).
+  const opts = { resolvePaths: false, preserveRelativePaths: true };
+  const args = buildServerArgs(
+    defaults({
+      configFile: '--cfg',
+      allowedDirectories: ['--dir'],
+      initialDir: '--init',
+      logDirectory: '--unsafe',
+      wslMountPoint: '--wsl',
+    }),
+    opts,
+  );
+  assert.ok(args.includes('--config=--cfg'), 'config uses attached form');
+  assert.ok(args.includes('--allowedDir=--dir'), 'allowedDir uses attached form');
+  assert.ok(args.includes('--initialDir=--init'), 'initialDir uses attached form');
+  assert.ok(args.includes('--logDirectory=--unsafe'), 'logDirectory uses attached form');
+  assert.ok(args.includes('--wslMountPoint=--wsl'), 'wslMountPoint uses attached form');
+  // None of the dash-prefixed values leaked as a standalone token a server would read as a flag.
+  assert.ok(
+    !args.includes('--unsafe'),
+    'the directory name is not emitted as a bare safety flag',
+  );
+
+  // A normal (non-dash) value still emits as separate tokens — unchanged behavior.
+  const normal = buildServerArgs(defaults({ logDirectory: '/var/log' }), opts);
+  const idx = normal.indexOf('--logDirectory');
+  assert.ok(idx >= 0, 'logDirectory flag is present');
+  assert.equal(normal[idx + 1], '/var/log', 'non-dash value stays space-separated');
+});
+
 test('an emitted log limit drops a duplicate diverted copy from extraArgs (P59)', () => {
   // The parser diverts an out-of-range log limit into extraArgs to round-trip it verbatim.
   // When the form then supplies an in-range typed value, the builder emits that and must drop

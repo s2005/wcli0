@@ -126,8 +126,11 @@ export function isServerInvalidLogPath(resolved: string): boolean {
 /**
  * Append an option/value pair, using `--option=value` form when the value is
  * dash-prefixed. As separate argv entries, yargs would parse a value like `-e`
- * or `--exec` as a new option and drop it — and an emptied blocked-list option
- * makes the server replace its defaults with nothing, weakening security.
+ * or `--exec` as a new option and drop it — an emptied blocked-list option then
+ * makes the server replace its defaults with nothing (weakening security), and a
+ * scalar path such as a directory literally named `--unsafe` would be read as a
+ * separate safety flag instead of the path, changing the launch semantics (P73).
+ * Used for every value-bearing option whose value can start with a dash.
  */
 function pushOption(args: string[], flag: string, value: string): void {
   if (value.startsWith('-')) {
@@ -395,7 +398,7 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
 
   const configFile = pathValue(s.configFile, opts);
   if (configFile) {
-    args.push('--config', configFile);
+    pushOption(args, '--config', configFile);
   }
   const emitShell = Boolean(s.shell) && s.shell !== 'all';
   if (emitShell) {
@@ -404,12 +407,12 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   for (const dir of s.allowedDirectories) {
     const resolved = pathValue(dir, opts);
     if (resolved) {
-      args.push('--allowedDir', resolved);
+      pushOption(args, '--allowedDir', resolved);
     }
   }
   const initialDir = pathValue(s.initialDir, opts);
   if (initialDir) {
-    args.push('--initialDir', initialDir);
+    pushOption(args, '--initialDir', initialDir);
   }
   // The server ignores non-positive commandTimeout/maxCommandLength (uses its
   // default), so only emit positive values; invalid ones are surfaced by
@@ -424,7 +427,7 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   }
   const emitWslMountPoint = s.wslMountPoint.trim().length > 0;
   if (emitWslMountPoint) {
-    args.push('--wslMountPoint', s.wslMountPoint.trim());
+    pushOption(args, '--wslMountPoint', s.wslMountPoint.trim());
   }
   for (const cmd of s.blockedCommands) {
     pushOption(args, '--blockedCommand', cmd);
@@ -460,7 +463,7 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   }
   const logDirectory = pathValue(s.logDirectory, opts);
   if (logDirectory) {
-    args.push('--logDirectory', logDirectory);
+    pushOption(args, '--logDirectory', logDirectory);
   }
   // --allowAllDirs disables the working-directory restriction before initialDir
   // is applied, and is meaningless once paths are configured. Only emit it when
