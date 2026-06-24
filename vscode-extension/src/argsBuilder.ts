@@ -86,8 +86,10 @@ export function resolvedConfigFilePath(s: Wcli0Settings): string | undefined {
 /**
  * A logging line limit the server requires as an integer in 1..10000. Used for
  * `maxReturnLines`, whose `validateLoggingConfig` check enforces `Number.isInteger`.
+ * Exported so the reverse parser can decide whether a loaded value fits the typed
+ * field or must round-trip verbatim through extraArgs (P59).
  */
-function isValidLogLimit(n: number): boolean {
+export function isValidLogLimit(n: number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= 10000;
 }
 
@@ -95,9 +97,10 @@ function isValidLogLimit(n: number): boolean {
  * The server's `validateLoggingConfig` only enforces the 1..10000 range for
  * `maxOutputLines` (no integer requirement), so a fractional value like 1.5 is
  * accepted. Validate it on that looser constraint to avoid blocking a config the
- * server would run.
+ * server would run. Exported alongside {@link isValidLogLimit} for the parser's
+ * extraArgs round-trip decision (P59).
  */
-function isValidMaxOutputLines(n: number): boolean {
+export function isValidMaxOutputLines(n: number): boolean {
   return n >= 1 && n <= 10000;
 }
 
@@ -123,8 +126,11 @@ export function isServerInvalidLogPath(resolved: string): boolean {
 /**
  * Append an option/value pair, using `--option=value` form when the value is
  * dash-prefixed. As separate argv entries, yargs would parse a value like `-e`
- * or `--exec` as a new option and drop it — and an emptied blocked-list option
- * makes the server replace its defaults with nothing, weakening security.
+ * or `--exec` as a new option and drop it — an emptied blocked-list option then
+ * makes the server replace its defaults with nothing (weakening security), and a
+ * scalar path such as a directory literally named `--unsafe` would be read as a
+ * separate safety flag instead of the path, changing the launch semantics (P73).
+ * Used for every value-bearing option whose value can start with a dash.
  */
 function pushOption(args: string[], flag: string, value: string): void {
   if (value.startsWith('-')) {
@@ -145,6 +151,17 @@ export interface BuildOptions {
   resolvePaths?: boolean;
 
   /**
+   * Only meaningful together with `resolvePaths: false`. When true, a plain relative
+   * path-like value (`--config`, `--allowedDir`, `--initialDir`, `--logDirectory`) is
+   * preserved verbatim instead of being anchored to a `${workspaceFolder}` token. Set
+   * when re-saving a loaded `.vscode/mcp.json` source, whose relative args were authored
+   * relative to the entry's own `cwd` and must round-trip unchanged so an unrelated edit
+   * does not retarget them (P27). Left false for a settings-driven export, where relative
+   * path settings are workspace-relative (matching the provider) and get the token.
+   */
+  preserveRelativePaths?: boolean;
+
+  /**
    * When set, the server is launched against this auto-managed config file
    * (`--config <path>`) and the global CLI flags are NOT emitted. Used when the
    * user configures shells individually (`wcli0.shells`), which can only be
@@ -152,6 +169,20 @@ export interface BuildOptions {
    * would conflict with the file's per-shell `enabled`/security settings.
    */
   managedConfigPath?: string;
+
+  /**
+   * When true, a hand-authored `--transport` token kept in `extraArgs` is NOT stripped from a
+   * stdio launch. Set only for a file-source round-trip ("Save to file"), where the entry's
+   * `type: stdio` is authoritative and the user's verbatim argv — including a stray
+   * `--transport http`/`--transport=sse` they wrote alongside `--http-*` options — must survive
+   * an unrelated save rather than being silently dropped (P-fileextratransport). The safety
+   * strip still applies to the provider and settings-export paths, which must never let an
+   * extraArgs `--transport http` turn a stdio registration into a network listener. It is
+   * still stripped here when a `--config` is emitted (the builder also pushes `--transport
+   * stdio`, and two `--transport` tokens yargs-merge into an array the server applies neither
+   * of).
+   */
+  preserveExtraTransport?: boolean;
 }
 
 /**
@@ -256,6 +287,47 @@ function stripConfigArgs(extraArgs: string[]): string[] {
 }
 
 /**
+ * Remove a value-carrying option (and its value) from a raw extraArgs list, matching any of
+ * the given long-flag spellings in `--flag value`, `--flag=value`, and bare `--flag` forms.
+ * Used to drop a log limit the parser diverted into extraArgs (a finite-but-out-of-range
+ * value round-trips verbatim there, P59) once the builder emits the SAME flag from the typed
+ * field: keeping both would make yargs parse the option as an array the server applies none
+ * of. Mirrors the next-token guard in {@link stripTransportArgs} so a following option is not
+ * swallowed as a value.
+ *
+ * The yargs negation of each scalar option (`--no-shell`, `--no-command-timeout`, ...) is
+ * stripped too: a loaded file may carry one in extraArgs (the parser does not model scalar
+ * negations), and emitting the positive flag from the typed field while it survives makes
+ * yargs parse the option as an array — `shell: ['cmd', false]`, `logDirectory: ['/tmp',
+ * false]` — that the server's scalar applyCli* helpers resolve to neither, so the edited value
+ * is ignored or crashes the server. A negation carries no value, so the token is dropped alone
+ * (P65). An UNSET field still round-trips its preserved negation: the strip is guarded by the
+ * same emission condition as the positive flag.
+ */
+function stripValueFlag(extraArgs: string[], names: string[]): string[] {
+  const exact = new Set(names);
+  const negated = new Set(names.map((n) => n.replace(/^--/, '--no-')));
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i++) {
+    const a = extraArgs[i];
+    if (exact.has(a)) {
+      if (i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+        i++;
+      }
+      continue;
+    }
+    if (negated.has(a)) {
+      continue; // boolean negation of the same option — no value token to consume
+    }
+    if (names.some((n) => a.startsWith(`${n}=`))) {
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
+
+/**
  * Build the minimal arg list for an auto-managed-config launch: point the server
  * at the generated config file and force stdio (a provider-launched process must
  * not start an HTTP listener even if the file selected one). Everything else the
@@ -288,15 +360,26 @@ function pathValue(value: string, opts: BuildOptions): string | undefined {
     if (!trimmed) {
       return undefined;
     }
-    // Convert a plain relative path to a ${workspaceFolder}-relative token so VS
-    // Code anchors it to the workspace, matching the resolved-path and config-file
-    // generators. A bare relative value would otherwise be C-rooted by the
-    // server's normalizeWindowsPath (e.g. "src" -> C:\src), denying the intended
-    // directory and possibly allowing an unrelated one. Values that already carry
-    // a token (or are absolute) are kept verbatim for VS Code to resolve.
     if (!isAbsolutePath(trimmed) && !hasUnresolvedVariables(trimmed)) {
+      // For a file-source round-trip, a relative path was authored relative to the
+      // entry's own cwd (the server resolves --config/--allowedDir/etc. against
+      // process.cwd()). Preserve it verbatim so re-saving an unrelated field does not
+      // retarget it: anchoring config.json to ${workspaceFolder} would launch a
+      // different file when cwd is not the workspace root, e.g. cwd
+      // ${workspaceFolder}/server must keep config.json -> .../server/config.json (P27).
+      if (opts.preserveRelativePaths) {
+        return trimmed.split(/[\\/]/).join('/');
+      }
+      // Settings export: convert a plain relative path to a ${workspaceFolder}-relative
+      // token so VS Code anchors it to the workspace, matching what the provider does
+      // (it resolves relative path settings against the workspace, not cwd). A bare
+      // relative value would otherwise be C-rooted by the server's normalizeWindowsPath
+      // (e.g. "src" -> C:\src), denying the intended directory and possibly allowing an
+      // unrelated one.
       return `\${workspaceFolder}/${trimmed.split(/[\\/]/).join('/')}`;
     }
+    // Values that already carry a token (or are absolute) are kept verbatim for VS
+    // Code to resolve.
     return trimmed;
   }
   return resolvedPath(value);
@@ -315,32 +398,36 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
 
   const configFile = pathValue(s.configFile, opts);
   if (configFile) {
-    args.push('--config', configFile);
+    pushOption(args, '--config', configFile);
   }
-  if (s.shell && s.shell !== 'all') {
+  const emitShell = Boolean(s.shell) && s.shell !== 'all';
+  if (emitShell) {
     args.push('--shell', s.shell);
   }
   for (const dir of s.allowedDirectories) {
     const resolved = pathValue(dir, opts);
     if (resolved) {
-      args.push('--allowedDir', resolved);
+      pushOption(args, '--allowedDir', resolved);
     }
   }
   const initialDir = pathValue(s.initialDir, opts);
   if (initialDir) {
-    args.push('--initialDir', initialDir);
+    pushOption(args, '--initialDir', initialDir);
   }
   // The server ignores non-positive commandTimeout/maxCommandLength (uses its
   // default), so only emit positive values; invalid ones are surfaced by
   // validateLaunchSpec rather than silently falling back.
-  if (s.commandTimeout != null && s.commandTimeout > 0) {
+  const emitCommandTimeout = s.commandTimeout != null && s.commandTimeout > 0;
+  if (emitCommandTimeout) {
     args.push('--commandTimeout', String(s.commandTimeout));
   }
-  if (s.maxCommandLength != null && s.maxCommandLength > 0) {
+  const emitMaxCommandLength = s.maxCommandLength != null && s.maxCommandLength > 0;
+  if (emitMaxCommandLength) {
     args.push('--maxCommandLength', String(s.maxCommandLength));
   }
-  if (s.wslMountPoint.trim()) {
-    args.push('--wslMountPoint', s.wslMountPoint.trim());
+  const emitWslMountPoint = s.wslMountPoint.trim().length > 0;
+  if (emitWslMountPoint) {
+    pushOption(args, '--wslMountPoint', s.wslMountPoint.trim());
   }
   for (const cmd of s.blockedCommands) {
     pushOption(args, '--blockedCommand', cmd);
@@ -351,9 +438,13 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   for (const op of s.blockedOperators) {
     pushOption(args, '--blockedOperator', op);
   }
-  // Only emit log limits the server accepts; an out-of-range value makes
-  // validateLoggingConfig throw on startup (surfaced by validateLaunchSpec).
-  if (s.maxOutputLines != null && isValidMaxOutputLines(s.maxOutputLines)) {
+  // Only emit log limits the server accepts as a config-file value; an out-of-range value
+  // makes validateLoggingConfig throw on startup (surfaced by validateLaunchSpec). A loaded
+  // file-source value the server still accepts as a CLI flag (any > 0, applied by
+  // applyCliLogging without re-validation) is preserved verbatim via extraArgs by the parser
+  // (P59), so it round-trips even though the typed field cannot hold it.
+  const emitMaxOutputLines = s.maxOutputLines != null && isValidMaxOutputLines(s.maxOutputLines);
+  if (emitMaxOutputLines) {
     args.push('--maxOutputLines', String(s.maxOutputLines));
   }
   if (s.enableTruncation === 'enabled') {
@@ -366,18 +457,27 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   } else if (s.enableLogResources === 'disabled') {
     args.push('--no-enableLogResources');
   }
-  if (s.maxReturnLines != null && isValidLogLimit(s.maxReturnLines)) {
+  const emitMaxReturnLines = s.maxReturnLines != null && isValidLogLimit(s.maxReturnLines);
+  if (emitMaxReturnLines) {
     args.push('--maxReturnLines', String(s.maxReturnLines));
   }
   const logDirectory = pathValue(s.logDirectory, opts);
   if (logDirectory) {
-    args.push('--logDirectory', logDirectory);
+    pushOption(args, '--logDirectory', logDirectory);
   }
   // --allowAllDirs disables the working-directory restriction before initialDir
   // is applied, and is meaningless once paths are configured. Only emit it when
   // nothing else constrains the working directory.
+  //
+  // EXCEPT for a file-source round-trip (preserveRelativePaths): a hand-authored
+  // --allowAllDirs the form shows as set must survive an unrelated save. Dropping it flips
+  // the "Allow all directories" tri-select on the post-write reparse, and combined with
+  // --initialDir it silently re-tightens the server: loadConfig applies --allowAllDirs
+  // (clearing restrictWorkingDirectory) BEFORE the CLI --initialDir is merged, so without the
+  // flag the entry confines the server to initialDir instead of staying unrestricted. The
+  // provider/settings-export paths keep the suppression (P57).
   const dirsConfigured = s.allowedDirectories.some((d) => d.trim()) || s.initialDir.trim().length > 0;
-  if (s.allowAllDirs && !dirsConfigured) {
+  if (s.allowAllDirs && (opts.preserveRelativePaths || !dirsConfigured)) {
     args.push('--allowAllDirs');
   }
   if (s.safetyMode === 'yolo') {
@@ -395,6 +495,9 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   // stdio launch: a provider/mcp.json stdio registration must never let an
   // extraArgs value such as `--transport http` turn the process into a network
   // listener the client never connects to.
+  // The transport host/port/origin scalar flags this build actually emitted, recorded so a
+  // diverted/preserved copy of the SAME flag can be stripped from extraArgs below (P61).
+  const emittedTransportScalarFlags: string[] = [];
   let stripExtraTransport = false;
   if (s.transportMode === 'stdio') {
     // When a config file is referenced it may select http/sse; emit an explicit
@@ -404,8 +507,17 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     // below so it cannot start a network listener.
     if (configFile) {
       args.push('--transport', 'stdio');
+      // A --transport stdio is now emitted, so a conflicting extraArgs --transport must be
+      // stripped even for a file-source round-trip — two tokens would yargs-merge into an
+      // array the server resolves to neither, silently keeping the referenced config's mode.
+      stripExtraTransport = true;
+    } else {
+      // No --transport is emitted. The provider/settings-export paths still strip a stray
+      // extraArgs --transport so a stdio registration cannot become a network listener; a
+      // file-source round-trip instead preserves the user's authored token verbatim
+      // (P-fileextratransport).
+      stripExtraTransport = !opts.preserveExtraTransport;
     }
-    stripExtraTransport = true;
   } else {
     args.push('--transport', s.transportMode);
     stripExtraTransport = true;
@@ -415,14 +527,17 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
       s.transportMode === 'http' ? '--http-allowed-origins' : '--sse-allowed-origins';
     if (s.transportHost.trim()) {
       args.push(hostFlag, s.transportHost.trim());
+      emittedTransportScalarFlags.push(hostFlag);
     }
     // Only emit a port the server will accept; an invalid one is surfaced by
     // validateLaunchSpec instead (otherwise the server silently uses its default).
     if (isValidPort(s.transportPort)) {
       args.push(portFlag, String(s.transportPort));
+      emittedTransportScalarFlags.push(portFlag);
     }
     if (s.transportAllowedOrigins.length > 0) {
       args.push(originFlag, s.transportAllowedOrigins.join(','));
+      emittedTransportScalarFlags.push(originFlag);
     }
   }
 
@@ -436,6 +551,42 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   }
   if (configFile) {
     extras = stripConfigArgs(extras);
+  }
+  // When the builder emits a modeled SCALAR value flag from a typed field, drop any
+  // same-named flag the parser diverted into extraArgs for round-trip: emitting both yields a
+  // duplicate option yargs merges into an array the server's applyCli* helpers resolve to
+  // neither (e.g. a loaded `--commandTimeout bad` or `--logDirectory --debug` the parser kept
+  // verbatim, then the user sets that field in the form — the form value must win, otherwise
+  // the edited value is ignored or crashes the server). Each strip is guarded by the SAME
+  // condition as the emission so an UNSET field still round-trips its preserved (malformed)
+  // value (P34/P59/P61). Only the kebab/camel spellings the parser produces need stripping.
+  // Array options (--allowedDir / --blocked*) are exempt: the server merges repeated values.
+  if (emitShell) {
+    extras = stripValueFlag(extras, ['--shell']);
+  }
+  if (initialDir) {
+    extras = stripValueFlag(extras, ['--initialDir', '--initial-dir']);
+  }
+  if (emitCommandTimeout) {
+    extras = stripValueFlag(extras, ['--commandTimeout', '--command-timeout']);
+  }
+  if (emitMaxCommandLength) {
+    extras = stripValueFlag(extras, ['--maxCommandLength', '--max-command-length']);
+  }
+  if (emitWslMountPoint) {
+    extras = stripValueFlag(extras, ['--wslMountPoint', '--wsl-mount-point']);
+  }
+  if (emitMaxOutputLines) {
+    extras = stripValueFlag(extras, ['--maxOutputLines', '--max-output-lines']);
+  }
+  if (emitMaxReturnLines) {
+    extras = stripValueFlag(extras, ['--maxReturnLines', '--max-return-lines']);
+  }
+  if (logDirectory) {
+    extras = stripValueFlag(extras, ['--logDirectory', '--log-directory']);
+  }
+  for (const flag of emittedTransportScalarFlags) {
+    extras = stripValueFlag(extras, [flag]);
   }
   for (const extra of extras) {
     args.push(extra);

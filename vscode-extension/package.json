@@ -2,7 +2,7 @@
   "name": "wcli0-vscode",
   "displayName": "wcli0 — MCP Server",
   "description": "Configure and run the wcli0 MCP server with simple user- and workspace-level settings.",
-  "version": "0.20260620.2",
+  "version": "0.20260621.15",
   "publisher": "s2005",
   "license": "MIT",
   "engines": {

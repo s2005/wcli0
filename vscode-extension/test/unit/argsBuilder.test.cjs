@@ -225,6 +225,205 @@ test('--allowAllDirs is emitted only when no dirs/initialDir are configured', ()
   );
 });
 
+test('a file-source round-trip preserves --allowAllDirs even with dirs/initialDir set (P57)', () => {
+  // For a file source (preserveRelativePaths) a hand-authored --allowAllDirs the form shows as
+  // set must survive an unrelated save: with --initialDir, dropping it silently re-tightens the
+  // server to initialDir; with --allowedDir it is server-inert but would flip the tri-select on
+  // reparse. Both keep the flag here, unlike the settings-export/provider paths above.
+  const opts = { resolvePaths: false, preserveRelativePaths: true };
+  assert.deepEqual(buildServerArgs(defaults({ allowAllDirs: true, initialDir: '/x' }), opts), [
+    '--initialDir', '/x', '--allowAllDirs',
+  ]);
+  assert.deepEqual(
+    buildServerArgs(defaults({ allowAllDirs: true, allowedDirectories: ['/srv'] }), opts),
+    ['--allowedDir', '/srv', '--allowAllDirs'],
+  );
+});
+
+test('P73: dash-prefixed scalar path values stay attached to their flag', () => {
+  // buildServerArgs emits scalar path options space-separated, but a value that starts with a
+  // dash (e.g. a directory literally named `--unsafe`, preserved verbatim from a file-source
+  // round-trip) would be parsed by yargs as a separate flag. pushOption keeps it attached via the
+  // --opt=value form so the launch semantics are not changed (P73).
+  const opts = { resolvePaths: false, preserveRelativePaths: true };
+  const args = buildServerArgs(
+    defaults({
+      configFile: '--cfg',
+      allowedDirectories: ['--dir'],
+      initialDir: '--init',
+      logDirectory: '--unsafe',
+      wslMountPoint: '--wsl',
+    }),
+    opts,
+  );
+  assert.ok(args.includes('--config=--cfg'), 'config uses attached form');
+  assert.ok(args.includes('--allowedDir=--dir'), 'allowedDir uses attached form');
+  assert.ok(args.includes('--initialDir=--init'), 'initialDir uses attached form');
+  assert.ok(args.includes('--logDirectory=--unsafe'), 'logDirectory uses attached form');
+  assert.ok(args.includes('--wslMountPoint=--wsl'), 'wslMountPoint uses attached form');
+  // None of the dash-prefixed values leaked as a standalone token a server would read as a flag.
+  assert.ok(
+    !args.includes('--unsafe'),
+    'the directory name is not emitted as a bare safety flag',
+  );
+
+  // A normal (non-dash) value still emits as separate tokens — unchanged behavior.
+  const normal = buildServerArgs(defaults({ logDirectory: '/var/log' }), opts);
+  const idx = normal.indexOf('--logDirectory');
+  assert.ok(idx >= 0, 'logDirectory flag is present');
+  assert.equal(normal[idx + 1], '/var/log', 'non-dash value stays space-separated');
+});
+
+test('an emitted log limit drops a duplicate diverted copy from extraArgs (P59)', () => {
+  // The parser diverts an out-of-range log limit into extraArgs to round-trip it verbatim.
+  // When the form then supplies an in-range typed value, the builder emits that and must drop
+  // the stale extraArgs copy of the same flag, or yargs would merge two into an array the
+  // server applies neither of.
+  assert.deepEqual(
+    buildServerArgs(defaults({ maxOutputLines: 50, extraArgs: ['--maxOutputLines', '99999'] })),
+    ['--maxOutputLines', '50'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ maxReturnLines: 200, extraArgs: ['--max-return-lines=50000'] })),
+    ['--maxReturnLines', '200'],
+  );
+  // A diverted log limit with no competing typed value is preserved verbatim.
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--maxReturnLines', '50000'] })),
+    ['--maxReturnLines', '50000'],
+  );
+});
+
+test('an emitted modeled scalar flag drops a diverted duplicate from extraArgs (P61)', () => {
+  // The parser diverts a malformed modeled value into extraArgs to round-trip it verbatim:
+  // an unparseable number is kept as `['--commandTimeout', 'bad']` (P34), and a string flag
+  // whose value is itself a flag (`--logDirectory --debug`) is kept as the bare `--logDirectory`
+  // (the following `--debug` is parsed as the debug field, not preserved). Once the form
+  // supplies a typed value the builder emits its own flag and must drop the stale diverted
+  // copy, or yargs merges the two into an array the server's applyCli* helpers apply none of
+  // (and the edited value is ignored / crashes startup).
+
+  // Unparseable security-override number: the flag AND its diverted value token are removed.
+  // Both spellings (camel + kebab) the parser may have produced are stripped.
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--commandTimeout', 'bad'] })),
+    ['--commandTimeout', '30'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--command-timeout=bad'] })),
+    ['--commandTimeout', '30'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ maxCommandLength: 4096, extraArgs: ['--maxCommandLength', 'bad'] })),
+    ['--maxCommandLength', '4096'],
+  );
+
+  // String options the parser kept as a bare diverted flag (its value was a flag): the
+  // duplicate is dropped once the typed field re-emits it.
+  assert.deepEqual(
+    buildServerArgs(defaults({ logDirectory: '/logs', extraArgs: ['--logDirectory'] })),
+    ['--logDirectory', '/logs'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ shell: 'cmd', extraArgs: ['--shell'] })),
+    ['--shell', 'cmd'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ initialDir: '/start', extraArgs: ['--initial-dir'] })),
+    ['--initialDir', '/start'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ wslMountPoint: '/mnt/', extraArgs: ['--wslMountPoint'] })),
+    ['--wslMountPoint', '/mnt/'],
+  );
+
+  // The strip stops at the flag: an unrelated following extraArg flag is NOT swallowed.
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--commandTimeout', '--keepme'] })),
+    ['--commandTimeout', '30', '--keepme'],
+  );
+
+  // A transport scalar (http/sse port) diverted as a bad number is dropped when the form
+  // supplies a valid one.
+  assert.deepEqual(
+    buildServerArgs(
+      defaults({
+        transportMode: 'http',
+        transportHost: '',
+        transportPort: 8080,
+        extraArgs: ['--http-port', 'abc'],
+      }),
+    ),
+    ['--transport', 'http', '--http-port', '8080'],
+  );
+
+  // An UNSET field still round-trips its preserved malformed value verbatim (no over-strip).
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--commandTimeout', 'bad'] })),
+    ['--commandTimeout', 'bad'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--logDirectory'] })),
+    ['--logDirectory'],
+  );
+
+  // Array options are exempt: the server merges repeats, so a preserved --allowedDir is kept
+  // even when the form adds its own (no array-coercion hazard).
+  assert.deepEqual(
+    buildServerArgs(
+      defaults({ allowedDirectories: ['/a'], extraArgs: ['--allowedDir', '/b'] }),
+    ),
+    ['--allowedDir', '/a', '--allowedDir', '/b'],
+  );
+});
+
+test('an emitted scalar flag strips a preserved yargs negation of the same option (P65)', () => {
+  // A loaded file may carry a scalar negation (`--no-shell`, `--no-logDirectory`,
+  // `--no-commandTimeout`) in extraArgs; the parser does not model these. Once the form supplies
+  // a typed value the builder must drop the negation, or yargs parses the option as an array
+  // (`shell: ['cmd', false]`) the server's scalar applyCli* helpers apply none of — ignoring the
+  // edit or crashing the server. The negation carries no value, so only the token is dropped.
+  assert.deepEqual(
+    buildServerArgs(defaults({ shell: 'cmd', extraArgs: ['--no-shell'] })),
+    ['--shell', 'cmd'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ logDirectory: '/logs', extraArgs: ['--no-logDirectory'] })),
+    ['--logDirectory', '/logs'],
+  );
+  assert.deepEqual(
+    buildServerArgs(defaults({ commandTimeout: 30, extraArgs: ['--no-commandTimeout'] })),
+    ['--commandTimeout', '30'],
+  );
+  // The kebab-case negation the parser may have kept is stripped too.
+  assert.deepEqual(
+    buildServerArgs(defaults({ initialDir: '/start', extraArgs: ['--no-initial-dir'] })),
+    ['--initialDir', '/start'],
+  );
+  // A transport scalar negation is dropped once the form emits the positive flag.
+  assert.deepEqual(
+    buildServerArgs(
+      defaults({
+        transportMode: 'http',
+        transportHost: '',
+        transportPort: 8080,
+        extraArgs: ['--no-http-port'],
+      }),
+    ),
+    ['--transport', 'http', '--http-port', '8080'],
+  );
+  // The strip does not swallow a following unrelated extraArg.
+  assert.deepEqual(
+    buildServerArgs(defaults({ shell: 'cmd', extraArgs: ['--no-shell', '--keepme'] })),
+    ['--shell', 'cmd', '--keepme'],
+  );
+  // An UNSET field still round-trips its preserved negation verbatim (no over-strip).
+  assert.deepEqual(
+    buildServerArgs(defaults({ extraArgs: ['--no-shell'] })),
+    ['--no-shell'],
+  );
+});
+
 test('an unresolved config file path is blocking', () => {
   vscodeStub.workspace.workspaceFolders = undefined;
   const s = defaults({ configFile: '${workspaceFolder}/c.json' });
@@ -419,6 +618,37 @@ test('P1: resolvePaths:false normalizes backslash relative paths to forward-slas
     resolvePaths: false,
   });
   assert.ok(args.includes('${workspaceFolder}/src/nested'));
+});
+
+test('P27: preserveRelativePaths keeps relative path args verbatim for a file source', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({
+    allowedDirectories: ['src', '${workspaceFolder}/lib', '/abs/dir'],
+    configFile: 'config.json',
+    initialDir: 'work',
+    cwd: 'server',
+  });
+  const args = buildServerArgs(s, { resolvePaths: false, preserveRelativePaths: true });
+  // A loaded entry's relative args were authored relative to its own cwd, so they
+  // round-trip verbatim rather than being anchored to ${workspaceFolder} (which would
+  // resolve config.json under the workspace root instead of <cwd>/config.json).
+  assert.ok(args.includes('config.json'), 'relative --config kept verbatim');
+  assert.ok(args.includes('src'), 'relative --allowedDir kept verbatim');
+  assert.ok(args.includes('work'), 'relative --initialDir kept verbatim');
+  assert.ok(args.includes('${workspaceFolder}/lib'), 'tokenized path still verbatim');
+  assert.ok(args.includes('/abs/dir'), 'absolute path still verbatim');
+  assert.equal(args.includes('${workspaceFolder}/config.json'), false, 'not re-anchored');
+  // The relative cwd is likewise preserved (VS Code resolves it against the workspace).
+  const spec = buildLaunchSpec(s, { resolvePaths: false, preserveRelativePaths: true });
+  assert.equal(spec.cwd, 'server');
+});
+
+test('P27: without preserveRelativePaths a settings export still anchors to ${workspaceFolder}', () => {
+  vscodeStub.workspace.workspaceFolders = [{ uri: { fsPath: '/ws' }, name: 'ws', index: 0 }];
+  const s = defaults({ configFile: 'config.json', cwd: 'server' });
+  const args = buildServerArgs(s, { resolvePaths: false });
+  assert.ok(args.includes('${workspaceFolder}/config.json'), 'relative config anchored for export');
+  assert.equal(args.includes('config.json'), false, 'not kept bare for a settings export');
 });
 
 test('P2: a fractional maxOutputLines is accepted (server only range-checks it)', () => {

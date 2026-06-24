@@ -9,16 +9,21 @@ import {
   validateLaunchSpec,
 } from './argsBuilder';
 import { buildConfigFile } from './configFile';
+import { parseHttpUrl, parseMcpEntry } from './configSource';
 import {
   ConfigScope,
+  defaultSettings,
   hasPerShellConfig,
   hasProfilesConfig,
+  hasRawPerShellConfig,
+  hasUnresolvedExtensionVariables,
   hasUnresolvedVariables,
   primaryWorkspaceFolder,
   readSettings,
   readSettingsForScope,
   resolveVariables,
   SHELL_NAMES,
+  TransportMode,
   Wcli0Settings,
 } from './settings';
 import {
@@ -171,23 +176,401 @@ export async function generateConfigFile(formScopeArg?: unknown): Promise<void> 
 export async function writeWorkspaceMcpJson(
   formScopeArg?: unknown,
   configFileLoadable: (resolvedPath: string) => boolean = configFileIsLoadable,
-): Promise<void> {
+): Promise<boolean> {
   const folder = primaryWorkspaceFolder();
   if (!folder) {
     void vscode.window.showErrorMessage('wcli0: open a workspace folder first.');
-    return;
+    return false;
   }
   const settings = readExportSettings(asScope(formScopeArg), folder.uri);
+  return writeMcpJsonFromSettings(settings, folder, { configFileLoadable });
+}
 
+/**
+ * Write the wcli0 server entry into `<folder>/.vscode/mcp.json` from an explicit
+ * settings object, preserving any other servers and refusing to clobber a malformed
+ * or comment-bearing file (see the merge logic below). Shared by the settings-driven
+ * `writeWorkspaceMcpJson` export and the file-source "Save to file" path, which
+ * supplies settings built from the form rather than read from a scope — so saving a
+ * file source never writes any `wcli0.*` setting.
+ */
+/**
+ * The verbatim http/sse URL to write for an entry, when a loaded file source's
+ * URL should be preserved rather than rebuilt from host/port. Returns the original
+ * URL only while it still parses to the host/port currently shown in the form — so
+ * a custom scheme/path or default-port URL round-trips unchanged, but editing the
+ * host/port falls back to the canonical reconstruction (P5). Undefined for
+ * settings-sourced reads, which never carry `transportUrl`.
+ */
+function preservedTransportUrl(settings: Wcli0Settings): string | undefined {
+  const url = settings.transportUrl?.trim();
+  if (!url) {
+    return undefined;
+  }
+  const parsed = parseHttpUrl(url);
+  if (!parsed || parsed.host !== settings.transportHost) {
+    return undefined;
+  }
+  // A settings read uses transportPort 0 as the "default port" sentinel for a URL that omits
+  // its port; parseHttpUrl reports that omitted port as `undefined`, so map it to 0 before
+  // comparing. An explicit port must still match transportPort exactly (P5).
+  const urlPort = parsed.port ?? 0;
+  return urlPort === settings.transportPort ? url : undefined;
+}
+
+/**
+ * The verbatim http/sse URL to write when saving a loaded file source, or undefined to
+ * rebuild it from host/port. Preserves the loaded entry's URL whenever the user has not
+ * changed the transport mode or the host/port the URL decomposes to — so a custom
+ * scheme/path (P5), a default-port URL (P8), or a socket/named-pipe URL the host/port
+ * fields cannot model (P10) round-trips unchanged. Decided against the loaded entry's raw
+ * URL rather than `settings.transportUrl` so the host/port editing rules match exactly
+ * what {@link parseMcpEntry} chose to model for that URL.
+ */
+function preservedFileUrl(
+  settings: Wcli0Settings,
+  base: Record<string, unknown>,
+): string | undefined {
+  const rawUrl = typeof base.url === 'string' ? base.url.trim() : '';
+  if (!rawUrl) {
+    return undefined;
+  }
+  // Compare against the lowercased type: parseMcpEntry models an entry written as
+  // `HTTP`/`SSE` as http/sse, so settings.transportMode is already lowercase. Comparing the
+  // raw type would treat a no-op save of an uppercase entry as a mode switch and rebuild the
+  // URL to the canonical form, losing the custom/default-port URL shape the parser preserved
+  // (P48).
+  const baseType = typeof base.type === 'string' ? base.type.toLowerCase() : 'stdio';
+  if (settings.transportMode !== baseType) {
+    // The user switched the transport mode; rebuild the URL for the new mode.
+    return undefined;
+  }
+  const parsed = parseHttpUrl(rawUrl);
+  if (!parsed) {
+    // Socket/named-pipe URL: the host/port fields are inert for it, so preserve verbatim.
+    return rawUrl;
+  }
+  if (parsed.port === undefined) {
+    // Default-port URL (no explicit port): parseMcpEntry models only the host and leaves the
+    // port field at the form default. Preserve the verbatim URL only while the host is unchanged
+    // AND the user has not entered a port; a host OR port edit falls back to canonical
+    // reconstruction. Without the port check a port-only edit was silently dropped — the save
+    // wrote the original URL back unchanged and the next reparse lost the edit (P67). The
+    // default-port marker is `defaultSettings().transportPort`, exactly the value parseMcpEntry
+    // leaves when the URL omits its port, so an untouched save still round-trips verbatim (P8).
+    const portUntouched = settings.transportPort === defaultSettings().transportPort;
+    return parsed.host === settings.transportHost && portUntouched ? rawUrl : undefined;
+  }
+  // Fully decomposable (an explicit port, including an unusable `:0` the form replaced with
+  // its default): preserve only while host AND port are untouched. A `:0` URL therefore never
+  // round-trips verbatim — its port can never equal the default the form holds — so saving
+  // rebuilds the canonical URL instead of writing back the invalid port (P5/P-port0).
+  return parsed.host === settings.transportHost && parsed.port === settings.transportPort
+    ? rawUrl
+    : undefined;
+}
+
+/**
+ * The host to write into a REBUILT file-source http/sse URL (when {@link preservedFileUrl}
+ * declines to round-trip the verbatim URL because the host or port was edited). A file
+ * source's `transportHost` came from a user-authored CONNECT URL, so it must round-trip
+ * verbatim — unlike {@link clientHost}, which maps a server BIND host (`0.0.0.0`, `::`) to a
+ * connectable loopback address for the settings-driven export. Applying that bind->connect
+ * mapping here would silently rewrite an untouched wildcard host (`0.0.0.0`->`127.0.0.1`,
+ * `[::]`->`[::1]`) on a port-only edit (P60). Only the syntactic bracketing of a bare IPv6
+ * literal is kept so the rebuilt authority stays valid; an empty host falls back to loopback.
+ */
+function fileSourceUrlHost(host: string): string {
+  const h = (host ?? '').trim() || '127.0.0.1';
+  // Bracket a bare IPv6 literal (contains ':' and isn't already bracketed); leave wildcard
+  // binds, bracketed literals, and plain hostnames/IPv4 exactly as authored.
+  if (h.includes(':') && !h.startsWith('[')) {
+    return `[${h}]`;
+  }
+  return h;
+}
+
+// The wcli0-entry keys the form regenerates per transport mode (replaced from the form on
+// a file save). Other VS Code-supported keys present on the entry are left untouched
+// (see mergeEntryOntoBase).
+const STDIO_OWNED_KEYS = ['type', 'command', 'args', 'cwd', 'env'];
+const HTTP_OWNED_KEYS = ['type', 'url'];
+
+// The FULL set of transport-specific keys VS Code recognizes for each mode, including the
+// unmodeled ones the merge otherwise preserves. When the user switches transport mode, the
+// OTHER mode's whole set is removed so stale fields do not leak across — e.g. an HTTP entry's
+// `headers`/`oauth` must not survive into a stdio entry, nor stdio's `envFile`/`dev`/
+// `sandboxEnabled` into an HTTP entry (P19).
+const STDIO_FIELD_KEYS = [...STDIO_OWNED_KEYS, 'envFile', 'dev', 'sandboxEnabled'];
+const HTTP_FIELD_KEYS = [...HTTP_OWNED_KEYS, 'headers', 'oauth'];
+
+/**
+ * Merge the freshly generated wcli0 fields onto the loaded `.vscode/mcp.json` entry,
+ * preserving any VS Code-supported fields the form does not model — HTTP `headers`/`oauth`
+ * (P7), stdio `envFile`/`dev`/`sandboxEnabled` (P12), and so on — rather than reconstructing
+ * the entry from scratch. Keys the form owns for the CURRENT transport mode are replaced from
+ * `generated`; the OTHER transport mode's ENTIRE field set (modeled and unmodeled) is removed
+ * so a stdio<->http switch leaves no stale transport-specific fields behind (P19).
+ */
+function mergeEntryOntoBase(
+  base: Record<string, unknown>,
+  generated: Record<string, unknown>,
+  mode: TransportMode,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base };
+  const otherModeKeys = mode === 'stdio' ? HTTP_FIELD_KEYS : STDIO_FIELD_KEYS;
+  const owned = mode === 'stdio' ? STDIO_OWNED_KEYS : HTTP_OWNED_KEYS;
+  for (const key of [...otherModeKeys, ...owned]) {
+    delete merged[key];
+  }
+  return Object.assign(merged, generated);
+}
+
+// The `${...}` variable forms VS Code actually substitutes when it launches an mcp.json
+// server: the namespaced `${env:NAME}` / `${input:NAME}` / `${command:NAME}` / `${config:NAME}`
+// forms, the extension-owned `${workspaceFolder(:name)}` / `${userHome}`, and the other named
+// built-ins. A BARE `${NAME}` (e.g. `${PATH}`) is deliberately NOT here — VS Code does not
+// expand it — so a value relying on one must still face local path validation (P-varsyntax).
+const VSCODE_VARIABLE_TOKEN = new RegExp(
+  [
+    '\\$\\{(?:env|input|command|config):[^}]+\\}',
+    '\\$\\{workspaceFolder(?::[^}]+)?\\}',
+    '\\$\\{(?:workspaceFolderBasename|userHome|pathSeparator|cwd|execPath|lineNumber|selectedText|defaultBuildTask|fileWorkspaceFolder|relativeFileDirname|relativeFile|fileBasenameNoExtension|fileBasename|fileDirname|fileExtname|file)\\}',
+    '\\$\\{/\\}',
+  ].join('|'),
+  'g',
+);
+
+/**
+ * Whether a launch-field value is a VS Code launch-time variable path (e.g. `${input:cfg}`,
+ * `${command:pickConfig}`, `${env:HOME}/cfg.json`) that VS Code resolves when it launches
+ * the server. The extension owns only `${workspaceFolder}` / `${userHome}`; any OTHER
+ * RECOGNIZED VS Code `${...}` left after resolving those is VS Code's to expand, so a
+ * file-source save must not block on it being locally unresolvable/unreadable (P13/P18).
+ * A value whose leftover token is NOT a known VS Code form — a typo or a bare shell
+ * variable like `${PATH}/cfg.json` that VS Code will never substitute — is treated as a
+ * real local path so the normal validation still rejects the broken path (P-varsyntax).
+ */
+function isVscodeVariablePath(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const resolved = resolveVariables(trimmed);
+  if (!hasUnresolvedVariables(resolved) || hasUnresolvedExtensionVariables(resolved)) {
+    // Nothing left for VS Code to expand, or an extension-owned token we failed to resolve
+    // (no matching workspace folder) — in the latter case the value really is broken.
+    return false;
+  }
+  // Every remaining `${...}` must be a form VS Code substitutes; if anything is left after
+  // stripping the recognized ones, it is a bare/unknown token VS Code will not expand.
+  return !hasUnresolvedVariables(resolved.replace(VSCODE_VARIABLE_TOKEN, ''));
+}
+
+// Validation-only stand-in for a required launch field (node script / custom command) whose
+// value is a VS Code variable: an absolute path passes the anchorability checks while the real
+// `${input:...}`/`${env:...}` value is emitted into the entry verbatim (buildLaunchSpec keeps
+// it under resolvePaths:false).
+const VSCODE_VARIABLE_PLACEHOLDER = '/__wcli0_vscode_variable__';
+
+/**
+ * Return a copy of `settings` with every launch field that holds a VS Code launch-time
+ * variable neutralized for validation only. VS Code resolves these at launch and the entry
+ * round-trips them verbatim, so the extension's local anchorability/loadability checks must
+ * not reject an otherwise no-op file-source save (P18). Optional path fields are blanked
+ * (skipped by the checks); required fields are replaced with an absolute placeholder; and
+ * variable allowed-directories are dropped.
+ */
+function neutralizeVscodeVariableLaunchFields(settings: Wcli0Settings): Wcli0Settings {
+  const blankIfVar = (v: string) => (isVscodeVariablePath(v) ? '' : v);
+  return {
+    ...settings,
+    configFile: blankIfVar(settings.configFile),
+    cwd: blankIfVar(settings.cwd),
+    initialDir: blankIfVar(settings.initialDir),
+    logDirectory: blankIfVar(settings.logDirectory),
+    allowedDirectories: settings.allowedDirectories.filter((d) => !isVscodeVariablePath(d)),
+    nodeScriptPath: isVscodeVariablePath(settings.nodeScriptPath)
+      ? VSCODE_VARIABLE_PLACEHOLDER
+      : settings.nodeScriptPath,
+    customCommand: isVscodeVariablePath(settings.customCommand)
+      ? VSCODE_VARIABLE_PLACEHOLDER
+      : settings.customCommand,
+  };
+}
+
+/**
+ * The absolute path a file-source entry's `--config` resolves to for the loadability check.
+ * Mirrors the server's launch-time resolution for a committed entry: an absolute path (or a
+ * `${workspaceFolder}`-anchored one) is used as-is, while a plain RELATIVE path is resolved
+ * against the entry's own launch cwd — where the server runs — rather than the workspace
+ * root (P-cwdconfig). Returns undefined when no config is set or it still holds an unresolved
+ * variable (VS Code resolves those at launch; they are neutralized before this is reached).
+ */
+function fileSourceConfigPath(
+  s: Wcli0Settings,
+  folder: vscode.WorkspaceFolder,
+): string | undefined {
+  const raw = s.configFile.trim();
+  if (!raw) {
+    return undefined;
+  }
+  const resolved = resolveVariables(raw);
+  if (hasUnresolvedVariables(resolved)) {
+    // A VS Code launch variable (`${input:cfg}`, …) VS Code resolves at launch — unknowable
+    // and unreadable locally, so there is nothing to check.
+    return undefined;
+  }
+  if (isAbsolutePath(resolved)) {
+    return resolved;
+  }
+  // Relative: the server resolves it against the entry's launch cwd. But if the cwd ITSELF is
+  // a VS Code variable (e.g. `${input:cwd}`) resolved at launch, we cannot know where that is,
+  // so anchoring to the workspace root would validate the wrong file (or wrongly reject an
+  // unchanged entry). Skip the check in that case (P-varcwd).
+  const cwd = s.cwd.trim();
+  if (cwd && hasUnresolvedVariables(resolveVariables(cwd))) {
+    return undefined;
+  }
+  return vscode.Uri.joinPath(launchCwdUri(folder, s), ...resolved.split(/[\\/]/).filter(Boolean))
+    .fsPath;
+}
+
+/** Options for {@link writeMcpJsonFromSettings}. */
+export interface WriteMcpJsonOptions {
+  /**
+   * Injected config-file loadability check (tests use the in-memory filesystem; defaults
+   * to the real on-disk check).
+   */
+  configFileLoadable?: (resolvedPath: string) => boolean;
+  /**
+   * The loaded `.vscode/mcp.json` `servers.wcli0` entry when saving a file source. When
+   * present, the generated fields are merged onto it (preserving unmodeled VS Code fields),
+   * the raw `env` and `url` are round-tripped, and a VS Code-variable `--config` path is not
+   * blocked. Absent for the settings-driven export, which builds a fresh entry.
+   */
+  baseEntry?: Record<string, unknown>;
+}
+
+export async function writeMcpJsonFromSettings(
+  settings: Wcli0Settings,
+  folder: vscode.WorkspaceFolder,
+  opts: WriteMcpJsonOptions = {},
+): Promise<boolean> {
+  const configFileLoadable = opts.configFileLoadable ?? configFileIsLoadable;
+  const baseEntry = opts.baseEntry;
+  const fileSource = !!baseEntry;
+  // A file source's per-shell settings (wcli0.shells) and environment profiles
+  // (wcli0.profiles) cannot be expressed in a .vscode/mcp.json entry at all — neither a
+  // stdio entry (which carries only CLI flags) nor an http/sse entry (which carries only a
+  // URL) round-trips them, and this save only writes the entry. Any such values in the form
+  // are therefore unsaved edits the post-write reparse would silently drop while still
+  // reporting success. Refuse for BOTH transport modes so the loss is explicit; previously
+  // only the stdio branch guarded this, so http/sse file edits on the Shells/Profiles tabs
+  // disappeared with a misleading "Saved" (P29/P-httpshells). Use the RAW helpers (ignoring
+  // the ignoreInheritedShells/Profiles mask): the mask is a settings-only opt-out and does
+  // not make the edits storable in the entry, so masked-but-edited shells/profiles must still
+  // be refused (P-maskedshells). The settings-driven export is handled per-mode below: there
+  // shells/profiles persist in wcli0.* settings and the provider builds its own managed
+  // config, so they get a sync warning, not a hard block.
+  //
+  // For profiles, gate on ANY non-empty profiles object, not only launch-MEANINGFUL ones
+  // (hasRawProfilesConfig): the Profiles editor accepts any JSON object, so a non-emittable
+  // profile such as {"p":{"description":"x","env":{}}} is still an unsaved edit the entry
+  // cannot store and the reparse drops while reporting "Saved" (P-emptyprofile). Emptiness
+  // is the right gate because a clean file load never populates profiles (parseMcpEntry leaves
+  // them {}), so this only fires on a real edit, never on an untouched save.
+  const hasFileProfileEdit = Object.keys(settings.profiles ?? {}).length > 0;
+  if (fileSource && (hasRawPerShellConfig(settings) || hasFileProfileEdit)) {
+    void vscode.window.showErrorMessage(
+      'wcli0: per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles) cannot ' +
+        'be written to a .vscode/mcp.json entry, so they cannot be saved from this form. They live ' +
+        "in the server's config file; edit it directly (and reference it via --config for stdio), " +
+        'then reload the source.',
+    );
+    return false;
+  }
+  // The inherited-config masks (ignoreInheritedShells / ignoreInheritedProfiles) are
+  // settings-only opt-outs that no .vscode/mcp.json entry can store. The form disables their
+  // controls on a file source, but guard the host too: a non-default mask reaching this save is
+  // an unsaved edit the post-write reparse would silently drop while reporting "Saved", so
+  // refuse it explicitly (P-maskfile).
+  if (fileSource && (settings.ignoreInheritedShells || settings.ignoreInheritedProfiles)) {
+    void vscode.window.showErrorMessage(
+      'wcli0: the "ignore inherited per-shell config / profiles" options are VS Code settings ' +
+        'and cannot be written to a .vscode/mcp.json entry, so they cannot be saved from this ' +
+        'form. Switch to VS Code Settings to change them.',
+    );
+    return false;
+  }
+  // For a file source, take ONE full-file snapshot up front and use it as the basis for every
+  // on-disk-dependent decision below: URL preservation (P41), the env round-trip (P23), the
+  // uneditable-argv carry-forward (P40), the merge base (P46), AND the OTHER servers carried into
+  // the written file. Reading the WHOLE file once — not just servers.wcli0, and not a second time
+  // at the write step — closes the window in which a concurrent delete/recreate of
+  // .vscode/mcp.json during a warning modal would drop the file's other servers: the merge base
+  // and the surrounding-servers container now come from the same snapshot (P69). Reading it
+  // before validation also lets the http/sse URL-preservation check use the current entry rather
+  // than the stale load snapshot (P41). The malformed-root / non-object-`servers` guards run here
+  // too, so an invalid file is refused before any modal. Falls back to the loaded baseEntry when
+  // nothing usable is on disk.
+  const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');
+  const fileSnapshot = fileSource ? await readExistingMcpJson(mcpUri) : undefined;
+  if (fileSource && !fileSnapshot) {
+    return false; // unreadable / invalid file — readExistingMcpJson already reported why
+  }
+  const onDiskServers =
+    fileSnapshot && isPlainObject(fileSnapshot.existing.servers)
+      ? (fileSnapshot.existing.servers as Record<string, unknown>)
+      : undefined;
+  const onDiskEntry =
+    onDiskServers && isPlainObject(onDiskServers.wcli0)
+      ? (onDiskServers.wcli0 as Record<string, unknown>)
+      : undefined;
+  const urlBase = (onDiskEntry ?? baseEntry) as Record<string, unknown>;
+  // An entry whose `type` the form cannot model (a future/custom transport such as
+  // "websocket") is parsed as stdio for its editable fields, but saving would let
+  // mergeEntryOntoBase overwrite that original `type` with "stdio" (and strip the other
+  // transport's URL-like fields) after an unrelated edit — silently normalizing a transport
+  // the user deliberately chose. Refuse rather than corrupt it; the parse note already directs
+  // the user to edit .vscode/mcp.json directly to change the type (P-unknowntype). Check the
+  // CURRENT on-disk entry (the actual merge base) so a type changed after load is honored.
+  const rawBaseType = fileSource && typeof urlBase.type === 'string' ? urlBase.type : '';
+  const baseType = rawBaseType ? rawBaseType.toLowerCase() : 'stdio';
+  if (fileSource && baseType !== 'stdio' && baseType !== 'http' && baseType !== 'sse') {
+    void vscode.window.showErrorMessage(
+      `wcli0: the entry's transport type "${rawBaseType}" is not stdio/http/sse and cannot be ` +
+        'saved from this form (saving would normalize it to stdio). Edit .vscode/mcp.json ' +
+        'directly to change the transport type.',
+    );
+    return false;
+  }
   // Validate only what the generated entry actually uses. A stdio entry needs a
   // working launch command; an http/sse entry only contains a URL, so local
   // launch settings (method, allowed dirs) are irrelevant and only the port
   // matters — otherwise a valid external endpoint couldn't be written.
   if (settings.transportMode === 'stdio') {
+    // Launch fields holding a VS Code launch-time variable (`${input:...}`, `${env:...}`,
+    // `${command:...}` in --config, cwd, node script, custom command, ...) are resolved by VS
+    // Code at launch, not by us, so they cannot be checked on disk and must not block a
+    // file-source save (P13/P18). Validate with those neutralized; the verbatim argv is still
+    // emitted into the entry below (buildLaunchSpec keeps the unresolved tokens).
+    const validateSettings = fileSource
+      ? neutralizeVscodeVariableLaunchFields(settings)
+      : settings;
     // A referenced wcli0.configFile becomes the entry's `--config`; validate it can
     // actually be loaded so the exported entry does not silently fall back to an
-    // implicit config the server discovers instead (P85).
-    const cfgPath = resolvedConfigFilePath(settings);
+    // implicit config the server discovers instead (P85). For a file source a relative
+    // --config is resolved by the server against the ENTRY's own cwd (process.cwd()), not
+    // the workspace root, so check loadability there — otherwise a no-op save is wrongly
+    // refused when only <cwd>/config.json exists, or wrongly accepted because an unrelated
+    // <workspace>/config.json exists while the real cwd-relative file is missing (P-cwdconfig).
+    // Use the ORIGINAL settings (not the variable-neutralized copy) so fileSourceConfigPath
+    // can see whether the entry's cwd is a VS Code variable and skip the check accordingly
+    // (P-varcwd). A variable --config is still reported as undefined either way.
+    const cfgPath = fileSource
+      ? fileSourceConfigPath(settings, folder)
+      : resolvedConfigFilePath(validateSettings);
     const cfgLoadable = !cfgPath || configFileLoadable(cfgPath);
     const hasLoadableConfigFile = !!cfgPath && cfgLoadable;
     // Per-shell settings (wcli0.shells) and environment profiles (wcli0.profiles)
@@ -205,14 +588,14 @@ export async function writeWorkspaceMcpJson(
           'represented in .vscode/mcp.json. Generate a config file (wcli0: Generate Config File) and ' +
           'reference it via wcli0.configFile, or clear wcli0.shells / wcli0.profiles before exporting.',
       );
-      return;
+      return false;
     }
-    const blocking = validateLaunchSpec(settings, false, false, cfgLoadable).filter(
+    const blocking = validateLaunchSpec(validateSettings, false, false, cfgLoadable).filter(
       (p) => p.blocking,
     );
     if (blocking.length > 0) {
       void vscode.window.showErrorMessage(`wcli0: ${blocking.map((p) => p.message).join(' ')}`);
-      return;
+      return false;
     }
     // When shells/profiles are configured the entry relies entirely on the referenced
     // configFile to carry them, but the export cannot confirm that file is in sync with
@@ -230,7 +613,7 @@ export async function writeWorkspaceMcpJson(
         'Write anyway',
       );
       if (pick !== 'Write anyway') {
-        return;
+        return false;
       }
     }
     // A stdio entry with no explicit wcli0.configFile carries plain CLI flags but no
@@ -253,30 +636,104 @@ export async function writeWorkspaceMcpJson(
           'Write anyway',
         );
         if (pick !== 'Write anyway') {
-          return;
+          return false;
         }
       }
     }
-  } else if (!isValidPort(settings.transportPort)) {
-    void vscode.window.showErrorMessage(
-      `wcli0: transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`,
-    );
-    return;
+  } else {
+    // A loaded file source decides URL preservation against the CURRENT on-disk entry so the
+    // rules match what parseMcpEntry modeled (default-port/socket URLs included, P8/P10) AND
+    // a concurrent edit to an unmodeled URL part survives (P41); the settings-driven export
+    // uses the host/port round-trip check (P5).
+    const preserved = fileSource
+      ? preservedFileUrl(settings, urlBase)
+      : preservedTransportUrl(settings);
+    if (!preserved && !isValidPort(settings.transportPort)) {
+      // Only validate the port when the URL will be reconstructed from host/port. A
+      // preserved verbatim URL (e.g. one relying on a default port) carries its own
+      // authority and need not pass the standalone port check (P5).
+      void vscode.window.showErrorMessage(
+        `wcli0: transport.port (${settings.transportPort}) must be an integer between 1 and 65535.`,
+      );
+      return false;
+    }
   }
 
+  // The regenerated, form-owned `args` array is built from the loaded snapshot, and the merge
+  // replaces `args` wholesale — so EVERY argv-derived field the form does not edit must be
+  // re-derived from the CURRENT on-disk entry (read once up front) and spliced back, or a flag
+  // another process added to servers.wcli0.args is dropped (P-staleargs/P40). Besides the
+  // escape-hatch `extraArgs`, this covers `customArgs`, the blocked lists, `--maxReturnLines`,
+  // and the transport allowed-origins — none of which have a form control. Modeled fields
+  // still follow the form, as for every loaded field.
+  let buildSettings = settings;
+  if (fileSource && settings.transportMode === 'stdio') {
+    const onDisk = parseMcpEntry(onDiskEntry ?? baseEntry!).settings;
+    // Only carry forward when the on-disk entry is itself stdio, so a mode switch does not
+    // import an http entry's (empty) argv fields.
+    if (onDisk.transportMode === 'stdio') {
+      buildSettings = {
+        ...settings,
+        customArgs: onDisk.customArgs,
+        blockedCommands: onDisk.blockedCommands,
+        blockedArguments: onDisk.blockedArguments,
+        blockedOperators: onDisk.blockedOperators,
+        maxReturnLines: onDisk.maxReturnLines,
+        transportAllowedOrigins: onDisk.transportAllowedOrigins,
+        // --wslMountPoint is parsed and re-emitted but has no form control, so it is carried
+        // forward from the current on-disk entry like the other uneditable argv fields —
+        // otherwise an unrelated save rebuilds args from the stale loaded value and drops a
+        // --wslMountPoint another process added/changed after the panel loaded (P-wslmount).
+        wslMountPoint: onDisk.wslMountPoint,
+        extraArgs: onDisk.extraArgs,
+      };
+    } else {
+      buildSettings = { ...settings, extraArgs: onDisk.extraArgs };
+    }
+  }
   // Preserve portable ${workspaceFolder} tokens rather than resolving them: a
   // committed mcp.json is shared across machines and VS Code resolves these
-  // variables itself, so baking in absolute paths would break for teammates.
-  const spec = buildLaunchSpec(settings, { resolvePaths: false });
+  // variables itself, so baking in absolute paths would break for teammates. For a
+  // file source, also preserve plain relative path args verbatim (preserveRelativePaths):
+  // they were authored relative to the entry's own cwd, so anchoring them to
+  // ${workspaceFolder} on an unrelated save would retarget the referenced file (P27).
+  const spec = buildLaunchSpec(buildSettings, {
+    resolvePaths: false,
+    preserveRelativePaths: fileSource,
+    // A file-source save round-trips the entry's verbatim argv, so a hand-authored
+    // --transport kept in extraArgs (P30) must not be stripped from the stdio launch and
+    // leave its companion --http-* options orphaned (P-fileextratransport). The provider and
+    // settings-export paths still strip it for safety.
+    preserveExtraTransport: fileSource,
+  });
 
   let entry: Record<string, unknown>;
+  // The form-owned fields, kept separately so a file-source save can merge them onto the
+  // CURRENT on-disk entry (read below) rather than only the snapshot loaded into the panel (P20).
+  let generatedForMerge: Record<string, unknown> | undefined;
   if (settings.transportMode === 'stdio') {
     // Include cwd only when launch.cwd is explicitly set. NOTE: omitting it does
     // not avoid the workspace — VS Code defaults a committed stdio entry's cwd to
     // the workspace folder, so the server may still auto-load <workspace>/config.json.
     // There is no portable "safe" cwd for a shared mcp.json (an absolute temp path
     // would not be portable); set wcli0.launch.cwd or wcli0.configFile to control it.
-    let env = spec.env;
+    //
+    // env is not form-editable. For a file source, round-trip the loaded entry's raw env
+    // verbatim (including non-string values VS Code allows, e.g. numbers/null) rather than
+    // the string-filtered settings env, so an unrelated save does not silently drop them
+    // (P9). For the settings-driven export, use the env built from settings.
+    let env: Record<string, unknown> = spec.env;
+    if (fileSource) {
+      // Round-trip the CURRENT on-disk entry's raw env, not the snapshot loaded into the
+      // panel: another process may have added/changed servers.wcli0.env after the panel
+      // opened, and the on-disk merge below treats env as a form-owned stdio key (it would
+      // otherwise delete the on-disk value and apply this stale one), silently dropping
+      // those vars without even the env prompt. Fall back to the loaded baseEntry when no
+      // entry is on disk (P23, matching the merge base re-derivation below for P20). Reuses
+      // the single on-disk read taken above for extraArgs.
+      const rawEnv = (onDiskEntry ?? baseEntry!).env;
+      env = isPlainObject(rawEnv) ? rawEnv : {};
+    }
     if (Object.keys(env).length > 0) {
       // env is serialized into the (commonly committed) mcp.json and may hold
       // secrets inherited from User settings — require an explicit choice.
@@ -287,72 +744,64 @@ export async function writeWorkspaceMcpJson(
         'Omit environment',
       );
       if (pick === undefined) {
-        return; // cancelled — don't write
+        return false; // cancelled — don't write
       }
       if (pick === 'Omit environment') {
         env = {};
       }
     }
-    entry = {
+    const generated: Record<string, unknown> = {
       type: 'stdio',
       command: spec.command,
       args: spec.args,
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
       ...(Object.keys(env).length ? { env } : {}),
     };
+    // For a file source, merge onto the loaded entry so unmodeled VS Code stdio fields
+    // (envFile, dev, sandboxEnabled, ...) survive an unrelated edit (P12). The merge base is
+    // re-derived from the current on-disk entry at the write step (P20).
+    generatedForMerge = generated;
+    entry = fileSource ? mergeEntryOntoBase(baseEntry!, generated, 'stdio') : generated;
   } else {
-    entry = {
-      type: settings.transportMode === 'http' ? 'http' : 'sse',
-      // Normalize wildcard/IPv6 bind hosts into a connectable client URL.
-      url: `http://${clientHost(settings.transportHost)}:${settings.transportPort}${
+    // Prefer the CURRENT on-disk entry's verbatim URL when host/port are unchanged so a
+    // custom scheme/path or default-port URL is not silently downgraded (P5/P8/P10) and a
+    // concurrent edit to an unmodeled URL part survives (P41). Otherwise rebuild from the
+    // host/port: a settings export normalizes a wildcard/IPv6 BIND host into a connectable
+    // client URL (clientHost), but a file source's host came from a user-authored CONNECT
+    // URL and must round-trip verbatim, so a port-only edit keeps the untouched host instead
+    // of rewriting `0.0.0.0`->`127.0.0.1` / `[::]`->`[::1]` (fileSourceUrlHost, P60).
+    const rebuiltHost = fileSource
+      ? fileSourceUrlHost(settings.transportHost)
+      : clientHost(settings.transportHost);
+    const url =
+      (fileSource
+        ? preservedFileUrl(settings, urlBase)
+        : preservedTransportUrl(settings)) ??
+      `http://${rebuiltHost}:${settings.transportPort}${
         settings.transportMode === 'http' ? '/mcp' : '/sse'
-      }`,
+      }`;
+    const generated: Record<string, unknown> = {
+      type: settings.transportMode === 'http' ? 'http' : 'sse',
+      url,
     };
+    // For a file source, merge onto the loaded entry so unmodeled VS Code http/sse fields
+    // (headers, oauth, ...) survive an unrelated edit (P7). The merge base is re-derived from
+    // the current on-disk entry at the write step (P20).
+    generatedForMerge = generated;
+    entry = fileSource
+      ? mergeEntryOntoBase(baseEntry!, generated, settings.transportMode)
+      : generated;
   }
 
-  const mcpUri = vscode.Uri.joinPath(folder.uri, '.vscode', 'mcp.json');
-  let existing: Record<string, unknown> = {};
-  let raw: Uint8Array | undefined;
-  try {
-    raw = await vscode.workspace.fs.readFile(mcpUri);
-  } catch (err) {
-    if (!isFileNotFound(err)) {
-      // A real read error (permissions, transient FS) — don't risk clobbering.
-      void vscode.window.showErrorMessage(
-        `wcli0: could not read ${mcpUri.fsPath} (${(err as Error).message}). Not writing.`,
-      );
-      return;
-    }
-    // Not found — start fresh.
+  // Reuse the single up-front snapshot for a file source (P46/P69); the settings-driven export
+  // took no up-front snapshot, so it reads the file fresh here. Both go through the same helper,
+  // which has already applied the malformed-root / non-object-`servers` guards.
+  const writeSnapshot = fileSource ? fileSnapshot! : await readExistingMcpJson(mcpUri);
+  if (!writeSnapshot) {
+    return false; // settings-export read failed / invalid — readExistingMcpJson already reported
   }
-  if (raw) {
-    try {
-      // VS Code registers mcp.json as JSON-with-comments, so tolerate comments
-      // and trailing commas rather than refusing to merge into a valid JSONC file.
-      existing = parseJsonc(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
-    } catch (err) {
-      // The file exists but is not valid JSON/JSONC — refuse rather than clobber it.
-      void vscode.window.showErrorMessage(
-        `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
-      );
-      return;
-    }
-  }
-  // A syntactically valid file can still have a non-object root or `servers`
-  // (e.g. `null`, or `"servers": []`); merging into those would throw or
-  // silently drop the entry, so refuse rather than corrupt the file.
-  if (!isPlainObject(existing)) {
-    void vscode.window.showErrorMessage(
-      `wcli0: ${mcpUri.fsPath} root is not a JSON object. Fix it before writing.`,
-    );
-    return;
-  }
-  if (existing.servers !== undefined && !isPlainObject(existing.servers)) {
-    void vscode.window.showErrorMessage(
-      `wcli0: "servers" in ${mcpUri.fsPath} is not a JSON object. Fix it before writing.`,
-    );
-    return;
-  }
+  const existing = writeSnapshot.existing;
+  const raw = writeSnapshot.raw;
   // Re-serializing with JSON.stringify drops any comments/formatting the file
   // had. Warn before discarding them rather than silently reformatting.
   if (raw && containsJsoncComments(Buffer.from(raw).toString('utf8'))) {
@@ -362,11 +811,23 @@ export async function writeWorkspaceMcpJson(
       'Write anyway',
     );
     if (pick !== 'Write anyway') {
-      return;
+      return false;
     }
   }
 
   const servers = (existing.servers as Record<string, unknown>) ?? {};
+  // For a file source, merge the form-owned fields onto the SAME on-disk snapshot that
+  // supplied the env/argv/url preservation data — the single read taken up front
+  // (onDiskEntry) — rather than re-reading servers.wcli0 here. The up-front read already
+  // captures an external edit made after the panel loaded (e.g. new headers/envFile/oauth),
+  // so it still satisfies P20; using a SECOND, later read for the merge base would pair a
+  // fresh base with the stale generated env/args built from the up-front read, producing an
+  // incoherent mix that drops externally added env or flags (P46). Falls back to the loaded
+  // baseEntry when no entry was on disk.
+  if (fileSource && generatedForMerge) {
+    const mergeBase = (onDiskEntry ?? baseEntry!) as Record<string, unknown>;
+    entry = mergeEntryOntoBase(mergeBase, generatedForMerge, settings.transportMode);
+  }
   servers.wcli0 = entry;
   existing.servers = servers;
 
@@ -377,6 +838,7 @@ export async function writeWorkspaceMcpJson(
   );
   const doc = await vscode.workspace.openTextDocument(mcpUri);
   await vscode.window.showTextDocument(doc);
+  return true;
 }
 
 /** Show the resolved launch command line and offer to copy it. */
@@ -703,6 +1165,62 @@ async function implicitConfigIn(dir: vscode.Uri): Promise<string | undefined> {
     // Not present — no committed override vector.
     return undefined;
   }
+}
+
+/**
+ * Read and parse `.vscode/mcp.json` into the object the wcli0 entry is merged into, applying the
+ * malformed-root / non-object-`servers` guards. Returns `{ raw, existing }` on success (with
+ * `raw` undefined and `existing` an empty object when the file does not exist yet), or `undefined`
+ * when the file cannot be used — a real read error, or invalid JSON/root/`servers` — after showing
+ * the user why. A file-source save takes this snapshot ONCE up front and reuses it for the merge
+ * base, the surrounding servers, and the comment-removal check, so a concurrent delete/recreate
+ * between two separate reads cannot drop the file's other servers (P69).
+ */
+async function readExistingMcpJson(
+  mcpUri: vscode.Uri,
+): Promise<{ raw?: Uint8Array; existing: Record<string, unknown> } | undefined> {
+  let raw: Uint8Array;
+  try {
+    raw = await vscode.workspace.fs.readFile(mcpUri);
+  } catch (err) {
+    if (!isFileNotFound(err)) {
+      // A real read error (permissions, transient FS) — don't risk clobbering.
+      void vscode.window.showErrorMessage(
+        `wcli0: could not read ${mcpUri.fsPath} (${(err as Error).message}). Not writing.`,
+      );
+      return undefined;
+    }
+    // Not found — start fresh.
+    return { raw: undefined, existing: {} };
+  }
+  let existing: Record<string, unknown>;
+  try {
+    // VS Code registers mcp.json as JSON-with-comments, so tolerate comments
+    // and trailing commas rather than refusing to merge into a valid JSONC file.
+    existing = parseJsonc(Buffer.from(raw).toString('utf8')) as Record<string, unknown>;
+  } catch (err) {
+    // The file exists but is not valid JSON/JSONC — refuse rather than clobber it.
+    void vscode.window.showErrorMessage(
+      `wcli0: ${mcpUri.fsPath} is not valid JSON (${(err as Error).message}). Fix it before writing.`,
+    );
+    return undefined;
+  }
+  // A syntactically valid file can still have a non-object root or `servers`
+  // (e.g. `null`, or `"servers": []`); merging into those would throw or
+  // silently drop the entry, so refuse rather than corrupt the file.
+  if (!isPlainObject(existing)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: ${mcpUri.fsPath} root is not a JSON object. Fix it before writing.`,
+    );
+    return undefined;
+  }
+  if (existing.servers !== undefined && !isPlainObject(existing.servers)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: "servers" in ${mcpUri.fsPath} is not a JSON object. Fix it before writing.`,
+    );
+    return undefined;
+  }
+  return { raw, existing };
 }
 
 /** Whether a workspace.fs read error means the file is simply absent. */
