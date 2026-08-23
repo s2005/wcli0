@@ -575,10 +575,19 @@ export function parseServerArgs(
   // safety-family token verbatim in extraArgs and leaves safetyMode at its default. Collapsing the
   // pair to one mode would let a no-op save rewrite a previously-failing entry into a valid launch
   // the user never chose (P70/P71).
-  const yoloPresent = args.some(
+  // Scan only the tokens BEFORE the `--` options separator. yargs treats everything after it as
+  // positional, so a safety flag there never defines its key and cannot conflict: it runs
+  // `['--unsafe', '--', '--yolo']` in unsafe mode. Scanning the whole array reported a phantom
+  // conflict, which stranded `--unsafe` in extraArgs and left the form showing the default safe
+  // mode while the server actually ran unsafe -- and picking another mode from that misreported
+  // form could then emit a REAL --yolo/--unsafe conflict the server rejects (P79). Mirrors the
+  // parse loop and the duplicate-scalar pre-scan, which both stop at the separator (P74/P78).
+  const separatorAt = args.indexOf('--');
+  const optionArgs = separatorAt === -1 ? args : args.slice(0, separatorAt);
+  const yoloPresent = optionArgs.some(
     (t) => t === '--yolo' || t === '--no-yolo' || t.startsWith('--yolo='),
   );
-  const unsafePresent = args.some(
+  const unsafePresent = optionArgs.some(
     (t) => t === '--unsafe' || t === '--no-unsafe' || t.startsWith('--unsafe='),
   );
   const safetyConflict = yoloPresent && unsafePresent;
@@ -961,20 +970,21 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   // `npx --package=x -- wcli0 ...` (P17) or `node --inspect dist/index.js ...` (P14)
   // carries launcher options the form cannot model as a package/script, so it falls
   // through to custom parsing, where the launcher args round-trip verbatim.
-  const npxPackageAt = args[0] === '-y' ? 1 : 0;
+  // The npx fast path additionally requires the forward builder's own `-y`: buildLaunchSpec
+  // always emits `npx -y <pkg>`, so modeling a hand-authored `npx wcli0@1.2.3` would let an
+  // UNRELATED save add `-y` and silently turn npx's installation confirmation into an automatic
+  // accept (npm documents that npx prompts before installing a missing package and that `-y`
+  // suppresses that prompt). Without `-y` the entry falls through to custom parsing instead,
+  // where `npx` and its package token round-trip verbatim and the server flags after them are
+  // still modeled (P82).
   const isPlainNpx =
-    command === 'npx' && (args[npxPackageAt] === undefined || !args[npxPackageAt].startsWith('-'));
+    command === 'npx' && args[0] === '-y' && (args[1] === undefined || !args[1].startsWith('-'));
   const isPlainNode = command === 'node' && args[0] !== undefined && !args[0].startsWith('-');
   if (isPlainNpx) {
     s.launchMethod = 'npx';
-    // Forward emits ['-y', packageSpec, ...flags]; tolerate a missing -y.
-    if (args[0] === '-y') {
-      s.packageSpec = args[1] ?? '';
-      serverArgs = args.slice(2);
-    } else {
-      s.packageSpec = args[0] ?? '';
-      serverArgs = args.slice(1);
-    }
+    // Forward emits ['-y', packageSpec, ...flags].
+    s.packageSpec = args[1] ?? '';
+    serverArgs = args.slice(2);
   } else if (isPlainNode) {
     s.launchMethod = 'node';
     s.nodeScriptPath = args[0] ?? '';
@@ -1020,6 +1030,16 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     notes.push(
       `The entry type "${rawType}" is not stdio/http/sse and cannot be fully modeled here. ` +
         'Edit .vscode/mcp.json directly to change the transport type.',
+    );
+  }
+  if (command === 'npx' && args[0] !== undefined && args[0] !== '-y' && !args[0].startsWith('-')) {
+    // A plain `npx <pkg>` entry: modeled as a custom command rather than the npx launch method,
+    // because the npx launch method always emits `-y` and would suppress npx's installation
+    // confirmation the entry deliberately left in place (P82).
+    notes.push(
+      'This entry runs npx WITHOUT -y, so npx asks before installing the package. It is shown ' +
+        'as a custom command to preserve that; saving via the npx launch method would add -y ' +
+        'and accept the installation automatically.',
     );
   }
   if (s.configFile.trim()) {

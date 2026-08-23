@@ -645,6 +645,33 @@ export async function writeMcpJsonFromSettings(
     // rules match what parseMcpEntry modeled (default-port/socket URLs included, P8/P10) AND
     // a concurrent edit to an unmodeled URL part survives (P41); the settings-driven export
     // uses the host/port round-trip check (P5).
+    // An opaque http/sse URL -- one parseHttpUrl cannot decompose, such as a socket or
+    // named-pipe form (`unix:///tmp/server.sock#/mcp`) -- is preserved verbatim by
+    // preservedFileUrl, because the host/port fields are inert for it: parseMcpEntry models
+    // neither and leaves both at the form defaults. The controls stay editable though, so a
+    // host or port change was accepted as a network-savable edit, the original URL was written
+    // back unchanged, and the post-write reparse discarded the edit behind a "Saved" message.
+    // Refuse it explicitly instead, matching the parse note that directs the user to edit
+    // .vscode/mcp.json for such a URL (P81). Only while the mode is unchanged: switching the
+    // transport mode rebuilds the URL from host/port, where the edit does take effect.
+    if (fileSource) {
+      const rawOpaqueUrl = typeof urlBase.url === 'string' ? urlBase.url.trim() : '';
+      const formDefaults = defaultSettings();
+      if (
+        rawOpaqueUrl &&
+        settings.transportMode === baseType &&
+        !parseHttpUrl(rawOpaqueUrl) &&
+        (settings.transportHost !== formDefaults.transportHost ||
+          settings.transportPort !== formDefaults.transportPort)
+      ) {
+        void vscode.window.showErrorMessage(
+          `wcli0: the entry URL "${rawOpaqueUrl}" cannot be represented by the host and port ` +
+            'fields, so it is preserved as-is and host/port edits cannot be saved for it. Revert ' +
+            'them, or edit .vscode/mcp.json directly to change the URL.',
+        );
+        return false;
+      }
+    }
     const preserved = fileSource
       ? preservedFileUrl(settings, urlBase)
       : preservedTransportUrl(settings);

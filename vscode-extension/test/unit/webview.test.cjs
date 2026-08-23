@@ -871,6 +871,83 @@ test('P23: a file save preserves env added on disk after the panel loaded', asyn
   );
 });
 
+test('P80: a file save keeps a modeled field another process changed after the load', async () => {
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--shell', 'cmd'] },
+    },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  // Another editor changes the shell on disk AFTER the panel loaded its snapshot.
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--shell', 'bash'] },
+    },
+  });
+  // The user changes only Debug. buildLaunchSpec rebuilds the whole args array, so the
+  // unchanged --shell must come from the CURRENT entry, not the stale panel snapshot.
+  await panel.webview._handler({ type: 'saveToFile', values: { debug: true } });
+  const args = JSON.parse(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+  ).servers.wcli0.args;
+  assert.ok(args.includes('--debug'), 'the submitted edit is written');
+  assert.equal(args[args.indexOf('--shell') + 1], 'bash', 'the concurrent shell change survives');
+  assert.equal(args.includes('cmd'), false, 'the stale loaded value is not restored');
+});
+
+test('P80: a submitted edit still wins over the on-disk value for the same field', async () => {
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--shell', 'cmd'] },
+    },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--shell', 'bash'] },
+    },
+  });
+  await panel.webview._handler({ type: 'saveToFile', values: { shell: 'powershell' } });
+  const args = JSON.parse(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+  ).servers.wcli0.args;
+  assert.equal(args[args.indexOf('--shell') + 1], 'powershell', 'the user edit is not overwritten');
+});
+
+test('P80: a file save is refused when the entry changed transport type on disk', async () => {
+  // The two modes model different fields, so the form's stdio edits cannot be overlaid onto an
+  // http entry (nor the reverse); ask for a reload rather than guessing.
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'http', url: 'http://127.0.0.1:9444/mcp' } },
+  });
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  await panel.webview._handler({ type: 'saveToFile', values: { debug: true } });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'saved'), undefined, 'no false Saved');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /different transport type/.test(m)),
+    'the refusal asks for a reload',
+  );
+  const entry = JSON.parse(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+  ).servers.wcli0;
+  assert.equal(entry.type, 'http', 'the on-disk entry is untouched');
+  assert.equal(entry.url, 'http://127.0.0.1:9444/mcp');
+});
+
 test('P6: a stale file-source save after the primary folder changes is rejected', async () => {
   seedWorkspaceMcpJson({
     servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },

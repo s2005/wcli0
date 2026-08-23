@@ -819,6 +819,47 @@ test('P10: a file save preserves a socket url it cannot decompose', async () => 
   assert.equal(wcli0Entry().url, 'unix:///tmp/server.sock#/mcp');
 });
 
+test('P81: a file save refuses a host/port edit for a url it cannot decompose', async () => {
+  // parseMcpEntry models neither host nor port for a socket/named-pipe URL and leaves both at
+  // the form defaults, and the save preserves the URL verbatim. The controls stay editable, so
+  // a host change was accepted, the original URL written back, and the edit silently dropped by
+  // the reparse behind a "Saved" -- refuse it instead.
+  const base = { type: 'http', url: 'unix:///tmp/server.sock#/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '10.0.0.5'; // edited away from the default the parser left
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false, 'the unsavable host edit is refused');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /cannot be represented by the host and port/.test(m)),
+    'the refusal explains why',
+  );
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing was written');
+});
+
+test('P81: a port edit for an opaque url is refused too', async () => {
+  const base = { type: 'sse', url: 'unix:///tmp/server.sock#/sse' };
+  const s = defaultSettings();
+  s.transportMode = 'sse';
+  s.transportPort = 9999;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, false);
+  assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false);
+});
+
+test('P81: switching the transport mode still rebuilds an opaque url from host/port', async () => {
+  // A mode switch is a deliberate rebuild, so the host/port fields DO reach the written URL
+  // and must not be refused.
+  const base = { type: 'http', url: 'unix:///tmp/server.sock#/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'sse';
+  s.transportHost = '10.0.0.5';
+  s.transportPort = 9444;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://10.0.0.5:9444/sse');
+});
+
 test('P8: a file save round-trips a default-port url without a port error', async () => {
   const base = { type: 'http', url: 'https://gateway.example/custom/mcp' };
   const s = defaultSettings();

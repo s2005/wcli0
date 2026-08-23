@@ -404,7 +404,39 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
       // fields survive, then merge the regenerated entry onto the loaded raw entry (so
       // unmodeled VS Code keys are preserved, P7/P12) and write it back to
       // .vscode/mcp.json. Never touches wcli0.* settings.
-      const settings = overlaySettings(loadedFileSettings ?? defaultSettings(), msg.values);
+      // Overlay onto the CURRENT on-disk entry, not the snapshot loaded into the panel. Another
+      // process may have edited .vscode/mcp.json while the form was open, and the form submits
+      // ONLY the fields the user actually changed (collectChanged), so re-parsing the entry here
+      // keeps every unchanged MODELED field (--shell, safety mode, limits, ...) at its current
+      // on-disk value. Overlaying onto the stale snapshot instead re-emitted the loaded values,
+      // and because buildLaunchSpec replaces the whole `args` array a Debug-only save silently
+      // reverted a concurrent `--shell cmd` -> `--shell bash` edit (P80). The argv fields with no
+      // form control are re-derived from disk again at write time (P40); this covers the modeled
+      // ones. Falls back to the loaded snapshot when nothing is on disk (a deleted/malformed
+      // entry), matching the merge-base fallback (P23).
+      const currentFileEntry = await readWcli0Entry(folder);
+      const currentFileParsed = currentFileEntry ? parseMcpEntry(currentFileEntry) : undefined;
+      // A concurrent transport-mode switch changes WHICH fields the entry can model at all, so
+      // the form's edits cannot be overlaid meaningfully (stdio edits onto an http entry, or the
+      // reverse). Refuse and ask for a reload rather than guessing -- unless the user is
+      // deliberately switching the mode themselves, which rebuilds the entry for the new mode.
+      if (
+        currentFileParsed &&
+        loadedFileSettings &&
+        currentFileParsed.settings.transportMode !== loadedFileSettings.transportMode &&
+        !('transport.mode' in msg.values)
+      ) {
+        void vscode.window.showErrorMessage(
+          'wcli0: the .vscode/mcp.json entry switched to a different transport type since it was ' +
+            'loaded, so your edits no longer apply to it. Reload the source (switch it away and ' +
+            'back) before saving.',
+        );
+        return;
+      }
+      const settings = overlaySettings(
+        currentFileParsed?.settings ?? loadedFileSettings ?? defaultSettings(),
+        msg.values,
+      );
       // An http/sse entry stores only {type, url}; no other field round-trips through it. The
       // form disables the non-transport tabs when the mode is network (applyFileTransportLock),
       // but disabling a control does not discard an edit made while the entry was still stdio:

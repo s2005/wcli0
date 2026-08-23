@@ -441,3 +441,20 @@ options. All verified against the project's yargs semantics and covered by new u
   pre-scan flags any scalar option that appears twice, and each occurrence is then preserved verbatim
   in `extraArgs` instead of collapsed, so `--config a --config b` / `--shell cmd --shell bash`
   round-trip as the arrays yargs produces. Array-kind options and single occurrences are unaffected)
+- [x] P79: Stop conflict scanning at the option separator (fixed - the `--yolo`/`--unsafe` presence
+  scans now run only over the tokens before the first `--`, matching the parse loop and the
+  duplicate-scalar pre-scan, so `["--unsafe","--","--yolo"]` models the unsafe mode yargs really
+  applies instead of reporting a phantom conflict and showing `safe`. A pair written before the
+  separator is still preserved verbatim)
+- [x] P80: Preserve concurrent changes to unchanged modeled arguments (fixed - a file save now
+  overlays the submitted changed fields onto the CURRENT on-disk entry rather than the panel's load
+  snapshot, so a Debug-only save no longer reverts a `--shell bash` another editor wrote after the
+  load. A concurrent transport-mode switch is refused with a reload message instead of merged)
+- [x] P81: Reject host and port edits for opaque transport URLs (fixed - a file save whose on-disk
+  URL cannot be decomposed by `parseHttpUrl` (`unix:///tmp/server.sock#/mcp`) is refused when the
+  host or port differs from the form default, instead of writing the original URL back and letting
+  the reparse drop the edit behind a "Saved". A mode switch still rebuilds the URL from host/port)
+- [x] P82: Preserve npx's installation confirmation behavior (fixed - the npx fast path now requires
+  the leading `-y`; `npx wcli0@1.2.3` is parsed as a custom command so an unrelated save cannot add
+  `-y` and turn an interactive install into an automatic one. The server flags after the package
+  stay modeled and a parse note explains the custom-command display)

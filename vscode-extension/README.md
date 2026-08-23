@@ -52,6 +52,15 @@ written**. This makes
 *load → edit → save* a first-class path alongside the existing
 *new → export* one.
 
+Loading favours preserving the entry over modelling it: an entry whose launcher
+the form cannot express exactly â€” including `npx <package>` written **without**
+`-y`, which keeps npx's install confirmation the `npx` launch method would
+suppress â€” is shown as a **custom** command so a save re-emits it unchanged,
+while the wcli0 flags after it stay editable. A note in the panel explains each
+such case. Fields the entry cannot store (per-shell config, profiles, and
+host/port edits for a URL like `unix:///tmp/server.sock` that has no host/port)
+are refused with an explanation rather than silently dropped on save.
+
 The server's implicit `~/.win-cli-mcp/config.json` is listed in the switcher as
 a **read-only preview** only; it is never an editable or save target. An entry
 that references a `--config` file (so its per-shell settings/profiles live in

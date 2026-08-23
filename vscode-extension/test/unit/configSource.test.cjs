@@ -458,7 +458,7 @@ test('P17: parseMcpEntry treats npx launcher options as custom, preserving them'
   assert.equal(settings.shell, 'cmd');
 });
 
-test('P17: a plain npx entry (with or without -y) is still parsed as npx', () => {
+test('P17: a plain `npx -y <pkg>` entry is parsed as the npx launch method', () => {
   const withY = parseMcpEntry({
     type: 'stdio',
     command: 'npx',
@@ -466,13 +466,63 @@ test('P17: a plain npx entry (with or without -y) is still parsed as npx', () =>
   }).settings;
   assert.equal(withY.launchMethod, 'npx');
   assert.equal(withY.packageSpec, 'wcli0@9.9.9');
-  const noY = parseMcpEntry({
+  assert.equal(withY.shell, 'cmd');
+});
+
+test('P82: `npx <pkg>` without -y is custom, so a save does not add -y', () => {
+  // npx prompts before installing a missing package; -y accepts it automatically. The npx
+  // launch method always emits -y, so an entry that deliberately omitted it must not be
+  // modeled as npx -- an unrelated save would silently suppress the confirmation.
+  const { settings, notes } = parseMcpEntry({
     type: 'stdio',
     command: 'npx',
     args: ['wcli0@1.2.3', '--shell', 'cmd'],
-  }).settings;
-  assert.equal(noY.launchMethod, 'npx');
-  assert.equal(noY.packageSpec, 'wcli0@1.2.3');
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'npx');
+  assert.deepEqual(settings.customArgs, ['wcli0@1.2.3']);
+  assert.equal(settings.shell, 'cmd', 'the server flags after it are still modeled');
+  assert.ok(
+    notes.some((n) => /WITHOUT -y/i.test(n)),
+    'the note explains why it is shown as a custom command',
+  );
+  // A no-op save round-trips the launcher verbatim: still no -y.
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.equal(spec.command, 'npx');
+  assert.deepEqual(spec.args, ['wcli0@1.2.3', '--shell', 'cmd']);
+});
+
+test('P82: an npx entry with no args at all is preserved as a custom command', () => {
+  const { settings } = parseMcpEntry({ type: 'stdio', command: 'npx' });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'npx');
+  assert.deepEqual(settings.customArgs, []);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.equal(spec.command, 'npx');
+  assert.deepEqual(spec.args, [], 'no package spec is invented for it');
+});
+
+test('P79: a safety flag after `--` is positional and is not a conflict', () => {
+  // yargs runs ['--unsafe','--','--yolo'] in unsafe mode: the token after the separator is a
+  // positional and never defines `yolo`. Treating it as a conflict left the form on `safe`
+  // while the server ran unsafe.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--unsafe', '--', '--yolo'],
+  });
+  assert.equal(settings.safetyMode, 'unsafe', 'the real safety mode is modeled');
+  assert.deepEqual(settings.extraArgs, ['--', '--yolo'], 'the positionals round-trip verbatim');
+});
+
+test('P79: both safety flags BEFORE `--` are still a preserved conflict', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--unsafe', '--yolo', '--', 'x'],
+  });
+  assert.equal(settings.safetyMode, 'safe', 'a server-rejected pair is not collapsed to one mode');
+  assert.deepEqual(settings.extraArgs, ['--unsafe', '--yolo', '--', 'x']);
 });
 
 test('P15: parseMcpEntry keeps a custom wrapper option that collides with a wcli0 flag', () => {
