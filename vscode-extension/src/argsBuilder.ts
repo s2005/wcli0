@@ -437,6 +437,18 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     pushOption(args, '--shell', s.shell);
   }
   for (const dir of s.allowedDirectories) {
+    // An explicitly EMPTY entry is meaningful to the server: yargs supplies allowedDir as [''],
+    // and applyCliShellAndAllowedDirs turns restrictWorkingDirectory ON with that (empty) allowlist
+    // -- the entry denies every working directory. pathValue drops a blank value, so a no-op save
+    // removed --allowedDir entirely and the server fell back to the config/default allowed paths,
+    // widening what the authored entry permitted (P103). Round-trip it verbatim on a file-source
+    // save. The settings/provider paths keep dropping blanks (like the P57 suppression above, they
+    // are gated on preserveRelativePaths): there an empty line is editor noise, not an authored
+    // deny-all, and the form filters blanks out when collecting the textarea anyway.
+    if (opts.preserveRelativePaths && dir.trim() === '') {
+      pushOption(args, '--allowedDir', dir);
+      continue;
+    }
     const resolved = pathValue(dir, opts);
     if (resolved) {
       pushOption(args, '--allowedDir', resolved);

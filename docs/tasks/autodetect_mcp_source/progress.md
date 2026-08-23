@@ -542,3 +542,8 @@ options. All verified against the project's yargs semantics and covered by new u
   or a trailing dot, so `--shell -1e2` is no longer modeled and rebuilt as `--shell=-1e2`. Also
   corrects P98 for number options: yargs drops a VALUELESS numeric option entirely, so it is counted
   as an occurrence only when a value token follows)
+- [x] P103: Preserve empty allowed-directory entries (P1 - fixed - a file save now emits an
+  explicitly empty `--allowedDir ""` verbatim. yargs yields [''] and the server turns
+  restrictWorkingDirectory ON with that empty allowlist (denying every directory), but `pathValue`
+  dropped the blank, so a no-op save removed the restriction and restored the config/default allowed
+  paths. The settings/provider paths still drop blanks, where an empty line is editor noise)

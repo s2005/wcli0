@@ -604,6 +604,29 @@ test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
   assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
 });
 
+test('P103: an empty allowed-directory entry survives a file save', () => {
+  // yargs supplies allowedDir as [''], and the server turns restrictWorkingDirectory ON with that
+  // empty allowlist -- the entry denies every directory. Dropping the flag on save restored the
+  // config/default allowed paths, widening what the entry permitted.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--allowedDir', ''],
+  });
+  assert.deepEqual(settings.allowedDirectories, ['']);
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.deepEqual(args, ['-y', 'wcli0@latest', '--allowedDir', ''], 'round-trips verbatim');
+});
+
+test('P103: the settings export still drops a blank allowed-directory line', () => {
+  // Without preserveRelativePaths (the settings/provider paths) an empty entry is editor noise,
+  // not an authored deny-all, so it must not start restricting every directory.
+  const s = defaults({ allowedDirectories: ['', '/ws/a'] });
+  const args = buildLaunchSpec(s, { resolvePaths: false }).args;
+  assert.equal(args.filter((a) => a === '--allowedDir').length, 1, 'only the real entry is emitted');
+  assert.ok(args.includes('/ws/a'));
+});
+
 test('P100: a shell name the select cannot hold is preserved verbatim', () => {
   // Assigning `fish` to the fixed <select> leaves it on the empty/Inherit value, the form counts
   // as changed, and a save drops --shell -- turning an entry the server matched to NO shell into
