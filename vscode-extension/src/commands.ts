@@ -450,6 +450,15 @@ export interface WriteMcpJsonOptions {
    * blocked. Absent for the settings-driven export, which builds a fresh entry.
    */
   baseEntry?: Record<string, unknown>;
+  /**
+   * `JSON.stringify` of the entry the caller's `settings` were overlaid on (`'null'` when the
+   * caller found no entry on disk). The save takes its OWN full-file snapshot, so a concurrent
+   * write landing between the caller's read and that snapshot would pair modeled fields derived
+   * from the older entry with a newer merge base and silently overwrite the change. Supplying
+   * this makes the save refuse that race instead (P95). Omitted by the settings-driven export,
+   * whose settings come from VS Code settings rather than from the file.
+   */
+  expectedEntryJson?: string;
 }
 
 export async function writeMcpJsonFromSettings(
@@ -527,6 +536,20 @@ export async function writeMcpJsonFromSettings(
     onDiskServers && isPlainObject(onDiskServers.wcli0)
       ? (onDiskServers.wcli0 as Record<string, unknown>)
       : undefined;
+  // Refuse when the entry changed between the caller's read (which produced `settings`) and the
+  // snapshot above: the modeled fields would be from the older entry while the merge base and the
+  // carried-forward argv come from the newer one, so a concurrent edit would be silently
+  // overwritten by a stale value the user never saw (P95). Both reads agreeing — including both
+  // finding no entry — proceeds normally, so the deleted-entry recreate path (P23) is unaffected.
+  if (fileSource && opts.expectedEntryJson !== undefined) {
+    if (JSON.stringify(onDiskEntry ?? null) !== opts.expectedEntryJson) {
+      void vscode.window.showErrorMessage(
+        'wcli0: .vscode/mcp.json changed while saving, so your edits were not applied to the ' +
+          'current entry. Nothing was written — reload the source and try again.',
+      );
+      return false;
+    }
+  }
   const urlBase = (onDiskEntry ?? baseEntry) as Record<string, unknown>;
   // An entry whose `type` the form cannot model (a future/custom transport such as
   // "websocket") is parsed as stdio for its editable fields, but saving would let

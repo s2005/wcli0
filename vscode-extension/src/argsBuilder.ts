@@ -124,6 +124,21 @@ export function isServerInvalidLogPath(resolved: string): boolean {
 }
 
 /**
+ * Whether the token following a value-carrying option is consumed by yargs as that option's
+ * VALUE rather than being a new option. Any non-dash token is; so is a dash-prefixed token that
+ * looks like a negative number (verified against yargs-parser: `--commandTimeout -1` => -1,
+ * `--shell -1` => '-1', but `--shell -x` => '' plus a separate `-x` flag). Treating `-1` as a
+ * flag left it behind as an orphan positional when its option was stripped (P93). Mirrors
+ * `isOptionValue` in configSource so the strippers and the parser agree.
+ */
+function isOptionValueToken(next: string | undefined): boolean {
+  if (next === undefined) {
+    return false;
+  }
+  return !next.startsWith('-') || /^-(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(next);
+}
+
+/**
  * Append an option/value pair, using `--option=value` form when the value is
  * dash-prefixed. As separate argv entries, yargs would parse a value like `-e`
  * or `--exec` as a new option and drop it — an emptied blocked-list option then
@@ -198,12 +213,16 @@ function stripTransportArgs(extraArgs: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < extraArgs.length; i++) {
     const a = extraArgs[i];
+    if (a === '--') {
+      out.push(...extraArgs.slice(i)); // positional region: never strip inside it (P97)
+      break;
+    }
     if (a === '--transport') {
       // Drop the flag, and its separate value token ONLY when that token is an
       // actual value rather than another option. yargs parses `--transport --unsafe`
       // as transport="" plus the still-applied `--unsafe`, so blindly consuming the
       // next token would also discard an unrelated following option (see P86).
-      if (i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+      if (isOptionValueToken(extraArgs[i + 1])) {
         i++;
       }
       continue;
@@ -246,13 +265,17 @@ function stripConfigArgs(extraArgs: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < extraArgs.length; i++) {
     const a = extraArgs[i];
+    if (a === '--') {
+      out.push(...extraArgs.slice(i)); // positional region: never strip inside it (P97)
+      break;
+    }
     // Space-separated forms (drop the flag and, when present, its separate value
     // token). `--c` is the long form yargs also accepts for the single-character `c`
     // alias. Consume the following token only when it is a real value, not another
     // option: yargs parses `--config --debug` as config="" plus the still-applied
     // `--debug`, so blindly consuming it would also discard an unrelated flag (P86).
     if (a === '--config' || a === '-c' || a === '--c') {
-      if (i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+      if (isOptionValueToken(extraArgs[i + 1])) {
         i++;
       }
       continue;
@@ -276,7 +299,7 @@ function stripConfigArgs(extraArgs: string[]): string[] {
     // real value rather than another option (P86/P88).
     if (a.length > 1 && a[0] === '-' && a[1] !== '-' && a.includes('c')) {
       const cIsLast = a[a.length - 1] === 'c';
-      if (cIsLast && i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+      if (cIsLast && isOptionValueToken(extraArgs[i + 1])) {
         i++;
       }
       continue;
@@ -310,8 +333,12 @@ function stripValueFlag(extraArgs: string[], names: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < extraArgs.length; i++) {
     const a = extraArgs[i];
+    if (a === '--') {
+      out.push(...extraArgs.slice(i)); // positional region: never strip inside it (P97)
+      break;
+    }
     if (exact.has(a)) {
-      if (i + 1 < extraArgs.length && !extraArgs[i + 1].startsWith('-')) {
+      if (isOptionValueToken(extraArgs[i + 1])) {
         i++;
       }
       continue;

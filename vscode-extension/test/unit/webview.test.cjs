@@ -920,6 +920,53 @@ test('P80: a submitted edit still wins over the on-disk value for the same field
   assert.equal(args[args.indexOf('--shell') + 1], 'powershell', 'the user edit is not overwritten');
 });
 
+test('P95: a save is refused when the entry changes between the two reads', async () => {
+  // The handler reads the entry to overlay the form's changes onto; the writer takes its own
+  // full-file snapshot. A write landing between them would pair stale modeled fields with a newer
+  // merge base and silently overwrite the concurrent change, so the save must refuse instead.
+  seedWorkspaceMcpJson({
+    servers: {
+      wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--shell', 'cmd'] },
+    },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  // Change the file on the NEXT read only: the handler's read sees --shell cmd, the writer's
+  // snapshot sees --shell bash.
+  const realReadFile = vscode.workspace.fs.readFile;
+  let reads = 0;
+  vscode.workspace.fs.readFile = async (uri) => {
+    reads += 1;
+    if (reads === 2) {
+      seedWorkspaceMcpJson({
+        servers: {
+          wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest', '--shell', 'bash'] },
+        },
+      });
+    }
+    return realReadFile(uri);
+  };
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  try {
+    await panel.webview._handler({ type: 'saveToFile', values: { debug: true } });
+  } finally {
+    vscode.workspace.fs.readFile = realReadFile;
+  }
+  assert.equal(panel.webview.posted.find((m) => m.type === 'saved'), undefined, 'no false Saved');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /changed while saving/.test(m)),
+    'the race is reported',
+  );
+  const args = JSON.parse(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+  ).servers.wcli0.args;
+  assert.equal(args[args.indexOf('--shell') + 1], 'bash', 'the concurrent change is intact');
+  assert.equal(args.includes('--debug'), false, 'nothing was written');
+});
+
 test('P80: a file save is refused when the entry changed transport type on disk', async () => {
   // The two modes model different fields, so the form's stdio edits cannot be overlaid onto an
   // http entry (nor the reverse); ask for a reload rather than guessing.

@@ -495,3 +495,24 @@ options. All verified against the project's yargs semantics and covered by new u
   holding a `${...}` token as undecomposable, so `http://${input:host}:8080/mcp` is preserved
   verbatim like a socket URL instead of being split at the colon inside the variable and rewritten
   as `http://${input:9444/mcp` on save)
+- [x] P93: Count negative numeric values as scalar occurrences (fixed - a shared `isOptionValue` /
+  `isOptionValueToken` helper encodes yargs' real rule (any non-dash token, or a negative number),
+  so `--commandTimeout -1 --commandTimeout 5` is seen as a duplicate and preserved whole, and a
+  stripped option takes its negative value with it instead of leaving an orphan `-1`)
+- [x] P94: Recognize all attached boolean values in wrapper suffixes (fixed -
+  `isRecognizedServerFlag` accepts any attached assignment for a declared boolean, matching the
+  parser after P87, so `wrapper target --enableTruncation=0` is detected as a server-flag suffix and
+  the form shows truncation disabled instead of the server default)
+- [x] P95: Use the same snapshot for overlaying and writing file edits (fixed - the save handler
+  passes `expectedEntryJson`, the entry its settings were overlaid on, and the writer refuses when
+  its own snapshot differs, so a write landing between the two reads cannot be overwritten by stale
+  modeled fields. Both reads finding no entry still recreates it, as P23 expects)
+- [x] P96: Preserve an explicit `--shell all` argument (P1 - fixed - the CLI value `all` is diverted
+  to `extraArgs` verbatim instead of being modeled as the form's omit sentinel: the server loads
+  only a shell module named "all" (none exists, so no shells are usable) while omitting the flag
+  enables every default shell, so a no-op save no longer opens up an entry that had none. Choosing a
+  real shell in the form still strips the preserved copy and wins)
+- [x] P97: Stop conflict stripping at the option separator (fixed - `stripValueFlag`,
+  `stripConfigArgs` and `stripTransportArgs` copy `--` and its remainder verbatim, so the
+  positionals of `--shell cmd -- --shell bash` survive a save instead of being deleted as duplicate
+  options and written back as a truncated `--shell cmd --`)

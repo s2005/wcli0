@@ -226,10 +226,13 @@ export interface ParseServerArgsOptions {
  * extraArgs verbatim (P30), so they must not "prove" a wcli0 server suffix that would otherwise be
  * split out and reorder a wrapper's own options on save (P77).
  *
- * An attached boolean assignment (`--debug=true`, `--enableTruncation=false`) is recognized just
- * like its bare spelling, so a wrapper suffix carrying only such a flag is still detected and the
- * flag stays editable instead of being stranded in customArgs (P76). Only the literal true/false
- * yargs round-trips count, matching the attached-boolean modeling in {@link parseServerArgs}.
+ * An attached boolean assignment (`--debug=true`, `--enableTruncation=false`, `--debug=0`) is
+ * recognized just like its bare spelling, so a wrapper suffix carrying only such a flag is still
+ * detected and the flag stays editable instead of being stranded in customArgs (P76). EVERY
+ * attached value counts, not only the literal true/false spellings, matching the attached-boolean
+ * modeling in {@link parseServerArgs}: yargs coerces any other value to false, so
+ * `wrapper target --enableTruncation=0` really does disable truncation and the form must show it
+ * rather than the server default (P94).
  */
 function isRecognizedServerFlag(token: string, stdio = false): boolean {
   const isModeledValueOption = (flag: string): boolean =>
@@ -243,8 +246,7 @@ function isRecognizedServerFlag(token: string, stdio = false): boolean {
     if (isModeledValueOption(flag)) {
       return true;
     }
-    const value = token.slice(eq + 1);
-    return BOOLEAN_FLAGS.has(flag) && (value === 'true' || value === 'false');
+    return BOOLEAN_FLAGS.has(flag);
   }
   return false;
 }
@@ -505,6 +507,25 @@ export function parseServerArgs(
     return false;
   };
 
+  // Whether the token following a value option is consumed by yargs as that option's VALUE. Any
+  // non-dash token is; so is a dash-prefixed token that looks like a negative number, which yargs
+  // does NOT treat as a new option (verified against yargs-parser: `--commandTimeout -1` => -1 and
+  // `--shell -1` => '-1', while `--shell -x` => '' plus a separate `-x` flag). Reading `-1` as a
+  // flag hid a repeated option with a negative value from the duplicate pre-scan, so the pair was
+  // modeled last-wins and the save changed the launch (P93). Mirrors argsBuilder's strippers.
+  const isOptionValue = (next: string | undefined): boolean =>
+    next !== undefined && (!next.startsWith('-') || /^-(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(next));
+
+  // Whether a `--shell` value must be preserved verbatim instead of modeled. The form's `all` is
+  // an OMISSION sentinel — buildServerArgs emits no `--shell` for it — but the server's own
+  // `--shell all` is a shell NAME: it loads only the shell module called "all", which does not
+  // exist, leaving no usable shells (src/index.ts builds shellsToLoad from the flag). Modeling the
+  // explicit value as the sentinel would therefore let a no-op save drop the flag and re-enable
+  // every default shell on an entry that deliberately had none (P96). Only the exact `all`
+  // collides; any other spelling (`ALL`) round-trips through the field unchanged.
+  const divertShellAll = (spec: OptionSpec, raw: string): boolean =>
+    spec.key === 'shell' && raw === 'all';
+
   // Whether an option is a single-value (scalar) field rather than an accumulating array. yargs
   // parses a REPEATED scalar option as an array (`--config a --config b` => ['a','b'], `--shell cmd
   // --shell bash` => ['cmd','bash']), which a single-value form field cannot represent and which
@@ -547,13 +568,13 @@ export function parseServerArgs(
           if (yargsBundleConfigValue(attached) !== undefined) {
             bump('configFile');
           }
-        } else if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        } else if (isOptionValue(args[i + 1])) {
           bump('configFile');
         }
         continue;
       }
       const spec = optionFor(token);
-      if (spec && isScalarOption(spec) && i + 1 < args.length && !args[i + 1].startsWith('-')) {
+      if (spec && isScalarOption(spec) && isOptionValue(args[i + 1])) {
         bump(spec.key); // counted even when divertNumber would keep the value out of the field
       }
     }
@@ -788,6 +809,10 @@ export function parseServerArgs(
       const spec = optionFor(flag);
       if (spec) {
         const v = value;
+        if (divertShellAll(spec, v)) {
+          extraArgs.push(token); // explicit `--shell=all` is a shell name, not the sentinel (P96)
+          continue;
+        }
         if (spec.kind === 'number' && divertNumber(spec, v)) {
           // A numeric value the typed field cannot faithfully hold: an unparseable value
           // (P34) or an out-of-range log limit (P59). Preserve it verbatim so it round-trips
@@ -834,7 +859,7 @@ export function parseServerArgs(
         extraArgs.push(token);
         continue;
       }
-      if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+      if (isOptionValue(args[i + 1])) {
         if (duplicatedScalarKeys.has('configFile')) {
           // repeated --config: preserve the bundle verbatim; its value falls through next (P78).
           extraArgs.push(token);
@@ -857,7 +882,13 @@ export function parseServerArgs(
     // stripConfigArgs). A value-option whose next token is a flag is preserved verbatim in
     // extraArgs and the flag is parsed on the next iteration.
     const spec = optionFor(token);
-    if (spec && i + 1 < args.length && !args[i + 1].startsWith('-')) {
+    if (spec && isOptionValue(args[i + 1])) {
+      if (divertShellAll(spec, args[i + 1])) {
+        // An explicit `--shell all` is NOT the form's "all shells" sentinel (P96): preserve the
+        // flag here and let its value fall through to extraArgs on the next iteration.
+        extraArgs.push(token);
+        continue;
+      }
       if (spec.kind === 'number' && divertNumber(spec, args[i + 1])) {
         // A numeric value the typed field cannot faithfully hold (unparseable, P34; or an
         // out-of-range log limit, P59): don't consume it. The flag is preserved here, and the

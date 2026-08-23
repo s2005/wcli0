@@ -604,6 +604,125 @@ test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
   assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
 });
 
+test('P93: a negative numeric value counts as a scalar occurrence', () => {
+  // Verified against yargs-parser: `--commandTimeout -1 --commandTimeout 5` => [-1, 5], which the
+  // server ignores (not a number). Reading `-1` as a flag hid the repeat, so the pair was modeled
+  // as a plain `--commandTimeout 5` and the save changed the launch.
+  const { settings, extraArgs } = parseServerArgs([
+    '--commandTimeout', '-1', '--commandTimeout', '5',
+  ]);
+  assert.equal(settings.commandTimeout, undefined, 'neither value is modeled');
+  assert.deepEqual(extraArgs, ['--commandTimeout', '-1', '--commandTimeout', '5']);
+});
+
+test('P93: a single negative numeric value is consumed as the value, not a flag', () => {
+  // A non-positive timeout is diverted (the server ignores it, P64), so both tokens round-trip.
+  const { settings, extraArgs } = parseServerArgs(['--commandTimeout', '-1']);
+  assert.equal(settings.commandTimeout, undefined);
+  assert.deepEqual(extraArgs, ['--commandTimeout', '-1']);
+  // A dash token that is NOT a number is still a separate flag, as yargs treats it.
+  const other = parseServerArgs(['--shell', '-x']);
+  assert.equal(other.settings.shell, undefined);
+  assert.deepEqual(other.extraArgs, ['--shell', '-x']);
+});
+
+test('P93: a stripped option takes its negative value with it', () => {
+  const spec = buildLaunchSpec(
+    { ...defaults(), commandTimeout: 30, extraArgs: ['--commandTimeout', '-1'] },
+    { resolvePaths: false },
+  );
+  assert.equal(spec.args.includes('-1'), false, 'no orphan value is left behind');
+  assert.equal(spec.args[spec.args.indexOf('--commandTimeout') + 1], '30');
+});
+
+test('P94: a wrapper suffix is detected by any attached boolean value', () => {
+  // yargs coerces every attached value other than `true` to false, so `--enableTruncation=0`
+  // really disables truncation; the suffix detector must see it as a modeled wcli0 flag or the
+  // form shows the server default while the entry says otherwise.
+  for (const token of ['--enableTruncation=0', '--enableTruncation=yes', '--debug=0']) {
+    const { settings } = parseMcpEntry({
+      type: 'stdio',
+      command: 'wrapper',
+      args: ['target', token],
+    });
+    assert.deepEqual(settings.customArgs, ['target'], `${token} is a server-flag suffix`);
+    assert.deepEqual(settings.extraArgs, [], `${token} is modeled, not preserved`);
+  }
+  const truncation = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--enableTruncation=0'],
+  }).settings;
+  assert.equal(truncation.enableTruncation, 'disabled', 'the real setting is shown');
+});
+
+test('P96: an explicit --shell all is preserved, not read as the omit sentinel', () => {
+  // The form's `all` means "emit no --shell" (so the server loads its default shells), but the
+  // server's `--shell all` loads only a shell module named "all", which does not exist -- the
+  // entry has NO usable shells. Modeling it as the sentinel let a no-op save enable them all.
+  for (const args of [
+    ['-y', 'wcli0@latest', '--shell', 'all'],
+    ['-y', 'wcli0@latest', '--shell=all'],
+  ]) {
+    const { settings } = parseMcpEntry({ type: 'stdio', command: 'npx', args });
+    const emitted = buildLaunchSpec(settings, {
+      resolvePaths: false,
+      preserveRelativePaths: true,
+    }).args;
+    assert.deepEqual(
+      emitted.filter((a) => a.startsWith('--shell') || a === 'all'),
+      args.slice(2),
+      'the explicit value round-trips verbatim',
+    );
+  }
+});
+
+test('P96: choosing a real shell replaces the preserved --shell all', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--shell', 'all'],
+  });
+  const edited = { ...settings, shell: 'cmd' };
+  const args = buildLaunchSpec(edited, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.equal(args[args.indexOf('--shell') + 1], 'cmd');
+  assert.equal(args.filter((a) => a === '--shell').length, 1, 'the preserved copy is stripped');
+  assert.equal(args.includes('all'), false);
+});
+
+test('P97: a stripper never touches tokens after the `--` separator', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--shell', 'cmd', '--', '--shell', 'bash'],
+  });
+  assert.equal(settings.shell, 'cmd', 'the option before the separator is modeled');
+  assert.deepEqual(settings.extraArgs, ['--', '--shell', 'bash']);
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.deepEqual(
+    args.slice(args.indexOf('--')),
+    ['--', '--shell', 'bash'],
+    'the positional region survives the emitted --shell',
+  );
+});
+
+test('P97: the config and transport strippers also stop at the separator', () => {
+  const s = {
+    ...defaults(),
+    configFile: '/ws/cfg.json',
+    transportMode: 'http',
+    transportHost: '127.0.0.1',
+    transportPort: 9444,
+    extraArgs: ['--', '--config', '/other.json', '--transport', 'stdio'],
+  };
+  const args = buildLaunchSpec(s, { resolvePaths: false }).args;
+  assert.deepEqual(
+    args.slice(args.indexOf('--')),
+    ['--', '--config', '/other.json', '--transport', 'stdio'],
+    'positionals are copied verbatim by both strippers',
+  );
+});
+
 test('P89: a later false value clears a safety mode an earlier flag set', () => {
   // Verified against the installed yargs-parser: repeated booleans are last-wins, so
   // `--unsafe --unsafe=false` and `--unsafe --unsafe false` both mean unsafe:false. Modeling

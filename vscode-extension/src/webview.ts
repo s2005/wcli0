@@ -458,7 +458,13 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
           return;
         }
       }
-      const ok = await writeMcpJsonFromSettings(settings, folder, { baseEntry: loadedFileEntry });
+      // Hand the writer the exact entry these settings were overlaid on, so it can refuse a
+      // concurrent write that landed between this read and its own full-file snapshot rather than
+      // merging stale modeled fields onto a newer entry (P95).
+      const ok = await writeMcpJsonFromSettings(settings, folder, {
+        baseEntry: loadedFileEntry,
+        expectedEntryJson: JSON.stringify(currentFileEntry ?? null),
+      });
       if (!ok) {
         return;
       }
