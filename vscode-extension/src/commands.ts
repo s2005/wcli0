@@ -859,9 +859,13 @@ export async function writeMcpJsonFromSettings(
   existing.servers = servers;
 
   await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(folder.uri, '.vscode'));
+  // Re-attach a UTF-8 BOM when the file we read had one. parseJsonc strips it so a
+  // "UTF-8 with BOM" file is readable at all (P86), but dropping it on write would silently
+  // re-encode a file the user (or their editor's encoding setting) deliberately saved that way.
+  const hadBom = !!raw && raw.length >= 3 && raw[0] === 0xef && raw[1] === 0xbb && raw[2] === 0xbf;
   await vscode.workspace.fs.writeFile(
     mcpUri,
-    Buffer.from(JSON.stringify(existing, null, 2) + '\n', 'utf8'),
+    Buffer.from((hadBom ? BOM : '') + JSON.stringify(existing, null, 2) + '\n', 'utf8'),
   );
   const doc = await vscode.workspace.openTextDocument(mcpUri);
   await vscode.window.showTextDocument(doc);
@@ -1053,11 +1057,17 @@ export async function refreshServerDefinition(provider: Wcli0McpProvider): Promi
  * genuinely malformed input so callers can refuse to overwrite it.
  */
 export function parseJsonc(text: string): unknown {
+  // Strip a leading UTF-8 BOM. VS Code can save .vscode/mcp.json as "UTF-8 with BOM" and reads
+  // such a file back happily, but Buffer.toString('utf8') keeps the U+FEFF and JSON.parse throws
+  // on it -- which made every caller (detection, the entry load, the save's merge read) treat a
+  // perfectly good file as absent or malformed. Stripping it here covers all of them at once
+  // (P86); the writer re-attaches the BOM so the file's encoding survives a save.
+  const source = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   let out = '';
   let inString = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    const next = text[i + 1];
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    const next = source[i + 1];
     if (inString) {
       out += ch;
       if (ch === '\\') {
@@ -1075,7 +1085,7 @@ export function parseJsonc(text: string): unknown {
       continue;
     }
     if (ch === '/' && next === '/') {
-      while (i < text.length && text[i] !== '\n') {
+      while (i < source.length && source[i] !== '\n') {
         i++;
       }
       out += '\n';
@@ -1083,10 +1093,10 @@ export function parseJsonc(text: string): unknown {
     }
     if (ch === '/' && next === '*') {
       i += 2;
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
         i++;
       }
-      if (i >= text.length) {
+      if (i >= source.length) {
         // EOF before the closing */ — malformed; don't silently accept the
         // truncated remainder and overwrite the user's file.
         throw new SyntaxError('Unterminated block comment in JSONC input');
@@ -1106,6 +1116,9 @@ export function parseJsonc(text: string): unknown {
   }
   return JSON.parse(out);
 }
+
+/** The UTF-8 byte-order mark, as the single character it decodes to (U+FEFF). */
+const BOM = '\ufeff';
 
 /** Whether the text contains a `//` or block comment outside any string. */
 function containsJsoncComments(text: string): boolean {

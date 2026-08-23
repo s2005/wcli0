@@ -402,7 +402,12 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   }
   const emitShell = Boolean(s.shell) && s.shell !== 'all';
   if (emitShell) {
-    args.push('--shell', s.shell);
+    // Attached form for a dash-prefixed value, like every other scalar whose value can start
+    // with a dash (P73). A loaded entry can carry one the form's select cannot: yargs reads
+    // `--shell=--unsafe` as the shell name "--unsafe", but the two-token `--shell --unsafe` as an
+    // empty shell PLUS the active `unsafe` boolean -- so re-emitting it unattached turned a
+    // nonfunctional hand-authored launch into one with every safety restriction disabled (P84).
+    pushOption(args, '--shell', s.shell);
   }
   for (const dir of s.allowedDirectories) {
     const resolved = pathValue(dir, opts);

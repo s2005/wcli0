@@ -346,22 +346,39 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = f
  * launcher portion (P56). The wcli0 binary itself (allowIndexZero) does not require this: its
  * args are genuinely wcli0's, including unknown-only extraArgs.
  *
- * When the command is the wcli0 binary (allowIndexZero) the scan stops at a `--` options
- * separator: yargs treats everything after the binary's own `--` as positionals, so no server-flag
- * suffix can begin there (P75). A wrapper's `--` is instead a pass-through separator before the
- * wrapped wcli0 binary, so the scan keeps looking past it (the P17 npx case). `stdio` is forwarded
- * to the run check so a stdio entry's transport flags do not count as modeled evidence (P77).
+ * The scan stops at a `--` options separator, because yargs treats everything after one as
+ * positionals, so no server-flag suffix can begin there (P75). The single exception is a
+ * pass-through separator that is PROVEN to be one: a wrapper whose separator is followed by the
+ * wcli0 binary itself (`npx --package=wcli0 -- wcli0 --shell cmd`, P17). There the scan resumes
+ * after that binary token, since the flags following it really are wcli0's. For any other
+ * separator -- `node --inspect dist/index.js -- --debug`, a wrapper passing positionals to some
+ * other program -- the remainder stays with the launcher, so a positional `--debug` is not modeled
+ * as an active flag and a newly saved `--shell cmd` is not appended after a separator where the
+ * server would never read it (P83). `stdio` is forwarded to the run check so a stdio entry's
+ * transport flags do not count as modeled evidence (P77).
  */
 function serverFlagSuffixStart(args: string[], allowIndexZero: boolean, stdio = false): number {
   for (let i = allowIndexZero ? 0 : 1; i < args.length; i++) {
-    if (allowIndexZero && args[i] === '--') {
-      // The wcli0 binary's OWN `--` separator: yargs treats every following token as a positional,
-      // so no server-flag suffix can begin at or after it. Stop scanning so the separator and its
-      // remainder stay with the launcher rather than being split out as server flags (P75). This is
-      // scoped to the wcli0 binary: for a wrapper command (allowIndexZero=false) a `--` is the
-      // wrapper's pass-through separator and the wrapped wcli0 binary's flags legitimately follow it
-      // (`npx --package=wcli0 -- wcli0 --shell cmd`), so the scan must keep looking there (P17).
-      break;
+    if (args[i] === '--') {
+      // An options separator: yargs treats every following token as a positional, so no
+      // server-flag suffix can begin at or after it (P75). Stop -- unless this is a wrapper
+      // separator with the wcli0 binary itself behind it, the one shape that PROVES a
+      // pass-through (`npx --package=wcli0 -- wcli0 --shell cmd`, P17): there the scan resumes
+      // after that binary token, whose own flags are genuinely wcli0's. Anything else (a generic
+      // `node --inspect dist/index.js -- --debug`, a wrapper handing positionals to another
+      // program) keeps its remainder in the launcher portion, so a positional is never modeled as
+      // an active flag and a saved flag is never appended behind a separator the server ignores
+      // (P83). A second `--` after the wrapped binary is that binary's own separator and stops
+      // the scan, exactly as it does for a direct wcli0 launch.
+      if (allowIndexZero) {
+        break;
+      }
+      const wrappedBinaryAt = args.findIndex((t, j) => j > i && isWcli0Command(t));
+      if (wrappedBinaryAt === -1) {
+        break;
+      }
+      i = wrappedBinaryAt; // resume scanning at the token AFTER the wrapped wcli0 binary
+      continue;
     }
     if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i), !allowIndexZero, stdio)) {
       return i;
@@ -977,8 +994,17 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
   // suppresses that prompt). Without `-y` the entry falls through to custom parsing instead,
   // where `npx` and its package token round-trip verbatim and the server flags after them are
   // still modeled (P82).
+  // It also needs a real package token. `npx -y` (or `npx -y ""`) authored no package, but
+  // buildLaunchSpec substitutes an empty packageSpec with `wcli0@latest`, so modeling it would let
+  // an unrelated save turn an incomplete invocation into an automatic install-and-run of wcli0
+  // (npx itself requires a package or an explicit call). Such an entry is a custom launch, where
+  // its tokens round-trip untouched (P85).
   const isPlainNpx =
-    command === 'npx' && args[0] === '-y' && (args[1] === undefined || !args[1].startsWith('-'));
+    command === 'npx' &&
+    args[0] === '-y' &&
+    args[1] !== undefined &&
+    args[1].trim() !== '' &&
+    !args[1].startsWith('-');
   const isPlainNode = command === 'node' && args[0] !== undefined && !args[0].startsWith('-');
   if (isPlainNpx) {
     s.launchMethod = 'npx';
@@ -1032,7 +1058,13 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
         'Edit .vscode/mcp.json directly to change the transport type.',
     );
   }
-  if (command === 'npx' && args[0] !== undefined && args[0] !== '-y' && !args[0].startsWith('-')) {
+  if (
+    command === 'npx' &&
+    args[0] !== undefined &&
+    args[0] !== '-y' &&
+    args[0].trim() !== '' &&
+    !args[0].startsWith('-')
+  ) {
     // A plain `npx <pkg>` entry: modeled as a custom command rather than the npx launch method,
     // because the npx launch method always emits `-y` and would suppress npx's installation
     // confirmation the entry deliberately left in place (P82).

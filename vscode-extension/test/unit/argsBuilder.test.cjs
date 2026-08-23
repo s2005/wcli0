@@ -1356,3 +1356,18 @@ test('P102: custom args keep --config/--transport as an escape hatch on a plain 
     0,
   );
 });
+
+test('P84: a dash-prefixed shell value is emitted attached', () => {
+  // yargs reads `--shell=--unsafe` as the shell name "--unsafe", but the two-token
+  // `--shell --unsafe` as an empty shell PLUS the active unsafe boolean -- so re-emitting a
+  // hand-authored dash-prefixed value unattached would disable every safety restriction.
+  const s = defaults({ shell: '--unsafe' });
+  const args = buildLaunchSpec(s, { resolvePaths: false }).args;
+  assert.ok(args.includes('--shell=--unsafe'), 'attached form keeps it a shell value');
+  assert.equal(args.includes('--unsafe'), false, 'no bare safety flag is introduced');
+});
+
+test('P84: an ordinary shell value is still emitted as two tokens', () => {
+  const args = buildLaunchSpec(defaults({ shell: 'cmd' }), { resolvePaths: false }).args;
+  assert.equal(args[args.indexOf('--shell') + 1], 'cmd');
+});

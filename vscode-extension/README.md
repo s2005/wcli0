@@ -59,7 +59,9 @@ suppress â€” is shown as a **custom** command so a save re-emits it unchang
 while the wcli0 flags after it stay editable. A note in the panel explains each
 such case. Fields the entry cannot store (per-shell config, profiles, and
 host/port edits for a URL like `unix:///tmp/server.sock` that has no host/port)
-are refused with an explanation rather than silently dropped on save.
+are refused with an explanation rather than silently dropped on save. A file
+saved with VS Code's **UTF-8 with BOM** encoding is read normally, and its BOM
+is kept when the entry is written back.
 
 The server's implicit `~/.win-cli-mcp/config.json` is listed in the switcher as
 a **read-only preview** only; it is never an editable or save target. An entry

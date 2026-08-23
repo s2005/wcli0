@@ -502,6 +502,74 @@ test('P82: an npx entry with no args at all is preserved as a custom command', (
   assert.deepEqual(spec.args, [], 'no package spec is invented for it');
 });
 
+test('P83: a generic custom launch does not scan past its `--` separator', () => {
+  // `node --inspect dist/index.js -- --debug` hands `--` and `--debug` to the script, where
+  // yargs leaves them positional. Modeling --debug as an active flag misreported the launch and
+  // appended newly saved flags behind the separator, where the server never reads them.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['--inspect', 'dist/index.js', '--', '--debug'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.debug, false, 'the positional --debug is not modeled as enabled');
+  assert.deepEqual(settings.customArgs, ['--inspect', 'dist/index.js', '--', '--debug']);
+  assert.deepEqual(settings.extraArgs, []);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--inspect', 'dist/index.js', '--', '--debug'], 'round-trips');
+});
+
+test('P83: a wrapper `--` followed by the wcli0 binary is still a pass-through', () => {
+  // The one separator shape that PROVES a pass-through: the wrapped binary is wcli0 itself, so
+  // the flags after it really are server flags and stay editable (P17).
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['--package=wcli0', '--', 'wcli0', '--shell', 'cmd'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.deepEqual(settings.customArgs, ['--package=wcli0', '--', 'wcli0']);
+  assert.equal(settings.shell, 'cmd');
+});
+
+test("P83: the wrapped wcli0 binary's OWN `--` stops the scan again", () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['--package=wcli0', '--', 'wcli0', '--', '--debug'],
+  });
+  assert.equal(settings.debug, false, 'a positional after the binary is not modeled');
+  assert.deepEqual(settings.customArgs, ['--package=wcli0', '--', 'wcli0', '--', '--debug']);
+});
+
+test('P85: an npx entry with no package token is a custom launch', () => {
+  // buildLaunchSpec substitutes an empty packageSpec with wcli0@latest, so modeling `npx -y`
+  // would turn an incomplete invocation into an automatic install-and-run on an unrelated save.
+  for (const args of [['-y'], ['-y', '']]) {
+    const { settings } = parseMcpEntry({ type: 'stdio', command: 'npx', args });
+    assert.equal(settings.launchMethod, 'custom', `npx ${JSON.stringify(args)} is custom`);
+    assert.equal(settings.customCommand, 'npx');
+    assert.deepEqual(settings.customArgs, args);
+    const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+    assert.equal(spec.command, 'npx');
+    assert.deepEqual(spec.args, args, 'no package spec is invented');
+  }
+});
+
+test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
+  // VS Code can save .vscode/mcp.json as "UTF-8 with BOM"; JSON.parse throws on the leading
+  // U+FEFF, which made detection and loading report the file as absent/malformed.
+  const json = JSON.stringify({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  vscode.__state.files.set(MCP_PATH, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(json)]));
+  const d = await detectWorkspaceMcpJson(FOLDER);
+  assert.equal(d.exists, true);
+  assert.equal(d.hasWcli0, true, 'the entry is detected through the BOM');
+  const entry = await readWcli0Entry(FOLDER);
+  assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
+});
+
 test('P79: a safety flag after `--` is positional and is not a conflict', () => {
   // yargs runs ['--unsafe','--','--yolo'] in unsafe mode: the token after the separator is a
   // positional and never defines `yolo`. Treating it as a conflict left the form on `safe`

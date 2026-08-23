@@ -458,3 +458,17 @@ options. All verified against the project's yargs semantics and covered by new u
   the leading `-y`; `npx wcli0@1.2.3` is parsed as a custom command so an unrelated save cannot add
   `-y` and turn an interactive install into an automatic one. The server flags after the package
   stay modeled and a parse note explains the custom-command display)
+- [x] P83: Stop scanning generic wrappers after option separators (fixed - the server-flag suffix
+  scan now stops at any `--`, except a wrapper separator followed by the wcli0 binary itself, the one
+  shape that proves a pass-through. `node --inspect dist/index.js -- --debug` keeps the positional
+  `--debug` in `customArgs` instead of modeling it, while the P17 npx case still splits)
+- [x] P84: Keep dash-prefixed shell values attached (fixed - `--shell` now goes through `pushOption`
+  like every other dash-capable scalar, so a loaded `--shell=--unsafe` re-emits attached instead of
+  as `--shell --unsafe`, which yargs would read as an empty shell plus an active unsafe flag. An
+  ordinary shell name still emits as two tokens)
+- [x] P85: Require a nonempty package for the npx fast path (fixed - `npx -y` and `npx -y ""` are
+  parsed as custom launches, so a save no longer substitutes `wcli0@latest` and turns an incomplete
+  invocation into an automatic install-and-run)
+- [x] P86: Strip UTF-8 BOMs before parsing detected JSONC (fixed - `parseJsonc` drops a leading
+  U+FEFF, so detection, entry loading and the save's merge read all work for a file saved as "UTF-8
+  with BOM"; the write path re-attaches the BOM so the file's encoding is not silently changed)
