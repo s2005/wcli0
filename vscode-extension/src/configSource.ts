@@ -252,6 +252,21 @@ function isRecognizedServerFlag(token: string, stdio = false): boolean {
 }
 
 /**
+ * Whether the token following a value option is consumed by yargs as that option's VALUE. Any
+ * non-dash token is; so is a dash-prefixed token that looks like a negative number, which yargs
+ * does NOT treat as a new option (verified against yargs-parser: `--commandTimeout -1` => -1 and
+ * `--shell -1` => '-1', while `--shell -x` => '' plus a separate `-x` flag). Reading `-1` as a
+ * flag hid a repeated option with a negative value from the duplicate pre-scan, so the pair was
+ * modeled last-wins and the save changed the launch (P93). Mirrors argsBuilder's strippers.
+ */
+function isOptionValueToken(next: string | undefined): boolean {
+  return (
+    next !== undefined &&
+    (!next.startsWith('-') || /^-(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(next))
+  );
+}
+
+/**
  * Whether `tokens` parse cleanly as a run of wcli0 server flags — the shape the forward
  * builder emits as the suffix after a launcher's own args. Every token must be a flag
  * (a recognized value-option consuming the next token as its value, an attached
@@ -299,6 +314,13 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = f
         seenModeled = true;
       }
       i++; // consume the value
+      // An array option is GREEDY in yargs (greedy-arrays defaults to true), so every further
+      // value token belongs to it too and is not an orphan that disqualifies the run (P99).
+      if (VALUE_OPTIONS[t].kind === 'array') {
+        while (isOptionValueToken(tokens[i + 1])) {
+          i++;
+        }
+      }
       continue;
     }
     if (BOOLEAN_FLAGS.has(t)) {
@@ -507,15 +529,6 @@ export function parseServerArgs(
     return false;
   };
 
-  // Whether the token following a value option is consumed by yargs as that option's VALUE. Any
-  // non-dash token is; so is a dash-prefixed token that looks like a negative number, which yargs
-  // does NOT treat as a new option (verified against yargs-parser: `--commandTimeout -1` => -1 and
-  // `--shell -1` => '-1', while `--shell -x` => '' plus a separate `-x` flag). Reading `-1` as a
-  // flag hid a repeated option with a negative value from the duplicate pre-scan, so the pair was
-  // modeled last-wins and the save changed the launch (P93). Mirrors argsBuilder's strippers.
-  const isOptionValue = (next: string | undefined): boolean =>
-    next !== undefined && (!next.startsWith('-') || /^-(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(next));
-
   // Whether a `--shell` value must be preserved verbatim instead of modeled. The form's `all` is
   // an OMISSION sentinel — buildServerArgs emits no `--shell` for it — but the server's own
   // `--shell all` is a shell NAME: it loads only the shell module called "all", which does not
@@ -683,6 +696,26 @@ export function parseServerArgs(
     }
   };
 
+  // Model the REMAINING values of a greedy array option. yargs' `greedy-arrays` defaults to true
+  // (documented in yargs-parser's README), so an array option swallows every following value token,
+  // not just the first: verified against the installed parser, `--blockedCommand rm del --debug`
+  // => ['rm', 'del'] and `--blockedCommand=rm del` => ['rm', 'del']. Modeling only the first value
+  // left the rest in extraArgs, and re-emitting them after the modeled pair turned them into
+  // positionals the server never applies — an unrelated save silently shrank a blocklist or an
+  // allowed-directory list (P99). Only `array` kinds are greedy; the server declares exactly those
+  // four options with `array: true` (src/index.ts), and its csv options take a single token.
+  const consumeGreedyArrayValues = (spec: OptionSpec, from: number): number => {
+    if (spec.kind !== 'array') {
+      return from;
+    }
+    let at = from;
+    while (isOptionValueToken(args[at + 1])) {
+      applyValue(spec, args[at + 1]);
+      at++;
+    }
+    return at;
+  };
+
   for (let i = 0; i < args.length; i++) {
     const token = args[i];
     // The `--` options separator: yargs treats every following token as a positional, not an
@@ -837,6 +870,7 @@ export function parseServerArgs(
           continue;
         }
         applyValue(spec, v);
+        i = consumeGreedyArrayValues(spec, i);
         continue;
       }
       extraArgs.push(token);
@@ -868,7 +902,7 @@ export function parseServerArgs(
         extraArgs.push(token);
         continue;
       }
-      if (isOptionValue(args[i + 1])) {
+      if (isOptionValueToken(args[i + 1])) {
         if (duplicatedScalarKeys.has('configFile')) {
           // repeated --config: preserve the bundle verbatim; its value falls through next (P78).
           extraArgs.push(token);
@@ -891,7 +925,7 @@ export function parseServerArgs(
     // stripConfigArgs). A value-option whose next token is a flag is preserved verbatim in
     // extraArgs and the flag is parsed on the next iteration.
     const spec = optionFor(token);
-    if (spec && isOptionValue(args[i + 1])) {
+    if (spec && isOptionValueToken(args[i + 1])) {
       if (divertShellAll(spec, args[i + 1])) {
         // An explicit `--shell all` is NOT the form's "all shells" sentinel (P96): preserve the
         // flag here and let its value fall through to extraArgs on the next iteration.
@@ -913,6 +947,7 @@ export function parseServerArgs(
       }
       applyValue(spec, args[i + 1]);
       i++;
+      i = consumeGreedyArrayValues(spec, i);
       continue;
     }
     extraArgs.push(token);

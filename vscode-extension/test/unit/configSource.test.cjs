@@ -604,6 +604,72 @@ test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
   assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
 });
 
+test('P99: an array option consumes every following value', () => {
+  // yargs' greedy-arrays (default true) makes `--blockedCommand rm del --debug` => ['rm','del'].
+  // Modeling only `rm` left `del` in extraArgs, and re-emitting it after the modeled pair made it
+  // a positional the server never blocks -- a no-op save silently shrank the blocklist.
+  const { settings, extraArgs } = parseServerArgs(['--blockedCommand', 'rm', 'del', '--debug']);
+  assert.deepEqual(settings.blockedCommands, ['rm', 'del'], 'both values are modeled');
+  assert.equal(settings.debug, true);
+  assert.deepEqual(extraArgs, [], 'no value is stranded');
+});
+
+test('P99: the attached array form is greedy too', () => {
+  const { settings, extraArgs } = parseServerArgs(['--blockedCommand=rm', 'del']);
+  assert.deepEqual(settings.blockedCommands, ['rm', 'del']);
+  assert.deepEqual(extraArgs, []);
+});
+
+test('P99: every array option keeps its full list across a save', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: [
+      '-y', 'wcli0@latest',
+      '--allowedDir', '/a', '/b',
+      '--blockedArgument=-rf',
+      '--blockedOperator', '&&', '||',
+    ],
+  });
+  assert.deepEqual(settings.allowedDirectories, ['/a', '/b']);
+  // Only the ATTACHED form carries a dash-prefixed value: verified against yargs, a bare
+  // `--blockedArgument -rf` leaves the array empty and parses `-rf` as short flags.
+  assert.deepEqual(settings.blockedArguments, ['-rf']);
+  assert.deepEqual(settings.blockedOperators, ['&&', '||']);
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  for (const value of ['/a', '/b', '&&', '||']) {
+    assert.ok(args.includes(value), `${value} kept`);
+  }
+  assert.ok(args.includes('--blockedArgument=-rf'), 'the dash value stays attached (P73)');
+});
+
+test('P99: a dash-prefixed token is not swallowed as an array value', () => {
+  // Verified against yargs: `--blockedArgument -rf` gives blockedArgument: [] and parses `-rf`
+  // as short flags, so the whole run must round-trip verbatim rather than be modeled.
+  const { settings, extraArgs } = parseServerArgs(['--blockedArgument', '-rf', '--force']);
+  assert.deepEqual(settings.blockedArguments, undefined);
+  assert.deepEqual(extraArgs, ['--blockedArgument', '-rf', '--force']);
+});
+
+test('P99: a greedy run stops at the next option and at the separator', () => {
+  const { settings, extraArgs } = parseServerArgs([
+    '--blockedCommand', 'rm', 'del', '--shell', 'cmd', '--', 'tail',
+  ]);
+  assert.deepEqual(settings.blockedCommands, ['rm', 'del']);
+  assert.equal(settings.shell, 'cmd', 'the next option is not swallowed');
+  assert.deepEqual(extraArgs, ['--', 'tail'], 'the positional region is untouched');
+});
+
+test('P99: a wrapper suffix with a multi-value array option is still detected', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--blockedCommand', 'rm', 'del'],
+  });
+  assert.deepEqual(settings.customArgs, ['target'], 'the extra values are not orphans');
+  assert.deepEqual(settings.blockedCommands, ['rm', 'del']);
+});
+
 test('P98: a valueless scalar flag counts as a duplicate occurrence', () => {
   // Verified against yargs-parser: `--shell --debug --shell bash` => shell: ['', 'bash'], which is
   // not a usable shell name, so the entry enables NO shell. Modeling only `bash` let the builder

@@ -521,3 +521,9 @@ options. All verified against the project's yargs semantics and covered by new u
   defines the key either way (`--shell --debug --shell bash` => `['', 'bash']`, no usable shell). The
   pair is now preserved whole instead of being modeled as `--shell bash`, which a no-op save wrote
   back and thereby enabled command execution through Bash. A trailing `-c` bundle counts too)
+- [x] P99: Consume every greedy array value (P1 - fixed - an array option now models EVERY
+  following value, matching yargs' greedy-arrays default (`--blockedCommand rm del --debug` =>
+  ['rm','del'], attached form too). Modeling only the first left the rest in `extraArgs`, where the
+  rebuild placed them after the modeled pair and yargs read them as positionals - silently dropping
+  entries from a blocklist or the allowed-directory list. The wrapper-suffix detector consumes them
+  too, so a multi-value array option no longer looks like an orphan)
