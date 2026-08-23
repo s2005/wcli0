@@ -271,6 +271,31 @@ function preservedFileUrl(
 }
 
 /**
+ * Why a transport host cannot be interpolated into a URL authority, or undefined when it can. The
+ * host field is pasted straight between `http://` and `:port`, so a value carrying an authority
+ * delimiter silently produces a different endpoint: `gateway.example/api` becomes
+ * `http://gateway.example/api:9444/mcp`, which reparses as host `gateway.example` with no explicit
+ * port -- the accepted edit is lost and the path is malformed (P107). An embedded port is rejected
+ * for the same reason (`example.com:8080` would yield `...:8080:9444`); an IPv6 literal is not, as
+ * it is bracketed by {@link fileSourceUrlHost} and carries two or more colons.
+ */
+function unusableTransportHost(host: string): string | undefined {
+  const trimmed = (host ?? '').trim();
+  if (!trimmed) {
+    return undefined; // empty falls back to loopback when the URL is rebuilt
+  }
+  const bare =
+    trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
+  if (/[/?#@]/.test(bare) || /\s/.test(bare)) {
+    return 'a path, query, fragment, userinfo or whitespace character';
+  }
+  if (bare.includes(':') && (bare.match(/:/g) ?? []).length < 2) {
+    return 'a port (set the port in the port field instead)';
+  }
+  return undefined;
+}
+
+/**
  * The host to write into a REBUILT file-source http/sse URL (when {@link preservedFileUrl}
  * declines to round-trip the verbatim URL because the host or port was edited). A file
  * source's `transportHost` came from a user-authored CONNECT URL, so it must round-trip
@@ -694,6 +719,19 @@ export async function writeMcpJsonFromSettings(
         );
         return false;
       }
+    }
+    // Refuse a host the URL cannot carry, but only when the URL will actually be REBUILT from the
+    // host/port fields -- a preserved verbatim URL never interpolates them (P107).
+    const willRebuild = !(fileSource
+      ? preservedFileUrl(settings, urlBase)
+      : preservedTransportUrl(settings));
+    const badHost = willRebuild ? unusableTransportHost(settings.transportHost) : undefined;
+    if (badHost) {
+      void vscode.window.showErrorMessage(
+        `wcli0: transport.host "${settings.transportHost}" contains ${badHost}, so it cannot be ` +
+          'used as the host of the server URL. Enter only a hostname or IP address.',
+      );
+      return false;
     }
     const preserved = fileSource
       ? preservedFileUrl(settings, urlBase)

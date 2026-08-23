@@ -233,6 +233,12 @@ export interface ParseServerArgsOptions {
  * modeling in {@link parseServerArgs}: yargs coerces any other value to false, so
  * `wrapper target --enableTruncation=0` really does disable truncation and the form must show it
  * rather than the server default (P94).
+ *
+ * A NEGATED spelling with an attached value is excluded: yargs applies `--name=value` before
+ * boolean negation, so `--no-debug=false` defines an unrelated `no-debug` key rather than setting
+ * `debug` (verified against yargs-parser). parseServerArgs preserves such a token verbatim, so
+ * counting it as modeled evidence would split a wrapper's own trailing token into the server
+ * suffix and let a later edit reorder the wrapper's invocation (P108).
  */
 function isRecognizedServerFlag(token: string, stdio = false): boolean {
   const isModeledValueOption = (flag: string): boolean =>
@@ -246,7 +252,7 @@ function isRecognizedServerFlag(token: string, stdio = false): boolean {
     if (isModeledValueOption(flag)) {
       return true;
     }
-    return BOOLEAN_FLAGS.has(flag);
+    return BOOLEAN_FLAGS.has(flag) && !flag.startsWith('--no-');
   }
   return false;
 }
@@ -460,6 +466,16 @@ export function parseServerArgs(
 } {
   const out: Partial<Wcli0Settings> = {};
   const extraArgs: string[] = [];
+  // Indices in extraArgs of a recognized value option preserved with NO value token after it. The
+  // builder re-emits extraArgs AFTER the modeled flags, so such a flag can end up next to a token
+  // the entry kept apart from it and swallow it as its value; makeExtrasReorderSafe() below
+  // rewrites those cases (P106/P109). Recorded here because only the parse knows the token had no
+  // value: once the tokens sit side by side in extraArgs that fact is no longer visible.
+  const valuelessOptionAt = new Set<number>();
+  const preserveValueless = (token: string): void => {
+    valuelessOptionAt.add(extraArgs.length);
+    extraArgs.push(token);
+  };
   const arrays: Partial<Record<keyof Wcli0Settings, string[]>> = {};
 
   // Look up a value-option, honoring the stdio exclusion: a stdio entry's authoritative
@@ -923,8 +939,9 @@ export function parseServerArgs(
       }
       // `c` is the bundle's last char with no following value (the next token is another
       // flag, or there is none): yargs would read config as empty. Preserve the token
-      // verbatim so it round-trips rather than fabricating a value (mirrors P44/P86).
-      extraArgs.push(token);
+      // verbatim so it round-trips rather than fabricating a value (mirrors P44/P86). Recorded as
+      // valueless so the reorder guard below can make it safe if a positional follows (P106).
+      preserveValueless(token);
       continue;
     }
     // Space-separated `--opt value` form. Consume the next token as the value ONLY when it
@@ -960,13 +977,91 @@ export function parseServerArgs(
       i = consumeGreedyArrayValues(spec, i);
       continue;
     }
+    if (VALUE_OPTIONS[token] && !isOptionValueToken(args[i + 1])) {
+      // A recognized value option with no value after it (`--shell --debug ...`). Preserved as
+      // today, but recorded so the reorder guard below can re-emit it safely. Looked up in
+      // VALUE_OPTIONS directly rather than through optionFor(), so a stdio entry's transport flags
+      // (which P30 deliberately leaves unmodeled) get the same treatment.
+      preserveValueless(token);
+      continue;
+    }
     extraArgs.push(token);
   }
 
   for (const [key, list] of Object.entries(arrays)) {
     (out as Record<string, unknown>)[key] = list;
   }
-  return { settings: out, extraArgs };
+  return { settings: out, extraArgs: makeExtrasReorderSafe(extraArgs, valuelessOptionAt) };
+}
+
+/**
+ * Re-emit preserved args so they survive the builder's reordering. `buildServerArgs` appends
+ * extraArgs AFTER the flags it generates from the typed fields, so two tokens the entry kept apart
+ * can become neighbours. That is only dangerous in one shape: a recognized value option preserved
+ * with NO value (`valuelessAt`) followed later by a real POSITIONAL, which the re-emitted order
+ * would feed to it as its value. yargs reads `node dist/index.js --shell --debug cmd` as shell='',
+ * debug=true and a positional `cmd`, but the rebuilt `--debug --shell cmd` makes `cmd` the shell
+ * (P106); the same reordering turns `--allowedDir --debug C:/work` into an allowed directory, which
+ * additionally switches restrictWorkingDirectory ON and injection protection OFF (P109).
+ *
+ * Each kind is re-emitted in the form that cannot capture a following token, verified against the
+ * installed yargs-parser:
+ *   - string/csv: `--flag=` parses exactly like the valueless flag ('') and consumes nothing.
+ *   - number: a valueless number option defines NO key, while `--flag=` would define 0 — the token
+ *     is inert, so it is dropped rather than rewritten.
+ *   - array: a valueless array option yields [] (ignored by the server's `length > 0` check), while
+ *     `--flag=` would yield [''] — the deny-all of P103 — so the inert token is dropped too.
+ *
+ * When no positional follows, everything round-trips byte-for-byte as before: a valueless flag next
+ * to another flag (`--blockedCommand --debug`, P44) or to its own repeated occurrence (P78/P98) is
+ * already safe in any order.
+ */
+function makeExtrasReorderSafe(extras: string[], valuelessAt: Set<number>): string[] {
+  // Tokens after a `--` separator stay positional wherever they end up, so they neither create the
+  // hazard nor suffer from it (P74).
+  const separator = extras.indexOf('--');
+  const end = separator === -1 ? extras.length : separator;
+  const consumed = new Set<number>();
+  for (let i = 0; i < end; i++) {
+    if (VALUE_OPTIONS[extras[i]] && !valuelessAt.has(i) && isOptionValueToken(extras[i + 1])) {
+      consumed.add(i + 1); // this token is that option's value, not a positional
+    }
+  }
+  let positionalAt = -1;
+  for (let i = 0; i < end; i++) {
+    if (!extras[i].startsWith('-') && !consumed.has(i)) {
+      positionalAt = i;
+      break;
+    }
+  }
+  if (positionalAt === -1) {
+    return extras;
+  }
+  const out: string[] = [];
+  for (let i = 0; i < extras.length; i++) {
+    const token = extras[i];
+    if (i >= positionalAt || !valuelessAt.has(i)) {
+      out.push(token);
+      continue;
+    }
+    if (token.startsWith('--')) {
+      const spec = VALUE_OPTIONS[token];
+      if (spec && (spec.kind === 'string' || spec.kind === 'csv')) {
+        out.push(`${token}=`);
+      }
+      continue; // number / array: the valueless token is inert, so it is dropped
+    }
+    // A single-dash token carrying the `c` config alias (`-c`, or a bundle such as `-dc`). Its own
+    // attached form is unusable -- yargs swallows the next token for `-c=` -- so emit any other
+    // bundled letters as their own token and the alias in its long attached form. Verified:
+    // `-dc --debug x` and `-d --config= --debug x` both give config='', d=true, x positional.
+    const others = token.slice(1).replace(/c/g, '');
+    if (others) {
+      out.push(`-${others}`);
+    }
+    out.push('--config=');
+  }
+  return out;
 }
 
 /** Whether a value is a plain JSON object (not null, not an array). */

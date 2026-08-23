@@ -28,3 +28,5 @@ in the form, and the round-trip is still faithful because the emitted args resol
 yargs result. The one visible change is that a boolean and its negation collapse to the value yargs
 computes for them, which is the same normalization every other modeled field already gets. See
 [[analysis_89_clear_safety_mode_on_later_false]] and [[analysis_75_no_server_suffix_past_double_dash]].
+
+**Commit:** 0c1d494 - fix(vscode): parse a direct wcli0 launch as one server argument list (P105)

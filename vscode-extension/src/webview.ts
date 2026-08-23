@@ -433,6 +433,31 @@ function setupWebview(webview: vscode.Webview): vscode.Disposable {
         );
         return;
       }
+      // The same incompatibility one level down: a concurrent LAUNCH-METHOD switch. Each method
+      // owns different fields, so overlaying an edit made against the old one silently drops it --
+      // a `launch.packageSpec` edit made while the panel showed npx would be overlaid onto a
+      // freshly parsed `node` entry, whose emitted launch ignores packageSpec entirely, and the
+      // save would report success while the edit vanished on reparse. Refuse unless the user is
+      // switching the method themselves (P110).
+      const METHOD_FIELDS = {
+        npx: 'launch.packageSpec',
+        node: 'launch.nodeScriptPath',
+        custom: 'launch.customCommand',
+      };
+      if (
+        currentFileParsed &&
+        loadedFileSettings &&
+        currentFileParsed.settings.launchMethod !== loadedFileSettings.launchMethod &&
+        !('launch.method' in msg.values) &&
+        Object.values(METHOD_FIELDS).some((f) => f in (msg.values as Record<string, unknown>))
+      ) {
+        void vscode.window.showErrorMessage(
+          'wcli0: the .vscode/mcp.json entry switched to a different launch method since it was ' +
+            'loaded, so the launch fields you edited no longer apply to it. Reload the source ' +
+            '(switch it away and back) before saving.',
+        );
+        return;
+      }
       const settings = overlaySettings(
         currentFileParsed?.settings ?? loadedFileSettings ?? defaultSettings(),
         msg.values,

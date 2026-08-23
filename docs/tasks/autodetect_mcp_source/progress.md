@@ -554,21 +554,33 @@ options. All verified against the project's yargs semantics and covered by new u
   payload is exactly `{"commandTimeout":45}`. Three regression tests added - two client-side, one
   end-to-end - proving `--allowedDir ""` survives an unrelated save)
 
-## Post-merge follow-ups (PR #89 was merged with unresolved threads)
+## Re-land after the bad merge of PR #89
 
-The task-loop's thread query used `reviewThreads(first: 100)` with no pagination while the PR had
-106 threads, so the six newest findings were never returned and the PR was merged over them. They
-are addressed on follow-up branches.
+PR #89 was merged while six Codex threads were still unresolved (one P1, five P2): the task loop's
+query used `reviewThreads(first: 100)` with no pagination while the PR had 106 threads, so the newest
+findings were never returned and every check reported "0 unresolved". #89 was reverted from `main`
+(#92) and is re-landed here with all six fixed.
 
-- [x] P105: Parse direct wcli0 arguments as one server argument list (P1 - fixed - a direct
-  `command: "wcli0"` entry now hands its WHOLE arg list to `parseServerArgs` instead of scanning for
-  a suffix. A positional between a boolean and its negation (`--allowAllDirs marker
-  --no-allowAllDirs`) made the scan split at the wrong place, leaving the enabling flag in
-  `customArgs` and modeling false, so a no-op save wrote `--allowAllDirs marker` and flipped the
-  server to UNRESTRICTED directories. The scan is now wrapper-only and its dead `allowIndexZero`
-  parameter was removed)
-- [ ] P106: Keep valueless scalar flags ahead of following positionals (P2, configSource.ts:969)
-- [ ] P107: Reject delimiters in edited transport hosts (P2, commands.ts:830)
-- [ ] P108: Exclude attached negations from modeled suffix evidence (P2, configSource.ts:249)
-- [ ] P109: Preserve valueless array flags before later positionals (P2, configSource.ts:943)
-- [ ] P110: Reject incompatible concurrent launch-method changes (P2, webview.ts:439)
+- [x] P105: Parse direct wcli0 arguments as one server argument list (P1 - a direct
+  `command: "wcli0"` entry hands its WHOLE arg list to `parseServerArgs` instead of scanning for a
+  suffix. A positional between a boolean and its negation made the scan split at the wrong place,
+  leaving the enabling flag in `customArgs` and modeling false, so a no-op save wrote
+  `--allowAllDirs marker` and flipped the server to UNRESTRICTED directories)
+- [x] P106: Keep valueless scalar flags ahead of following positionals (a preserved valueless value
+  option is re-emitted in the form that cannot capture a following token - `--flag=` for string/csv,
+  dropped for the inert number/array cases, `-<letters> --config=` for a `c` bundle - but only when a
+  real positional follows, so every already-safe shape still round-trips byte-for-byte)
+- [x] P107: Reject delimiters in edited transport hosts (a host carrying `/ ? # @`, whitespace or an
+  embedded port is refused before it is interpolated into the URL, instead of writing
+  `http://gateway.example/api:9444/mcp` and losing the edit on reload. IPv6 literals and preserved
+  verbatim URLs are unaffected)
+- [x] P108: Exclude attached negations from modeled suffix evidence (`--no-debug=false` defines an
+  unrelated `no-debug` key in yargs rather than negating `debug`, so it no longer proves a wrapper
+  server suffix; a bare `--no-debug` still does)
+- [x] P109: Preserve valueless array flags before later positionals (the array half of P106: the
+  inert flag is dropped rather than re-emitted next to a positional, which would have turned the
+  path into an allowed directory and switched restrictWorkingDirectory ON and injection protection
+  OFF)
+- [x] P110: Reject incompatible concurrent launch-method changes (the P80 transport-mode guard one
+  level down: a save carrying a method-specific field is refused when the entry's launch method
+  changed on disk, unless the user is switching the method themselves)

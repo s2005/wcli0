@@ -996,6 +996,81 @@ test('P95: a save is refused when the entry changes between the two reads', asyn
   assert.equal(args.includes('--debug'), false, 'nothing was written');
 });
 
+test('P110: a save is refused when the launch method changed on disk', async () => {
+  // The panel loaded an npx entry and the user edited only the package spec; the file then became
+  // a node entry. Overlaying the package edit onto the node launch would report success while the
+  // edit vanished on reparse, so the save must refuse and ask for a reload.
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'node', args: ['dist/index.js'] } },
+  });
+  vscode.__state.calls.error.length = 0;
+  panel.webview.posted = [];
+  await panel.webview._handler({
+    type: 'saveToFile',
+    values: { 'launch.packageSpec': 'wcli0@9.9.9' },
+  });
+  assert.equal(panel.webview.posted.find((m) => m.type === 'saved'), undefined, 'no false Saved');
+  assert.ok(
+    vscode.__state.calls.error.some((m) => /different launch method/.test(m)),
+    'the refusal asks for a reload',
+  );
+  const entry = JSON.parse(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+  ).servers.wcli0;
+  assert.equal(entry.command, 'node', 'the on-disk entry is untouched');
+});
+
+test('P110: a non-launch edit still saves across a concurrent method change', async () => {
+  // Only method-specific fields are incompatible; an unrelated edit merges onto the new entry.
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'node', args: ['dist/index.js'] } },
+  });
+  vscode.__state.calls.error.length = 0;
+  await panel.webview._handler({ type: 'saveToFile', values: { debug: true } });
+  const entry = JSON.parse(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+  ).servers.wcli0;
+  assert.equal(entry.command, 'node', 'the concurrent method change is respected');
+  assert.ok(entry.args.includes('--debug'), 'the unrelated edit is written');
+});
+
+test('P110: switching the method deliberately is still allowed', async () => {
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] } },
+  });
+  openConfigPanel(makeContext());
+  const panel = vscode.__state.lastWebviewPanel;
+  await panel.webview._handler({ type: 'ready' });
+  await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+  seedWorkspaceMcpJson({
+    servers: { wcli0: { type: 'stdio', command: 'node', args: ['dist/index.js'] } },
+  });
+  vscode.__state.calls.error.length = 0;
+  await panel.webview._handler({
+    type: 'saveToFile',
+    values: { 'launch.method': 'npx', 'launch.packageSpec': 'wcli0@9.9.9' },
+  });
+  const entry = JSON.parse(
+    vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+  ).servers.wcli0;
+  assert.equal(entry.command, 'npx', 'the explicit switch wins');
+  assert.ok(entry.args.includes('wcli0@9.9.9'));
+});
+
 test('P80: a file save is refused when the entry changed transport type on disk', async () => {
   // The two modes model different fields, so the form's stdio edits cannot be overlaid onto an
   // http entry (nor the reverse); ask for a reload rather than guessing.

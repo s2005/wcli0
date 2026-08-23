@@ -862,6 +862,59 @@ test('P88: editing host/port still writes a url for an entry that had none', asy
   assert.equal(wcli0Entry().url, 'http://10.0.0.5:9444/mcp');
 });
 
+test('P107: a transport host carrying a delimiter is refused', async () => {
+  // `gateway.example/api` would be pasted between http:// and :9444, producing
+  // http://gateway.example/api:9444/mcp -- which reparses as host gateway.example with no explicit
+  // port, so the accepted edit is lost and the path is malformed.
+  for (const host of ['gateway.example/api', 'user@gateway.example', 'gateway.example:8080', 'a b']) {
+    vscode.__reset();
+    vscode.__state.workspaceFolders = WS;
+    const base = { type: 'http', url: 'http://127.0.0.1:9444/mcp' };
+    const s = defaultSettings();
+    s.transportMode = 'http';
+    s.transportHost = host;
+    s.transportPort = 9444;
+    const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+    assert.equal(ok, false, `${host} is refused`);
+    assert.ok(
+      vscode.__state.calls.error.some((m) => /cannot be used as the host/.test(m)),
+      `${host} refusal explains why`,
+    );
+    assert.equal(vscode.__state.files.has('/ws/.vscode/mcp.json'), false, 'nothing written');
+  }
+});
+
+test('P107: ordinary hosts and IPv6 literals still save', async () => {
+  for (const [host, expected] of [
+    ['gateway.example', 'http://gateway.example:9444/mcp'],
+    ['10.0.0.5', 'http://10.0.0.5:9444/mcp'],
+    ['::1', 'http://[::1]:9444/mcp'],
+    ['[::1]', 'http://[::1]:9444/mcp'],
+  ]) {
+    vscode.__reset();
+    vscode.__state.workspaceFolders = WS;
+    const base = { type: 'http', url: 'http://127.0.0.1:9444/mcp' };
+    const s = defaultSettings();
+    s.transportMode = 'http';
+    s.transportHost = host;
+    s.transportPort = 9444;
+    const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+    assert.equal(ok, true, `${host} saves`);
+    assert.equal(wcli0Entry().url, expected);
+  }
+});
+
+test('P107: a preserved verbatim url is not blocked by the host check', async () => {
+  // The host field is inert for a URL that round-trips verbatim, so it must not gate the save.
+  const base = { type: 'http', url: 'https://gateway.example/custom/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = 'gateway.example'; // as parseMcpEntry sets for a default-port URL
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'https://gateway.example/custom/mcp');
+});
+
 test('P81: a file save refuses a host/port edit for a url it cannot decompose', async () => {
   // parseMcpEntry models neither host nor port for a socket/named-pipe URL and leaves both at
   // the form defaults, and the save preserves the URL verbatim. The controls stay editable, so

@@ -1592,6 +1592,97 @@ test('P75/P105: a `--` separator in a direct wcli0 launch keeps its positionals 
   assert.deepEqual(spec.args, ['--', '--debug'], 'a no-op save round-trips the entry verbatim');
 });
 
+test('P106: a valueless scalar flag cannot swallow a later positional on save', () => {
+  // yargs reads `--shell --debug cmd` as shell='', debug=true and a POSITIONAL cmd. The builder
+  // re-emits extraArgs after the modeled flags, so preserving `--shell` verbatim produced
+  // `--debug --shell cmd` -- making cmd the shell value and changing the enabled shell.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['dist/index.js', '--shell', '--debug', 'cmd'],
+  });
+  assert.equal(settings.debug, true);
+  assert.equal(settings.shell, defaults().shell, 'the valueless flag is not modeled');
+  assert.deepEqual(settings.extraArgs, ['--shell=', 'cmd'], 'rewritten to the form that cannot');
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.deepEqual(args, ['dist/index.js', '--debug', '--shell=', 'cmd']);
+  // The rebuilt order does put cmd next to the flag -- what matters is that the attached form is
+  // self-terminating, so yargs cannot take it as the value. Verified against yargs-parser:
+  // `--debug --shell= cmd` => shell '', debug true, cmd positional, exactly like the entry.
+  assert.equal(args.includes('--shell'), false, 'never the bare form, which would swallow cmd');
+});
+
+test('P109: a valueless array flag cannot swallow a later positional on save', () => {
+  // `--allowedDir --debug C:/work` gives yargs an EMPTY allowedDir array and leaves C:/work
+  // positional. Re-emitted as `--debug --allowedDir C:/work` it would become an allowed directory,
+  // which also switches restrictWorkingDirectory ON and injection protection OFF.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['dist/index.js', '--allowedDir', '--debug', 'C:/work'],
+  });
+  assert.equal(settings.debug, true);
+  assert.deepEqual(settings.allowedDirectories, [], 'no directory is modeled');
+  assert.deepEqual(settings.extraArgs, ['C:/work'], 'the inert empty-array flag is dropped');
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.equal(args.includes('--allowedDir'), false, 'no allowed directory is introduced');
+  assert.ok(args.includes('C:/work'), 'the positional still round-trips');
+});
+
+test('P106: a valueless number flag is dropped rather than rewritten', () => {
+  // A valueless number option defines NO key in yargs, while `--flag=` would define 0.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['dist/index.js', '--commandTimeout', '--debug', 'tail'],
+  });
+  assert.equal(settings.commandTimeout, defaults().commandTimeout);
+  assert.deepEqual(settings.extraArgs, ['tail']);
+});
+
+test('P106: a valueless `-c` bundle is re-emitted in its long attached form', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['dist/index.js', '-dc', '--debug', 'tail'],
+  });
+  assert.deepEqual(settings.extraArgs, ['-d', '--config=', 'tail'], 'the other letters survive');
+  assert.equal(settings.configFile, '', 'no config path is fabricated');
+});
+
+test('P106/P109: a valueless flag with no positional after it round-trips verbatim', () => {
+  // The guard fires only on the dangerous shape; these were already safe in any order.
+  const a = parseServerArgs(['--blockedCommand', '--debug']);
+  assert.deepEqual(a.extraArgs, ['--blockedCommand'], 'P44 preservation is unchanged');
+  const b = parseServerArgs(['--shell', '--debug', '--shell', 'bash']);
+  assert.deepEqual(b.extraArgs, ['--shell', '--shell', 'bash'], 'P98 preservation is unchanged');
+  const c = parseServerArgs(['--transport', 'http'], { stdio: true });
+  assert.deepEqual(c.extraArgs, ['--transport', 'http'], 'P30 preservation is unchanged');
+});
+
+test('P108: an attached negation does not prove a wrapper server suffix', () => {
+  // yargs applies `--name=value` before boolean negation, so `--no-debug=false` defines an
+  // unrelated `no-debug` key rather than setting debug -- it is the wrapper's own token.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--no-debug=false'],
+  });
+  assert.deepEqual(settings.customArgs, ['target', '--no-debug=false'], 'stays with the wrapper');
+  assert.deepEqual(settings.extraArgs, []);
+  assert.equal(settings.debug, defaults().debug, 'debug is not modeled from it');
+});
+
+test('P108: a bare negation still proves a suffix, as yargs really negates it', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['target', '--no-debug'],
+  });
+  assert.deepEqual(settings.customArgs, ['target']);
+  assert.equal(settings.debug, false, 'the real negation is modeled');
+});
+
 test('P105: a positional cannot split a direct wcli0 arg list at the wrong place', () => {
   // `wcli0 --allowAllDirs marker --no-allowAllDirs` is last-wins false to yargs (marker is a
   // positional), so the server runs RESTRICTED. The suffix scan used to fail its purity check on
