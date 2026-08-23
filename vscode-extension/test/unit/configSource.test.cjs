@@ -604,6 +604,43 @@ test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
   assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
 });
 
+test('P98: a valueless scalar flag counts as a duplicate occurrence', () => {
+  // Verified against yargs-parser: `--shell --debug --shell bash` => shell: ['', 'bash'], which is
+  // not a usable shell name, so the entry enables NO shell. Modeling only `bash` let the builder
+  // strip the preserved valueless copy and a no-op save enabled command execution through Bash.
+  const { settings, extraArgs } = parseServerArgs(['--shell', '--debug', '--shell', 'bash']);
+  assert.equal(settings.shell, undefined, 'neither occurrence is modeled');
+  assert.equal(settings.debug, true, 'the flag between them is still modeled, as yargs does');
+  assert.deepEqual(extraArgs, ['--shell', '--shell', 'bash']);
+});
+
+test('P98: the valueless duplicate survives a no-op save', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--shell', '--debug', '--shell', 'bash'],
+  });
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.deepEqual(
+    args.filter((a) => a === '--shell' || a === 'bash'),
+    ['--shell', '--shell', 'bash'],
+    'both occurrences round-trip, so the entry still enables no shell',
+  );
+});
+
+test('P98: a valueless --config bundle counts too', () => {
+  const { settings, extraArgs } = parseServerArgs(['-c', '--debug', '--config', '/x.json']);
+  assert.equal(settings.configFile, undefined, 'the repeated config is not modeled');
+  assert.deepEqual(extraArgs, ['-c', '--config', '/x.json']);
+});
+
+test('P98: a single valueless scalar flag is unchanged', () => {
+  const { settings, extraArgs } = parseServerArgs(['--shell', '--debug']);
+  assert.equal(settings.shell, undefined);
+  assert.equal(settings.debug, true);
+  assert.deepEqual(extraArgs, ['--shell'], 'still preserved verbatim, as before (P44)');
+});
+
 test('P93: a negative numeric value counts as a scalar occurrence', () => {
   // Verified against yargs-parser: `--commandTimeout -1 --commandTimeout 5` => [-1, 5], which the
   // server ignores (not a number). Reading `-1` as a flag hid the repeat, so the pair was modeled

@@ -568,14 +568,23 @@ export function parseServerArgs(
           if (yargsBundleConfigValue(attached) !== undefined) {
             bump('configFile');
           }
-        } else if (isOptionValue(args[i + 1])) {
+        } else {
+          // `c` is the bundle's last character: yargs defines config from the next token, or as
+          // an empty string when none follows -- either way the key is present (P98).
           bump('configFile');
         }
         continue;
       }
       const spec = optionFor(token);
-      if (spec && isScalarOption(spec) && isOptionValue(args[i + 1])) {
-        bump(spec.key); // counted even when divertNumber would keep the value out of the field
+      if (spec && isScalarOption(spec)) {
+        // Counted on PRESENCE, whatever follows: yargs defines the key even when the option has
+        // no value (verified: `--shell --debug --shell bash` => shell: ['', 'bash'], which the
+        // server cannot use as a shell name). Requiring a value token hid the valueless
+        // occurrence, so only `bash` was modeled, the preserved `--shell` was stripped when the
+        // field was emitted, and a no-op save rewrote an entry with NO usable shell into one
+        // that runs commands through Bash (P98). Also counted when divertNumber would keep the
+        // value out of the typed field (P90).
+        bump(spec.key);
       }
     }
     const dups = new Set<keyof Wcli0Settings>();

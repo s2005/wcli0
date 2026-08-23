@@ -516,3 +516,8 @@ options. All verified against the project's yargs semantics and covered by new u
   `stripConfigArgs` and `stripTransportArgs` copy `--` and its remainder verbatim, so the
   positionals of `--shell cmd -- --shell bash` survive a save instead of being deleted as duplicate
   options and written back as a truncated `--shell cmd --`)
+- [x] P98: Count valueless scalar flags as duplicate occurrences (P1 - fixed - the duplicate
+  pre-scan counts a scalar option on PRESENCE rather than only when a value follows, because yargs
+  defines the key either way (`--shell --debug --shell bash` => `['', 'bash']`, no usable shell). The
+  pair is now preserved whole instead of being modeled as `--shell bash`, which a no-op save wrote
+  back and thereby enabled command execution through Bash. A trailing `-c` bundle counts too)
