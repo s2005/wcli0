@@ -28,49 +28,6 @@ you get per-user defaults plus per-project overrides for free — no hand-edited
   first persist the form's current edits to the selected scope, so the generated
   output always matches what you see (no separate "Save settings" click needed).
 
-### Editing an existing `.vscode/mcp.json`
-
-The configuration panel can edit more than VS Code settings. A **configuration
-source** switcher at the top of the panel makes explicit *what* the form is
-editing and *where* **Save** writes:
-
-- **VS Code Settings** (the default) — edits your `wcli0.*` settings at the
-  **User** or **Workspace** scope, exactly as before.
-- **`.vscode/mcp.json`** — edits the `servers.wcli0` entry of the workspace
-  `mcp.json` **file** directly.
-
-When the panel opens, it checks whether the workspace `.vscode/mcp.json` already
-defines a `wcli0` server. If it does, a banner offers a one-click **Load &
-edit**. Loading reverse-maps the entry into the form (launch method, shell,
-allowed directories, limits, transport, …); flags the form does not model are
-preserved verbatim so a save round-trips them. With the file source active,
-**Save to file** writes the edited entry back to `.vscode/mcp.json` — other
-servers in the file are preserved, a non-object or malformed file is refused
-rather than clobbered, a file containing comments is rewritten as plain JSON only
-after you confirm (the comments are removed), and **no `wcli0.*` setting is
-written**. This makes
-*load → edit → save* a first-class path alongside the existing
-*new → export* one.
-
-Loading favours preserving the entry over modelling it: an entry whose launcher
-the form cannot express exactly â€” including `npx <package>` written **without**
-`-y`, which keeps npx's install confirmation the `npx` launch method would
-suppress â€” is shown as a **custom** command so a save re-emits it unchanged,
-while the wcli0 flags after it stay editable. A note in the panel explains each
-such case. Fields the entry cannot store (per-shell config, profiles, and
-host/port edits for a URL like `unix:///tmp/server.sock` that has no host/port)
-are refused with an explanation rather than silently dropped on save. A file
-saved with VS Code's **UTF-8 with BOM** encoding is read normally, and its BOM
-is kept when the entry is written back.
-
-The server's implicit `~/.win-cli-mcp/config.json` is listed in the switcher as
-a **read-only preview** only; it is never an editable or save target. An entry
-that references a `--config` file (so its per-shell settings/profiles live in
-that file) can be edited for the parts the form models, but the referenced
-file's contents are not editable here — edit that file directly. Editing
-arbitrary picked files and the richer `config.json` format, plus a side-by-side
-settings/file view, are planned follow-ups.
-
 ## Configuration model
 
 The server is launched as either:
