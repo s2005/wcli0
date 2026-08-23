@@ -920,6 +920,35 @@ test('P80: a submitted edit still wins over the on-disk value for the same field
   assert.equal(args[args.indexOf('--shell') + 1], 'powershell', 'the user edit is not overwritten');
 });
 
+test('P103/P104: an empty allowed-directory entry survives an unrelated file save', () => {
+  // End-to-end guard for the whole path: the client does not submit the untouched list (P104),
+  // and the builder re-emits the authored empty entry (P103), so the server keeps
+  // restrictWorkingDirectory ON with its empty allowlist instead of falling back to the
+  // configured/default allowed paths.
+  return (async () => {
+    seedWorkspaceMcpJson({
+      servers: {
+        wcli0: {
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', 'wcli0@latest', '--allowedDir', ''],
+        },
+      },
+    });
+    openConfigPanel(makeContext());
+    const panel = vscode.__state.lastWebviewPanel;
+    await panel.webview._handler({ type: 'ready' });
+    await panel.webview._handler({ type: 'sourceChange', source: 'mcpJson' });
+    // An unrelated edit: the allowed-directories field is not among the submitted changes.
+    await panel.webview._handler({ type: 'saveToFile', values: { commandTimeout: 45 } });
+    const args = JSON.parse(
+      vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'),
+    ).servers.wcli0.args;
+    assert.equal(args[args.indexOf('--allowedDir') + 1], '', 'the empty entry is still written');
+    assert.ok(args.includes('--commandTimeout'), 'the edit is written');
+  })();
+});
+
 test('P95: a save is refused when the entry changes between the two reads', async () => {
   // The handler reads the entry to overlay the form's changes onto; the writer takes its own
   // full-file snapshot. A write landing between them would pair stale modeled fields with a newer

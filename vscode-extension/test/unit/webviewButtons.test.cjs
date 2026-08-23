@@ -396,3 +396,35 @@ test('P38: a sourceReset on a DIRTY form still flags the next save (P28 preserve
   assert.ok(msg, 'a settings save is posted');
   assert.ok(msg.fromResetFileSource, 'flagged: the dirty form still holds file-derived values');
 });
+
+test('P104: a loaded empty allowed-directory entry is not submitted by an unrelated save', () => {
+  // A file entry with `--allowedDir ""` loads as allowedDirectories: [''], which renders as a
+  // blank textarea. collect() normalizes that back to []/null -- but so does the `initial =
+  // collect()` baseline, so the field is NOT dirty and collectChanged() does not submit it. The
+  // host therefore keeps the parsed [''] and the builder re-emits `--allowedDir ""` (P103).
+  const h = makeHarness();
+  h.dispatch({
+    ...FILE_INIT,
+    settings: { allowedDirectories: [''], commandTimeout: 30 },
+    setArrayKeys: [],
+  });
+  h.captured.length = 0;
+  h.els.get('commandTimeout').value = '45';
+  h.click('save');
+  const values = (h.last('saveToFile') || {}).values;
+  assert.deepEqual(values, { commandTimeout: 45 }, 'only the edited field is submitted');
+  assert.equal('allowedDirectories' in values, false, 'the untouched list is not overwritten');
+});
+
+test('P104: editing the allowed-directories textarea still submits the new list', () => {
+  const h = makeHarness();
+  h.dispatch({
+    ...FILE_INIT,
+    settings: { allowedDirectories: [''] },
+    setArrayKeys: ['allowedDirectories'],
+  });
+  h.captured.length = 0;
+  h.els.get('allowedDirectories').value = '/ws/a';
+  h.click('save');
+  assert.deepEqual((h.last('saveToFile') || {}).values, { allowedDirectories: ['/ws/a'] });
+});

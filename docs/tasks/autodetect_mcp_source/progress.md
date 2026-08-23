@@ -547,3 +547,9 @@ options. All verified against the project's yargs semantics and covered by new u
   restrictWorkingDirectory ON with that empty allowlist (denying every directory), but `pathValue`
   dropped the blank, so a no-op save removed the restriction and restored the config/default allowed
   paths. The settings/provider paths still drop blanks, where an empty line is editor noise)
+- [-] P104: Preserve blank allowed-directory rows in the webview (rejected - the client does
+  normalize a blank textarea to `[]`, but `initial = collect()` produces the dirty baseline with the
+  SAME normalization, so the field is never dirty and an unrelated save submits no
+  `allowedDirectories` key at all. Verified by running the shipped webview script: the posted
+  payload is exactly `{"commandTimeout":45}`. Three regression tests added - two client-side, one
+  end-to-end - proving `--allowedDir ""` survives an unrelated save)
