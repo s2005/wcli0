@@ -612,10 +612,11 @@ export function parseServerArgs(
   // Model a yargs attached boolean assignment (`--debug=true`, `--enableTruncation=false`, the
   // safety flags, ...) the same way the bare spellings below are modeled, so the form reflects
   // the real setting and a later edit is not defeated by a stale attached value surviving in
-  // extraArgs (yargs parses `--debug --debug=false` as debug=false, last-wins) (P72). Returns
-  // false when the flag is not a known boolean (the caller then preserves it verbatim) — including
-  // a safety flag under a conflict, which must round-trip unchanged to keep the server-rejected
-  // state intact (P71).
+  // extraArgs (yargs parses `--debug --debug=false` as debug=false, last-wins) (P72). `on` follows
+  // yargs' own coercion for a declared boolean -- exactly the string `true` is true, EVERY other
+  // attached value (`0`, `1`, `yes`, `FALSE`) is false (P87). Returns false when the flag is not a
+  // known boolean (the caller then preserves it verbatim) -- including a safety flag under a
+  // conflict, which must round-trip unchanged to keep the server-rejected state intact (P71).
   const applyAttachedBoolean = (flag: string, on: boolean): boolean => {
     switch (flag) {
       case '--allowAllDirs':
@@ -759,15 +760,18 @@ export function parseServerArgs(
     if (eq > 0 && token.startsWith('-')) {
       const flag = token.slice(0, eq);
       const value = token.slice(eq + 1);
-      // A yargs attached boolean assignment (`--debug=true`, `--enableTruncation=false`, ...):
-      // model it so the form reflects the real setting and a later edit is not defeated by a
-      // stale value preserved in extraArgs (P72). Only the literal true/false yargs round-trips
-      // are modeled; any other attached value (or a safety flag under a conflict) falls through
-      // and is preserved verbatim below.
-      if (value === 'true' || value === 'false') {
-        if (applyAttachedBoolean(flag, value === 'true')) {
-          continue;
-        }
+      // A yargs attached boolean assignment (`--debug=true`, `--enableTruncation=false`,
+      // `--debug=0`, ...): model it so the form reflects the real setting and a later edit is
+      // not defeated by a stale value preserved in extraArgs (P72). EVERY attached value is
+      // modeled, not just the literal true/false spellings, because yargs-parser coerces the
+      // attached string of a declared boolean with `val === 'true'` (processValue) -- so
+      // `--debug=0`, `--debug=1` and `--debug=yes` all mean FALSE. Preserving those in extraArgs
+      // let a later "enable Debug" emit `--debug` followed by the preserved `--debug=0`, which
+      // yargs resolves last-wins back to false and silently defeats the edit (P87).
+      // applyAttachedBoolean returns false for a non-boolean flag (and for a safety flag under a
+      // conflict), which then falls through and is preserved verbatim below.
+      if (applyAttachedBoolean(flag, value === 'true')) {
+        continue;
       }
       const spec = optionFor(flag);
       if (spec) {
@@ -967,6 +971,14 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
       notes.push(
         `The ${type} URL "${url}" cannot be represented by the host and port fields. ` +
           'It is preserved as-is when you save; edit .vscode/mcp.json directly to change it.',
+      );
+    } else {
+      // No usable url at all: `{"type":"http"}`, `url: ""`, or a non-string url. There is
+      // nothing to model and nothing to preserve verbatim, so a save keeps the entry's url key
+      // exactly as it was found rather than manufacturing the canonical default endpoint (P88).
+      notes.push(
+        `The ${type} entry has no usable url. It is kept as-is when you save; set the host and ` +
+          'port below to write one, or edit .vscode/mcp.json directly.',
       );
     }
     return { settings: s, notes };

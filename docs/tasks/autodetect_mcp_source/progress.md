@@ -472,3 +472,11 @@ options. All verified against the project's yargs semantics and covered by new u
 - [x] P86: Strip UTF-8 BOMs before parsing detected JSONC (fixed - `parseJsonc` drops a leading
   U+FEFF, so detection, entry loading and the save's merge read all work for a file saved as "UTF-8
   with BOM"; the write path re-attaches the BOM so the file's encoding is not silently changed)
+- [x] P87: Model every attached boolean assignment (fixed - the attached `--opt=value` path now
+  offers EVERY value to `applyAttachedBoolean` with yargs' own coercion (`value === 'true'`), so
+  `--debug=0` / `--enableTruncation=0` are modeled as false instead of preserved in `extraArgs`,
+  where they resolved last-wins over a later "enable" edit and silently defeated it)
+- [x] P88: Refuse network entries without a usable URL (fixed - a file save keeps the url key of an
+  entry that has none exactly as found (absent, empty or non-string) while mode/host/port are
+  untouched, instead of manufacturing `http://127.0.0.1:9444/mcp` on a no-op save. A real host/port
+  edit or a mode switch still writes the rebuilt URL, and a parse note explains the state)

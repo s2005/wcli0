@@ -327,10 +327,44 @@ test('P72: parseServerArgs models attached boolean assignments', () => {
   assert.equal(d.settings.safetyMode, undefined);
   assert.deepEqual(d.extraArgs, []);
 
-  // A non-boolean attached value (not true/false) is preserved verbatim, not coerced.
+  // P87: any attached value other than the literal `true` is FALSE to yargs (processValue
+  // coerces a declared boolean with `val === 'true'`), so it is modeled as false rather than
+  // preserved.
   const e = parseServerArgs(['--debug=verbose']);
-  assert.equal(e.settings.debug, undefined);
-  assert.deepEqual(e.extraArgs, ['--debug=verbose']);
+  assert.equal(e.settings.debug, false);
+  assert.deepEqual(e.extraArgs, []);
+});
+
+test('P87: every attached boolean value follows yargs coercion', () => {
+  // yargs-parser: `val === 'true'` -- so 0/1/yes/FALSE all mean false for a declared boolean.
+  for (const value of ['0', '1', 'yes', 'FALSE', '']) {
+    const { settings, extraArgs } = parseServerArgs([`--debug=${value}`]);
+    assert.equal(settings.debug, false, `--debug=${value} is false`);
+    assert.deepEqual(extraArgs, [], `--debug=${value} is modeled, not preserved`);
+  }
+  const truncation = parseServerArgs(['--enableTruncation=0', '--enableLogResources=0']);
+  assert.equal(truncation.settings.enableTruncation, 'disabled');
+  assert.equal(truncation.settings.enableLogResources, 'disabled');
+  assert.deepEqual(truncation.extraArgs, []);
+});
+
+test('P87: a preserved attached value can no longer defeat a later edit', () => {
+  // Before: `--debug=0` stayed in extraArgs, so enabling Debug emitted `--debug --debug=0`,
+  // which yargs resolves last-wins back to false -- the edit silently did nothing.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--debug=0'],
+  });
+  assert.equal(settings.debug, false, 'the loaded entry reads as Debug off');
+  const enabled = { ...settings, debug: true };
+  const args = buildLaunchSpec(enabled, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.ok(args.includes('--debug'), 'the edit is emitted');
+  assert.equal(
+    args.filter((a) => a.startsWith('--debug')).length,
+    1,
+    'no stale attached value survives to override it',
+  );
 });
 
 test('parseServerArgs parses transport flags', () => {
@@ -568,6 +602,15 @@ test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
   assert.equal(d.hasWcli0, true, 'the entry is detected through the BOM');
   const entry = await readWcli0Entry(FOLDER);
   assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
+});
+
+test('P88: a network entry with no usable url gets a keep-as-is note', () => {
+  const { settings, notes } = parseMcpEntry({ type: 'http' });
+  assert.equal(settings.transportMode, 'http');
+  assert.ok(
+    notes.some((n) => /no usable url/.test(n)),
+    'the note explains the entry is kept as-is',
+  );
 });
 
 test('P79: a safety flag after `--` is positional and is not a conflict', () => {

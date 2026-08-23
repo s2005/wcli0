@@ -819,6 +819,40 @@ test('P10: a file save preserves a socket url it cannot decompose', async () => 
   assert.equal(wcli0Entry().url, 'unix:///tmp/server.sock#/mcp');
 });
 
+test('P88: a file save does not manufacture a url for an entry that has none', async () => {
+  // {"type":"http"} has no url to preserve; the canonical fallback would write
+  // http://127.0.0.1:9444/mcp on a no-op save, turning an incomplete entry into a live endpoint.
+  const base = { type: 'http' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'the no-op save is not refused');
+  const e = wcli0Entry();
+  assert.equal(e.type, 'http');
+  assert.equal('url' in e, false, 'no url is invented');
+});
+
+test('P88: an empty url round-trips as an empty url', async () => {
+  const base = { type: 'sse', url: '' };
+  const s = defaultSettings();
+  s.transportMode = 'sse';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, '', 'the original invalid state is preserved');
+});
+
+test('P88: editing host/port still writes a url for an entry that had none', async () => {
+  // A real host/port edit is a deliberate "set the endpoint" and must take effect.
+  const base = { type: 'http' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  s.transportHost = '10.0.0.5';
+  s.transportPort = 9444;
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://10.0.0.5:9444/mcp');
+});
+
 test('P81: a file save refuses a host/port edit for a url it cannot decompose', async () => {
   // parseMcpEntry models neither host nor port for a socket/named-pipe URL and leaves both at
   // the form defaults, and the save preserves the URL verbatim. The controls stay editable, so

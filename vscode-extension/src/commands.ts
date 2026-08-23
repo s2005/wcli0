@@ -807,10 +807,29 @@ export async function writeMcpJsonFromSettings(
       `http://${rebuiltHost}:${settings.transportPort}${
         settings.transportMode === 'http' ? '/mcp' : '/sse'
       }`;
+    // A file entry with no usable url (`{"type":"http"}`, `url: ""`, a non-string url) has
+    // nothing for preservedFileUrl to keep, so the canonical fallback above would write
+    // http://127.0.0.1:9444/mcp on an otherwise no-op save -- turning an invalid or deliberately
+    // incomplete entry into a live local endpoint the user never chose. Keep the url key exactly
+    // as it was found (absent stays absent, an empty or non-string value round-trips) while the
+    // transport mode, host and port are all untouched; a real host/port edit is a deliberate "set
+    // the endpoint" and still writes the rebuilt URL (P88).
+    const rawFileUrl = fileSource && typeof urlBase.url === 'string' ? urlBase.url.trim() : '';
+    const urlDefaults = defaultSettings();
+    const keepMissingUrl =
+      fileSource &&
+      !rawFileUrl &&
+      settings.transportMode === baseType &&
+      settings.transportHost === urlDefaults.transportHost &&
+      settings.transportPort === urlDefaults.transportPort;
     const generated: Record<string, unknown> = {
       type: settings.transportMode === 'http' ? 'http' : 'sse',
-      url,
     };
+    if (!keepMissingUrl) {
+      generated.url = url;
+    } else if ('url' in urlBase) {
+      generated.url = urlBase.url; // verbatim, including an empty string or non-string value
+    }
     // For a file source, merge onto the loaded entry so unmodeled VS Code http/sse fields
     // (headers, oauth, ...) survive an unrelated edit (P7). The merge base is re-derived from
     // the current on-disk entry at the write step (P20).
