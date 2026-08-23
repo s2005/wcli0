@@ -553,3 +553,22 @@ options. All verified against the project's yargs semantics and covered by new u
   `allowedDirectories` key at all. Verified by running the shipped webview script: the posted
   payload is exactly `{"commandTimeout":45}`. Three regression tests added - two client-side, one
   end-to-end - proving `--allowedDir ""` survives an unrelated save)
+
+## Post-merge follow-ups (PR #89 was merged with unresolved threads)
+
+The task-loop's thread query used `reviewThreads(first: 100)` with no pagination while the PR had
+106 threads, so the six newest findings were never returned and the PR was merged over them. They
+are addressed on follow-up branches.
+
+- [x] P105: Parse direct wcli0 arguments as one server argument list (P1 - fixed - a direct
+  `command: "wcli0"` entry now hands its WHOLE arg list to `parseServerArgs` instead of scanning for
+  a suffix. A positional between a boolean and its negation (`--allowAllDirs marker
+  --no-allowAllDirs`) made the scan split at the wrong place, leaving the enabling flag in
+  `customArgs` and modeling false, so a no-op save wrote `--allowAllDirs marker` and flipped the
+  server to UNRESTRICTED directories. The scan is now wrapper-only and its dead `allowIndexZero`
+  parameter was removed)
+- [ ] P106: Keep valueless scalar flags ahead of following positionals (P2, configSource.ts:969)
+- [ ] P107: Reject delimiters in edited transport hosts (P2, commands.ts:830)
+- [ ] P108: Exclude attached negations from modeled suffix evidence (P2, configSource.ts:249)
+- [ ] P109: Preserve valueless array flags before later positionals (P2, configSource.ts:943)
+- [ ] P110: Reject incompatible concurrent launch-method changes (P2, webview.ts:439)

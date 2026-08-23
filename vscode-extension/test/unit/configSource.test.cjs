@@ -1572,9 +1572,12 @@ test('P74: a plain node entry does not model server flags after a `--` separator
   assert.deepEqual(settings.extraArgs, ['--', '--shell', 'cmd']);
 });
 
-test('P75: a `--` separator keeps the remainder with the launcher, not a server suffix', () => {
+test('P75/P105: a `--` separator in a direct wcli0 launch keeps its positionals inert', () => {
   // `command: "wcli0", args: ["--", "--debug"]`: yargs treats `--debug` as a positional after the
-  // separator, so the suffix scan must not split it out and let a no-op save enable debug.
+  // separator, so it must not be modeled and a no-op save must not enable debug. Since P105 the
+  // whole arg list is parsed as the server's own, so the separator and its remainder are held by
+  // parseServerArgs in extraArgs rather than by the launcher split -- the emitted args are
+  // identical either way, which is what the round-trip assertion below pins.
   const { settings } = parseMcpEntry({
     type: 'stdio',
     command: 'wcli0',
@@ -1582,9 +1585,66 @@ test('P75: a `--` separator keeps the remainder with the launcher, not a server 
   });
   assert.equal(settings.launchMethod, 'custom');
   assert.equal(settings.customCommand, 'wcli0');
-  assert.deepEqual(settings.customArgs, ['--', '--debug']);
   assert.equal(settings.debug, false, 'debug stays default; --debug after -- is positional');
-  assert.deepEqual(settings.extraArgs, []);
+  assert.deepEqual(settings.extraArgs, ['--', '--debug']);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.equal(spec.command, 'wcli0');
+  assert.deepEqual(spec.args, ['--', '--debug'], 'a no-op save round-trips the entry verbatim');
+});
+
+test('P105: a positional cannot split a direct wcli0 arg list at the wrong place', () => {
+  // `wcli0 --allowAllDirs marker --no-allowAllDirs` is last-wins false to yargs (marker is a
+  // positional), so the server runs RESTRICTED. The suffix scan used to fail its purity check on
+  // `marker`, pick the trailing negation as the "server suffix", and leave the ENABLING flag in
+  // customArgs -- so the form modeled allowAllDirs=false while a no-op save wrote
+  // `--allowAllDirs marker`, flipping the server to UNRESTRICTED directories.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['--allowAllDirs', 'marker', '--no-allowAllDirs'],
+  });
+  assert.deepEqual(settings.customArgs, [], 'every arg belongs to the server list');
+  assert.equal(settings.allowAllDirs, false, 'last-wins, as yargs resolves it');
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.equal(
+    spec.args.includes('--allowAllDirs'),
+    false,
+    'the save never re-enables unrestricted directories',
+  );
+  // The pair collapses to the value yargs computes for it; the launch is unchanged.
+  assert.deepEqual(spec.args, ['marker']);
+});
+
+test('P105: a direct wcli0 launch still models its flags and keeps unknown ones', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['--shell', 'cmd', '--futureFlag', 'x'],
+  });
+  assert.deepEqual(settings.customArgs, []);
+  assert.equal(settings.shell, 'cmd', 'modeled flags stay editable');
+  assert.deepEqual(settings.extraArgs, ['--futureFlag', 'x'], 'unknown flags round-trip');
+});
+
+test('P105: a wrapper command is still split at its server-flag suffix', () => {
+  // The scan is unchanged for anything that is not the wcli0 binary itself.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wrapper',
+    args: ['--no-cache', '--shell', 'bash'],
+  });
+  assert.deepEqual(settings.customArgs, ['--no-cache'], "the wrapper's own option stays put");
+  assert.equal(settings.shell, 'bash');
+});
+
+test('P105: a wcli0 binary behind a wrapper separator is still a pass-through', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['--package=wcli0', '--', 'wcli0', '--shell', 'cmd'],
+  });
+  assert.deepEqual(settings.customArgs, ['--package=wcli0', '--', 'wcli0']);
+  assert.equal(settings.shell, 'cmd');
 });
 
 test('P76: an attached boolean flag proves a wcli0 server suffix for a wrapper', () => {
