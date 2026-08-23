@@ -1916,3 +1916,130 @@ test('P112: array flags keep their usual position when extraArgs lead with a fla
   const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
   assert.deepEqual(spec.args, ['--allowedDir', 'C:/trusted', '--futureFlag', 'x']);
 });
+
+test('P113: a valueless --init-config cannot swallow a later positional on save', () => {
+  // yargs reads `--init-config --debug path` as an EMPTY init-config (falsy, so the server keeps
+  // running) plus the positional `path`. Re-emitted as `--debug --init-config path` the option
+  // takes `path` as its value, and the server writes a default config there and EXITS.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['--init-config', '--debug', 'path'],
+  });
+  assert.equal(settings.debug, true);
+  assert.deepEqual(settings.extraArgs, ['--init-config=', 'path'], 'rewritten to the inert form');
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--debug', '--init-config=', 'path']);
+  assert.equal(spec.args.includes('--init-config'), false, 'never the bare, value-taking form');
+});
+
+test('P113: the camelCase --initConfig spelling is guarded too', () => {
+  // yargs accepts `--initConfig` as the camel-case alias of the server's `init-config` option.
+  const { extraArgs } = parseServerArgs(['--initConfig', '--debug', 'path']);
+  assert.deepEqual(extraArgs, ['--initConfig=', 'path']);
+});
+
+test('P113: an --init-config that HAS a value round-trips verbatim', () => {
+  // The guard fires only on the valueless shape; here `path` is already the option's value, so it
+  // is not a positional and nothing needs rewriting.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['--init-config', 'path', '--debug'],
+  });
+  assert.deepEqual(settings.extraArgs, ['--init-config', 'path']);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--debug', '--init-config', 'path']);
+});
+
+test('P113: a valueless scalar before an --init-config value is left alone', () => {
+  // `--init-config` consumes `x`, so there is no positional and the preserved `--shell` needs no
+  // rewrite: yargs reads both orders as shell='' plus init-config='x'.
+  const { extraArgs } = parseServerArgs(['--shell', '--debug', '--init-config', 'x']);
+  assert.deepEqual(extraArgs, ['--shell', '--init-config', 'x']);
+});
+
+test('P114: a boolean-like positional is not swallowed by a rebuilt boolean flag', () => {
+  // yargs reads `false --enableTruncation=true` as the positional `false` plus truncation ON, but
+  // the rebuilt `--enableTruncation false` feeds the positional to the flag: truncation goes OFF
+  // and the positional disappears.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['false', '--enableTruncation=true'],
+  });
+  assert.equal(settings.enableTruncation, 'enabled');
+  assert.deepEqual(settings.extraArgs, ['false']);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--enableTruncation=true', 'false'], 'attached form cannot consume');
+});
+
+test('P114: the array hoist does not park the positional behind a boolean flag', () => {
+  // The P112 hoist re-emits the array flags after the leading positional run, which puts the last
+  // NON-array flag in front of it -- a bare `--debug` there would swallow the `false`.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['false', '--allowedDir', 'C:/trusted', '--debug'],
+  });
+  assert.equal(settings.debug, true);
+  assert.deepEqual(settings.allowedDirectories, ['C:/trusted']);
+  assert.deepEqual(settings.extraArgs, ['false']);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--debug=true', 'false', '--allowedDir', 'C:/trusted']);
+});
+
+test('P114: a positional that is not true/false keeps the bare boolean spelling', () => {
+  // yargs consumes ONLY a literal `true`/`false` after a declared boolean, so every other
+  // positional is already safe and the emission is unchanged.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['marker', '--debug'],
+  });
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--debug', 'marker']);
+});
+
+test('P115: a leading `--` separator keeps the wrapper args out of the server suffix', () => {
+  // node documents `--` as the end of its own options, so `node -- wrapper.js --debug` hands
+  // `--debug` to the wrapper. The suffix scan started at index 1 and never saw the separator, so
+  // it modeled that token as wcli0's Debug setting -- and turning the setting off then saved
+  // `['--', 'wrapper.js']`, deleting the wrapper's own option.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['--', 'wrapper.js', '--debug'],
+  });
+  assert.equal(settings.launchMethod, 'custom');
+  assert.equal(settings.customCommand, 'node');
+  assert.deepEqual(settings.customArgs, ['--', 'wrapper.js', '--debug']);
+  assert.equal(settings.debug, false, 'the wrapper option is not modeled as wcli0 Debug');
+  assert.deepEqual(settings.extraArgs, []);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--', 'wrapper.js', '--debug'], 'a no-op save is verbatim');
+});
+
+test('P115: a leading separator still passes through to a wrapped wcli0 binary', () => {
+  // The P17 exception is unchanged: a separator followed by the wcli0 binary PROVES a
+  // pass-through, so the flags after that binary really are the server's.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['--', 'wcli0', '--shell', 'cmd'],
+  });
+  assert.deepEqual(settings.customArgs, ['--', 'wcli0']);
+  assert.equal(settings.shell, 'cmd');
+});
+
+test('P115: an index-0 flag run still stays with the wrapper', () => {
+  // Visiting index 0 is only about honoring a separator there; a flag run at index 0 is still the
+  // wrapper's own option, never a wcli0 suffix (P-wrapperflags).
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'mywrapper',
+    args: ['--transport', 'fast'],
+  });
+  assert.deepEqual(settings.customArgs, ['--transport', 'fast']);
+  assert.deepEqual(settings.extraArgs, []);
+});

@@ -593,3 +593,15 @@ findings were never returned and every check reported "0 unresolved". #89 was re
   of P106/P109: the builder re-emits `--allowedDir` / `--blocked*` after the leading run of
   positionals preserved in extraArgs, so `marker --allowedDir C:/trusted` no longer rebuilds into
   two allowed directories - and an edited list is safe too)
+- [x] P113: Track valueless `--init-config` before reordering extras (the server declares it as a
+  string option but the form models no field for it, so the reorder guard never saw it: a valueless
+  occurrence is now recorded and re-emitted as `--init-config=`, which cannot swallow a later
+  positional and make the server write a default config there and exit)
+- [x] P114: Preserve boolean-like positionals before boolean flags (yargs consumes a literal
+  `true`/`false` after a declared boolean as its value, so a generated bare boolean flag standing in
+  front of such a positional preserved in extraArgs is emitted attached as `--flag=true` instead -
+  in the plain append, the P112 array hoist and the managed-config launch)
+- [x] P115: Stop wrapper suffix scanning at a leading separator (the scan started at index 1 and so
+  never saw a `--` at index 0: `node -- wrapper.js --debug` no longer presents the wrapper's own
+  `--debug` as wcli0's Debug setting, while the P17 pass-through and the P-wrapperflags index-0 flag
+  rule are unchanged)

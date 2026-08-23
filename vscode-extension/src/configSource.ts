@@ -164,6 +164,31 @@ const VALUE_OPTIONS: Record<string, OptionSpec> = {
   '--sse-allowed-origins': { key: 'transportAllowedOrigins', kind: 'csv' },
 };
 
+// Server options that TAKE a value but the form does NOT model (no field maps to them), so they
+// round-trip verbatim in extraArgs. yargs still consumes the following token as their value, so the
+// valueless bookkeeping and the reorder guard below must know about them just like the modeled
+// ones: `--init-config --debug path` leaves init-config empty and `path` positional, so the server
+// runs normally, but the rebuilt `--debug --init-config path` makes `path` the option value and the
+// server then writes a default config there and EXITS (src/index.ts) -- after a save that changed
+// something else entirely (P113). `--initConfig` is the yargs camel-case spelling of the server's
+// `init-config` option and is accepted identically (verified against the installed yargs).
+const UNMODELED_VALUE_OPTIONS = new Set<string>(['--init-config', '--initConfig']);
+
+/**
+ * The value kind of a flag that consumes a following token: the modeled options from
+ * {@link VALUE_OPTIONS}, plus the server options the form only preserves
+ * ({@link UNMODELED_VALUE_OPTIONS}, all string-typed). Returns undefined for anything else. Used
+ * wherever the code must reason about every value-consuming option the SERVER declares rather than
+ * only the ones with a field behind them (P113).
+ */
+function valueOptionKind(flag: string): OptionKind | undefined {
+  const spec = VALUE_OPTIONS[flag];
+  if (spec) {
+    return spec.kind;
+  }
+  return UNMODELED_VALUE_OPTIONS.has(flag) ? 'string' : undefined;
+}
+
 // Boolean / tri-state / safety flags the forward builder emits with no value. Shared by
 // parseServerArgs (which models them) and isRecognizedServerFlag (the suffix detector).
 // The kebab-case spellings are yargs camel-case-expansion aliases of the camelCase
@@ -370,7 +395,7 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = f
  *
  * Only ever used for a WRAPPER command; a direct wcli0 launch parses its whole arg list instead
  * (P105). An index-0 flag run is ambiguous for a wrapper — `mywrapper --transport fast` is the
- * wrapper's own option, not a wcli0 flag (P-wrapperflags) — so scanning starts at index 1: the
+ * wrapper's own option, not a wcli0 flag (P-wrapperflags) — so no suffix can start at index 0: that
  * leading token stays in the launcher portion and the scan still finds a LATER modeled-flag
  * suffix, e.g. the `--shell` in `wrapper --no-cache --shell bash`, instead of stranding it (P43).
  *
@@ -379,7 +404,10 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = f
  * mistaken for a server-flag suffix and stays in the launcher portion (P56).
  *
  * The scan stops at a `--` options separator, because yargs treats everything after one as
- * positionals, so no server-flag suffix can begin there (P75). The single exception is a
+ * positionals, so no server-flag suffix can begin there (P75). Index 0 is visited for this reason
+ * alone: a separator THERE follows the same rules, so `node -- wrapper.js --debug` keeps the
+ * wrapper's own `--debug` in customArgs instead of showing it as wcli0's Debug setting and
+ * dropping it from the launcher when that setting is turned off (P115). The single exception is a
  * pass-through separator that is PROVEN to be one: a wrapper whose separator is followed by the
  * wcli0 binary itself (`npx --package=wcli0 -- wcli0 --shell cmd`, P17). There the scan resumes
  * after that binary token, since the flags following it really are wcli0's. For any other
@@ -390,7 +418,7 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = f
  * transport flags do not count as modeled evidence (P77).
  */
 function serverFlagSuffixStart(args: string[], stdio = false): number {
-  for (let i = 1; i < args.length; i++) {
+  for (let i = 0; i < args.length; i++) {
     if (args[i] === '--') {
       // An options separator: yargs treats every following token as a positional, so no
       // server-flag suffix can begin at or after it (P75). Stop -- unless this is a wrapper
@@ -407,6 +435,12 @@ function serverFlagSuffixStart(args: string[], stdio = false): number {
         break;
       }
       i = wrappedBinaryAt; // resume scanning at the token AFTER the wrapped wcli0 binary
+      continue;
+    }
+    if (i === 0) {
+      // The scan visits index 0 only so a separator THERE is honored (P115); an index-0
+      // flag run itself is still the wrapper's own option, never a wcli0 suffix
+      // (P-wrapperflags), so no suffix can start here.
       continue;
     }
     if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i), true, stdio)) {
@@ -986,11 +1020,13 @@ export function parseServerArgs(
       i = consumeGreedyArrayValues(spec, i);
       continue;
     }
-    if (VALUE_OPTIONS[token] && !isOptionValueToken(args[i + 1])) {
-      // A recognized value option with no value after it (`--shell --debug ...`). Preserved as
+    if (valueOptionKind(token) && !isOptionValueToken(args[i + 1])) {
+      // A value-consuming option with no value after it (`--shell --debug ...`). Preserved as
       // today, but recorded so the reorder guard below can re-emit it safely. Looked up in
       // VALUE_OPTIONS directly rather than through optionFor(), so a stdio entry's transport flags
-      // (which P30 deliberately leaves unmodeled) get the same treatment.
+      // (which P30 deliberately leaves unmodeled) get the same treatment -- and via
+      // valueOptionKind(), so an unmodeled server option such as `--init-config` is recorded too
+      // (P113).
       preserveValueless(token);
       continue;
     }
@@ -1008,7 +1044,9 @@ export function parseServerArgs(
  * extraArgs AFTER the flags it generates from the typed fields, so two tokens the entry kept apart
  * can become neighbours. That is only dangerous in one shape: a recognized value option preserved
  * with NO value (`valuelessAt`) followed later by a real POSITIONAL, which the re-emitted order
- * would feed to it as its value. yargs reads `node dist/index.js --shell --debug cmd` as shell='',
+ * would feed to it as its value. The option need not be one the form models: `--init-config` has no
+ * field, but the server declares it as a string option, so the same rewrite applies (P113). yargs
+ * reads `node dist/index.js --shell --debug cmd` as shell='',
  * debug=true and a positional `cmd`, but the rebuilt `--debug --shell cmd` makes `cmd` the shell
  * (P106); the same reordering turns `--allowedDir --debug C:/work` into an allowed directory, which
  * additionally switches restrictWorkingDirectory ON and injection protection OFF (P109).
@@ -1032,7 +1070,7 @@ function makeExtrasReorderSafe(extras: string[], valuelessAt: Set<number>): stri
   const end = separator === -1 ? extras.length : separator;
   const consumed = new Set<number>();
   for (let i = 0; i < end; i++) {
-    if (VALUE_OPTIONS[extras[i]] && !valuelessAt.has(i) && isOptionValueToken(extras[i + 1])) {
+    if (valueOptionKind(extras[i]) && !valuelessAt.has(i) && isOptionValueToken(extras[i + 1])) {
       consumed.add(i + 1); // this token is that option's value, not a positional
     }
   }
@@ -1054,8 +1092,8 @@ function makeExtrasReorderSafe(extras: string[], valuelessAt: Set<number>): stri
       continue;
     }
     if (token.startsWith('--')) {
-      const spec = VALUE_OPTIONS[token];
-      if (spec && (spec.kind === 'string' || spec.kind === 'csv')) {
+      const kind = valueOptionKind(token);
+      if (kind === 'string' || kind === 'csv') {
         out.push(`${token}=`);
       }
       continue; // number / array: the valueless token is inert, so it is dropped
@@ -1252,10 +1290,10 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     // UNRESTRICTED directories (P105). parseServerArgs handles the `--` separator itself, keeping
     // it and its positionals verbatim in extraArgs (P74), so the round-trip stays exact.
     //
-    // For a wrapper command the split is still needed and still starts at index 1: an index-0 flag
-    // run is ambiguous — `mywrapper --transport fast` is the wrapper's own option, not wcli0's — so
-    // the scan keeps looking for a later modeled-flag suffix, recovering the `--shell` in
-    // `wrapper --no-cache --shell bash` instead of stranding it (P-wrapperflags / P43).
+    // For a wrapper command the split is still needed, and still never starts at index 0: that
+    // flag run is ambiguous — `mywrapper --transport fast` is the wrapper's own option, not
+    // wcli0's — so the scan keeps looking for a later modeled-flag suffix, recovering the
+    // `--shell` in `wrapper --no-cache --shell bash` instead of stranding it (P-wrapperflags / P43).
     // This branch only ever parses a stdio entry (http/sse return earlier), so pass stdio=true:
     // a transport flag in the args must not "prove" a server-flag suffix that reorders a wrapper's
     // own options on save, since stdio leaves transport flags in extraArgs verbatim (P77).

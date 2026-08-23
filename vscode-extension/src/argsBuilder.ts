@@ -354,6 +354,39 @@ function stripValueFlag(extraArgs: string[], names: string[]): string[] {
   return out;
 }
 
+// The bare boolean flags this builder emits, all of which it emits ONLY for an enabled setting
+// (a disabled one is emitted as the `--no-*` spelling). yargs consumes a following bare
+// `true`/`false` token as a declared boolean's VALUE -- verified against the installed yargs:
+// `--enableTruncation false` yields false and NO positional, while `--enableTruncation=true false`
+// yields true plus the positional. So one of these standing directly in front of a boolean-like
+// positional preserved in extraArgs would both flip the setting and delete the positional (P114).
+const BARE_BOOLEAN_FLAGS = new Set<string>([
+  '--allowAllDirs',
+  '--debug',
+  '--enableLogResources',
+  '--enableTruncation',
+  '--unsafe',
+  '--yolo',
+]);
+
+/**
+ * Rewrite the generated token at `at` into its attached `--flag=true` form when it is a bare
+ * boolean flag and `next` -- the first extraArgs token that will follow it -- is a bare
+ * `true`/`false` yargs would swallow as its value (P114). The attached form is self-terminating and
+ * means exactly what the bare form means here, since the builder emits the bare spelling only for
+ * an ENABLED setting. This is the boolean counterpart of the parser's P106/P109 rewrite and of the
+ * P112 array hoist; no OTHER generated token is at risk, because every value this builder emits is
+ * preceded by its own flag, so a bare token can only ever come from extraArgs.
+ */
+function guardBooleanBeforePositional(args: string[], at: number, next: string | undefined): void {
+  if (at < 0 || (next !== 'true' && next !== 'false')) {
+    return;
+  }
+  if (BARE_BOOLEAN_FLAGS.has(args[at])) {
+    args[at] = `${args[at]}=true`;
+  }
+}
+
 /**
  * Build the minimal arg list for an auto-managed-config launch: point the server
  * at the generated config file and force stdio (a provider-launched process must
@@ -371,7 +404,10 @@ function buildManagedServerArgs(s: Wcli0Settings, managedConfigPath: string): st
   // start a network listener instead of speaking stdio (see stripTransportArgs); a
   // second --config would make yargs parse args.config as an array and the server fall
   // back to a different/default config, ignoring the managed file (see stripConfigArgs).
-  for (const extra of stripConfigArgs(stripTransportArgs(s.extraArgs))) {
+  const extras = stripConfigArgs(stripTransportArgs(s.extraArgs));
+  // A leading `true`/`false` in extraArgs would be consumed by a trailing `--debug` (P114).
+  guardBooleanBeforePositional(args, args.length - 1, extras[0]);
+  for (const extra of extras) {
     args.push(extra);
   }
   return args;
@@ -656,6 +692,16 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   let leadingPositionals = 0;
   while (leadingPositionals < extras.length && isOptionValueToken(extras[leadingPositionals])) {
     leadingPositionals++;
+  }
+  if (leadingPositionals > 0) {
+    // That leading run lands directly behind whichever generated token ends up in front of it:
+    // the last NON-array arg when the hoist below fires, otherwise the last generated arg. A bare
+    // boolean flag there swallows a `true`/`false` positional, so it is emitted attached (P114).
+    const lastGenerated =
+      greedyArrayAt.size > 0
+        ? args.reduce((last, _token, i) => (greedyArrayAt.has(i) ? last : i), -1)
+        : args.length - 1;
+    guardBooleanBeforePositional(args, lastGenerated, extras[0]);
   }
   if (leadingPositionals > 0 && greedyArrayAt.size > 0) {
     return [
