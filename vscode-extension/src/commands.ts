@@ -900,6 +900,30 @@ export async function writeMcpJsonFromSettings(
   servers.wcli0 = entry;
   existing.servers = servers;
 
+  // The snapshot everything above was built from was taken BEFORE the awaited modal prompts (the
+  // environment prompt, the JSONC-comment warning). If another editor wrote .vscode/mcp.json while
+  // one of those was open, serializing that snapshot now would silently discard the edit -- including
+  // changes to servers this form never touches. Re-read immediately before writing and refuse when
+  // the bytes no longer match, so a concurrent write is reported instead of overwritten (P101).
+  let currentRaw: Uint8Array | undefined;
+  try {
+    currentRaw = await vscode.workspace.fs.readFile(mcpUri);
+  } catch (err) {
+    if (!isFileNotFound(err)) {
+      void vscode.window.showErrorMessage(
+        `wcli0: could not re-read ${mcpUri.fsPath} (${(err as Error).message}). Not writing.`,
+      );
+      return false;
+    }
+  }
+  if (!sameFileBytes(currentRaw, raw)) {
+    void vscode.window.showErrorMessage(
+      `wcli0: ${mcpUri.fsPath} changed while saving, so nothing was written. Reload the source ` +
+        'and apply your edits again.',
+    );
+    return false;
+  }
+
   await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(folder.uri, '.vscode'));
   // Re-attach a UTF-8 BOM when the file we read had one. parseJsonc strips it so a
   // "UTF-8 with BOM" file is readable at all (P86), but dropping it on write would silently
@@ -1258,6 +1282,17 @@ async function implicitConfigIn(dir: vscode.Uri): Promise<string | undefined> {
  * base, the surrounding servers, and the comment-removal check, so a concurrent delete/recreate
  * between two separate reads cannot drop the file's other servers (P69).
  */
+/**
+ * Whether two optional file snapshots hold identical bytes; two absent files count as identical.
+ * Used for the pre-write re-read below (P101).
+ */
+function sameFileBytes(a: Uint8Array | undefined, b: Uint8Array | undefined): boolean {
+  if (a === undefined || b === undefined) {
+    return a === undefined && b === undefined;
+  }
+  return a.length === b.length && Buffer.compare(Buffer.from(a), Buffer.from(b)) === 0;
+}
+
 async function readExistingMcpJson(
   mcpUri: vscode.Uri,
 ): Promise<{ raw?: Uint8Array; existing: Record<string, unknown> } | undefined> {

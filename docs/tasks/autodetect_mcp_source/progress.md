@@ -527,3 +527,18 @@ options. All verified against the project's yargs semantics and covered by new u
   rebuild placed them after the modeled pair and yargs read them as positionals - silently dropping
   entries from a blocklist or the allowed-directory list. The wrapper-suffix detector consumes them
   too, so a multi-value array option no longer looks like an orphan)
+- [x] P100: Preserve unsupported shell names (P1 - fixed - `divertShellValue` now models a
+  `--shell` value only when it is one of the five names the form's select offers, so `fish`, `zsh`,
+  `ALL` and `all` are all preserved verbatim. Modeling an unofferable name left the select empty,
+  marked the form dirty and let a save drop `--shell`, re-enabling every default shell on an entry
+  the server had matched to none)
+- [x] P101: Revalidate the file after save-time prompts (P1 - fixed - the save re-reads
+  .vscode/mcp.json immediately before writing and refuses when the bytes differ from the snapshot it
+  serialized, so an edit or delete landing while a modal was open is reported instead of overwritten.
+  This supersedes the write-anyway half of P69/P46, whose guarantees now hold more strictly: nothing
+  is written, so no server is dropped and no stale mix is produced)
+- [x] P102: Match yargs when recognizing negative numeric tokens (fixed - the predicate accepts only
+  the forms the installed parser consumes (`-1`, `-1.5`, `-.5`, `-0`, `-01`), not scientific notation
+  or a trailing dot, so `--shell -1e2` is no longer modeled and rebuilt as `--shell=-1e2`. Also
+  corrects P98 for number options: yargs drops a VALUELESS numeric option entirely, so it is counted
+  as an occurrence only when a value token follows)

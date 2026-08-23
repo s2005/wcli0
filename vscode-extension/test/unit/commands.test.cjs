@@ -941,10 +941,63 @@ test('P67: a port-only edit of a default-port url rebuilds the canonical url', a
   assert.equal(wcli0Entry().url, 'http://gateway.example:8080/mcp');
 });
 
-test('P69: a file save keeps other servers when the file is deleted during a modal', async () => {
-  // The up-front snapshot captures the whole file (wcli0 + other). A concurrent delete of
-  // .vscode/mcp.json while the env modal is open must NOT make the save start fresh and drop the
-  // other server: reusing the single snapshot writes both servers back.
+test('P101: an edit landing during a modal is not overwritten', async () => {
+  // The snapshot is taken before the env prompt; a concurrent write while it is open must be
+  // reported, not silently replaced by the pre-modal snapshot -- including another server's edit.
+  const loaded = {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest'],
+    env: { SECRET: 'x' },
+  };
+  const seed = (servers) =>
+    vscode.__state.files.set('/ws/.vscode/mcp.json', Buffer.from(JSON.stringify({ servers })));
+  seed({ wcli0: loaded, other: { type: 'http', url: 'http://elsewhere/mcp' } });
+  Object.defineProperty(vscode.__state.calls, 'warnReturn', {
+    configurable: true,
+    get() {
+      seed({ wcli0: loaded, other: { type: 'http', url: 'http://moved/mcp' } });
+      return 'Include environment';
+    },
+  });
+  try {
+    const s = defaultSettings();
+    s.shell = 'cmd';
+    vscode.__state.calls.error.length = 0;
+    const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
+    assert.equal(ok, false, 'the stale write is refused');
+    assert.ok(vscode.__state.calls.error.some((m) => /changed while saving/.test(m)));
+    const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
+    assert.equal(parsed.servers.other.url, 'http://moved/mcp', "the other server's edit survives");
+    assert.equal(parsed.servers.wcli0.args.includes('--shell'), false, 'nothing was written');
+  } finally {
+    Object.defineProperty(vscode.__state.calls, 'warnReturn', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+  }
+});
+
+test('P101: an untouched file still saves normally', async () => {
+  vscode.__state.calls.warnReturn = 'Include environment';
+  const base = { type: 'stdio', command: 'npx', args: ['-y', 'wcli0@latest'] };
+  vscode.__state.files.set(
+    '/ws/.vscode/mcp.json',
+    Buffer.from(JSON.stringify({ servers: { wcli0: base } })),
+  );
+  const s = defaultSettings();
+  s.shell = 'cmd';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true, 'no false refusal when nothing changed');
+  assert.ok(wcli0Entry().args.includes('--shell'));
+});
+
+test('P69/P101: a file deleted during a modal is not rewritten from the stale snapshot', async () => {
+  // The up-front snapshot captures the whole file (wcli0 + other), but it is taken BEFORE the env
+  // modal. A concurrent delete while that modal is open makes the snapshot stale, so the save must
+  // refuse rather than resurrect the file from it (P101). P69's guarantee still holds -- the other
+  // server is never dropped -- because nothing is written at all.
   const loaded = {
     type: 'stdio',
     command: 'npx',
@@ -970,16 +1023,18 @@ test('P69: a file save keeps other servers when the file is deleted during a mod
   try {
     const s = defaultSettings();
     s.shell = 'cmd';
+    vscode.__state.calls.error.length = 0;
     const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
-    assert.equal(ok, true);
-    const parsed = JSON.parse(vscode.__state.files.get('/ws/.vscode/mcp.json').toString('utf8'));
-    assert.ok(parsed.servers.wcli0, 'wcli0 entry written');
-    assert.deepEqual(
-      parsed.servers.other,
-      { type: 'http', url: 'http://elsewhere/mcp' },
-      'the other server survives the delete-during-modal',
+    assert.equal(ok, false, 'the stale write is refused');
+    assert.ok(
+      vscode.__state.calls.error.some((m) => /changed while saving/.test(m)),
+      'the concurrent delete is reported',
     );
-    assert.ok(parsed.servers.wcli0.args.includes('--shell'), 'the edited flag is written');
+    assert.equal(
+      vscode.__state.files.has('/ws/.vscode/mcp.json'),
+      false,
+      'the deleted file is not resurrected, and no server is written from the stale snapshot',
+    );
   } finally {
     Object.defineProperty(vscode.__state.calls, 'warnReturn', {
       configurable: true,
@@ -1369,11 +1424,12 @@ test('P41: a file save preserves the CURRENT on-disk url when host/port match', 
 });
 
 test('P46: the merge base and preservation data come from one on-disk snapshot', async () => {
-  // The panel snapshot and the single up-front on-disk read both see env {A} plus an
-  // unmodeled envFile. An external edit then lands DURING the env modal (adding a var,
-  // dropping envFile, adding an unmodeled `dev`). The save must merge from that single
-  // up-front snapshot, so the written entry is a coherent view of it (env {A} + envFile) and
-  // never an incoherent mix of the stale generated env with a freshly re-read base.
+  // The panel snapshot and the single up-front on-disk read both see env {A} plus an unmodeled
+  // envFile. An external edit then lands DURING the env modal (adding a var, dropping envFile,
+  // adding an unmodeled `dev`). Writing the up-front snapshot would be internally coherent but
+  // would silently discard that edit, so the save refuses instead (P101). P46's guarantee still
+  // holds: the write never mixes a stale generated env with a freshly re-read base, because there
+  // is no write.
   const loaded = {
     type: 'stdio',
     command: 'npx',
@@ -1404,14 +1460,16 @@ test('P46: the merge base and preservation data come from one on-disk snapshot',
   try {
     const s = defaultSettings();
     s.shell = 'cmd';
+    vscode.__state.calls.error.length = 0;
     const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: loaded });
-    assert.equal(ok, true);
+    assert.equal(ok, false, 'the stale write is refused');
+    assert.ok(vscode.__state.calls.error.some((m) => /changed while saving/.test(m)));
+    // The concurrent edit is intact: nothing was overwritten, and no incoherent mix was written.
     const e = wcli0Entry();
-    // Coherent up-front snapshot: the generated env {A} AND that snapshot's envFile, with no
-    // leak of the concurrently-added unmodeled `dev` field from the later read.
-    assert.deepEqual(e.env, { A: '1' });
-    assert.equal(e.envFile, '.env');
-    assert.equal(e.dev, undefined);
+    assert.deepEqual(e.env, { A: '1', B: '2' }, 'the external edit survives');
+    assert.deepEqual(e.dev, { watch: true });
+    assert.equal(e.envFile, undefined);
+    assert.equal(e.args.includes('--shell'), false, 'the form edit was not written');
   } finally {
     Object.defineProperty(vscode.__state.calls, 'warnReturn', {
       configurable: true,

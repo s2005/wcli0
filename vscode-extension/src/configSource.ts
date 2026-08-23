@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { isValidLogLimit, isValidMaxOutputLines } from './argsBuilder';
 import { parseJsonc } from './commands';
-import { defaultSettings, TransportMode, TriState, Wcli0Settings } from './settings';
+import { defaultSettings, SHELL_NAMES, TransportMode, TriState, Wcli0Settings } from './settings';
 
 /**
  * The kinds of configuration source the form can edit, one at a time. `settings`
@@ -258,11 +258,16 @@ function isRecognizedServerFlag(token: string, stdio = false): boolean {
  * `--shell -1` => '-1', while `--shell -x` => '' plus a separate `-x` flag). Reading `-1` as a
  * flag hid a repeated option with a negative value from the duplicate pre-scan, so the pair was
  * modeled last-wins and the save changed the launch (P93). Mirrors argsBuilder's strippers.
+ *
+ * The accepted shapes are exactly the ones the installed parser consumes: an optional integer part
+ * and at most one fractional part (`-1`, `-1.5`, `-.5`, `-0`, `-01`). Scientific notation and a
+ * trailing dot are NOT consumed — yargs reads `--shell -1e2` as an empty shell plus the short
+ * options `1` and `e` — so accepting them modeled a value the server never sees and let a save
+ * rewrite the entry as `--shell=-1e2`, disabling every known shell (P102).
  */
 function isOptionValueToken(next: string | undefined): boolean {
   return (
-    next !== undefined &&
-    (!next.startsWith('-') || /^-(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(next))
+    next !== undefined && (!next.startsWith('-') || /^-(?:\d+(?:\.\d+)?|\.\d+)$/.test(next))
   );
 }
 
@@ -529,15 +534,20 @@ export function parseServerArgs(
     return false;
   };
 
-  // Whether a `--shell` value must be preserved verbatim instead of modeled. The form's `all` is
-  // an OMISSION sentinel — buildServerArgs emits no `--shell` for it — but the server's own
-  // `--shell all` is a shell NAME: it loads only the shell module called "all", which does not
-  // exist, leaving no usable shells (src/index.ts builds shellsToLoad from the flag). Modeling the
-  // explicit value as the sentinel would therefore let a no-op save drop the flag and re-enable
-  // every default shell on an entry that deliberately had none (P96). Only the exact `all`
-  // collides; any other spelling (`ALL`) round-trips through the field unchanged.
-  const divertShellAll = (spec: OptionSpec, raw: string): boolean =>
-    spec.key === 'shell' && raw === 'all';
+  // Whether a `--shell` value must be preserved verbatim instead of modeled. The form's shell
+  // control is a fixed <select>, so the ONLY values it can hold are the five real shell names
+  // (SHELL_NAMES) plus its own `all` sentinel. Anything else is unrepresentable:
+  //   - `all` is an OMISSION sentinel here — buildServerArgs emits no `--shell` for it — but the
+  //     server's `--shell all` is a shell NAME, loading only a module called "all" that does not
+  //     exist, so the entry has NO usable shells. Modeling it as the sentinel let a no-op save
+  //     drop the flag and re-enable every default shell (P96).
+  //   - any other name (`fish`, `zsh`, `ALL`) cannot be selected at all: assigning it leaves the
+  //     select on its empty/Inherit value, the form counts as changed, and a save drops `--shell`
+  //     — again turning an entry the server matched to no shell into one running the defaults
+  //     (P100).
+  // Both are preserved verbatim instead, so the entry round-trips and the save changes nothing.
+  const divertShellValue = (spec: OptionSpec, raw: string): boolean =>
+    spec.key === 'shell' && !(SHELL_NAMES as readonly string[]).includes(raw);
 
   // Whether an option is a single-value (scalar) field rather than an accumulating array. yargs
   // parses a REPEATED scalar option as an array (`--config a --config b` => ['a','b'], `--shell cmd
@@ -590,14 +600,18 @@ export function parseServerArgs(
       }
       const spec = optionFor(token);
       if (spec && isScalarOption(spec)) {
-        // Counted on PRESENCE, whatever follows: yargs defines the key even when the option has
-        // no value (verified: `--shell --debug --shell bash` => shell: ['', 'bash'], which the
-        // server cannot use as a shell name). Requiring a value token hid the valueless
-        // occurrence, so only `bash` was modeled, the preserved `--shell` was stripped when the
-        // field was emitted, and a no-op save rewrote an entry with NO usable shell into one
-        // that runs commands through Bash (P98). Also counted when divertNumber would keep the
-        // value out of the typed field (P90).
-        bump(spec.key);
+        // Counted on PRESENCE for a string/csv option, because yargs defines the key even with no
+        // value (verified: `--shell --debug --shell bash` => shell: ['', 'bash'], which is not a
+        // usable shell name). Requiring a value token hid that occurrence, so only `bash` was
+        // modeled, the preserved `--shell` was stripped when the field was emitted, and a no-op
+        // save rewrote an entry with NO usable shell into one running commands through Bash (P98).
+        // A NUMBER option is different: yargs DROPS a valueless one entirely (`--commandTimeout
+        // --commandTimeout 5` => 5, no array), so counting it would preserve a pair the server
+        // resolves to a single value and leave the form showing no timeout (P102). Values the
+        // typed field cannot hold are still counted (P90).
+        if (spec.kind !== 'number' || isOptionValueToken(args[i + 1])) {
+          bump(spec.key);
+        }
       }
     }
     const dups = new Set<keyof Wcli0Settings>();
@@ -851,8 +865,9 @@ export function parseServerArgs(
       const spec = optionFor(flag);
       if (spec) {
         const v = value;
-        if (divertShellAll(spec, v)) {
-          extraArgs.push(token); // explicit `--shell=all` is a shell name, not the sentinel (P96)
+        if (divertShellValue(spec, v)) {
+          // A shell name the form's select cannot hold (`all`, `fish`, ...) — preserve it (P96/P100).
+          extraArgs.push(token);
           continue;
         }
         if (spec.kind === 'number' && divertNumber(spec, v)) {
@@ -926,9 +941,10 @@ export function parseServerArgs(
     // extraArgs and the flag is parsed on the next iteration.
     const spec = optionFor(token);
     if (spec && isOptionValueToken(args[i + 1])) {
-      if (divertShellAll(spec, args[i + 1])) {
-        // An explicit `--shell all` is NOT the form's "all shells" sentinel (P96): preserve the
-        // flag here and let its value fall through to extraArgs on the next iteration.
+      if (divertShellValue(spec, args[i + 1])) {
+        // A shell name the form's select cannot hold — `all` is its omission sentinel (P96), any
+        // other name is not offered at all (P100). Preserve the flag here and let its value fall
+        // through to extraArgs on the next iteration.
         extraArgs.push(token);
         continue;
       }

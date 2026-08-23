@@ -604,6 +604,53 @@ test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
   assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
 });
 
+test('P100: a shell name the select cannot hold is preserved verbatim', () => {
+  // Assigning `fish` to the fixed <select> leaves it on the empty/Inherit value, the form counts
+  // as changed, and a save drops --shell -- turning an entry the server matched to NO shell into
+  // one running every default shell.
+  for (const args of [
+    ['-y', 'wcli0@latest', '--shell', 'fish'],
+    ['-y', 'wcli0@latest', '--shell=zsh'],
+    ['-y', 'wcli0@latest', '--shell', 'ALL'],
+  ]) {
+    const { settings } = parseMcpEntry({ type: 'stdio', command: 'npx', args });
+    assert.equal(settings.shell, defaults().shell, `${args[2]} is not modeled into the field`);
+    const emitted = buildLaunchSpec(settings, {
+      resolvePaths: false,
+      preserveRelativePaths: true,
+    }).args;
+    assert.deepEqual(emitted, args, 'the entry round-trips verbatim');
+  }
+});
+
+test('P100: the five real shell names are still modeled', () => {
+  for (const name of ['powershell', 'cmd', 'gitbash', 'wsl', 'bash']) {
+    const { settings } = parseServerArgs(['--shell', name]);
+    assert.equal(settings.shell, name, `${name} stays editable`);
+  }
+});
+
+test('P102: only the negative forms yargs consumes count as values', () => {
+  // Verified against yargs-parser: `--shell -1e2` => shell '' plus short options 1 and e, and
+  // `-1.` behaves the same, while -1 / -1.5 / -.5 / -0 / -01 ARE consumed as values.
+  for (const value of ['-1', '-1.5', '-.5', '-0', '-01']) {
+    const { settings } = parseServerArgs(['--shell', value]);
+    assert.equal(settings.shell, undefined, `${value} is diverted (not a shell the form holds)`);
+    const { extraArgs } = parseServerArgs(['--shell', value]);
+    assert.deepEqual(extraArgs, ['--shell', value], `${value} round-trips as this option's value`);
+  }
+  for (const value of ['-1e2', '-1.', '-1e-2']) {
+    const { extraArgs } = parseServerArgs(['--shell', value]);
+    assert.deepEqual(extraArgs, ['--shell', value], `${value} round-trips as a separate token`);
+  }
+  // The difference shows up in duplicate detection: a scientific-notation token is NOT this
+  // option's value, so the second --commandTimeout is the only occurrence and is modeled.
+  const sci = parseServerArgs(['--commandTimeout', '-1e2', '--commandTimeout', '5']);
+  assert.equal(sci.settings.commandTimeout, 5, 'yargs sees only one commandTimeout value');
+  const dec = parseServerArgs(['--commandTimeout', '-1', '--commandTimeout', '5']);
+  assert.equal(dec.settings.commandTimeout, undefined, 'a real negative value makes it a duplicate');
+});
+
 test('P99: an array option consumes every following value', () => {
   // yargs' greedy-arrays (default true) makes `--blockedCommand rm del --debug` => ['rm','del'].
   // Modeling only `rm` left `del` in extraArgs, and re-emitting it after the modeled pair made it
