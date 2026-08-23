@@ -604,6 +604,88 @@ test('P86: a UTF-8 BOM does not hide the wcli0 entry', async () => {
   assert.equal(entry.command, 'npx', 'the entry loads through the BOM');
 });
 
+test('P89: a later false value clears a safety mode an earlier flag set', () => {
+  // Verified against the installed yargs-parser: repeated booleans are last-wins, so
+  // `--unsafe --unsafe=false` and `--unsafe --unsafe false` both mean unsafe:false. Modeling
+  // them as the positive mode let a no-op save drop the false and disable every protection.
+  for (const args of [
+    ['--unsafe', '--unsafe=false'],
+    ['--unsafe', '--unsafe', 'false'],
+    ['--yolo', '--yolo=false'],
+  ]) {
+    const { settings } = parseServerArgs(args);
+    assert.equal(settings.safetyMode, 'safe', `${args.join(' ')} is safe`);
+  }
+  // The reverse order is still the positive mode (last-wins the other way).
+  assert.equal(parseServerArgs(['--unsafe=false', '--unsafe']).settings.safetyMode, 'unsafe');
+});
+
+test('P89: a re-emitted safety mode matches what the entry really did', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--unsafe', '--unsafe=false'],
+  });
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.equal(args.includes('--unsafe'), false, 'a no-op save does not enable unsafe mode');
+  assert.equal(args.includes('--yolo'), false);
+});
+
+test('P90: a diverted numeric occurrence still counts as a duplicate', () => {
+  // yargs makes `--commandTimeout bad --commandTimeout 5` the array ['bad', 5], which the
+  // server ignores (not a number). Counting only the representable occurrence modeled it as a
+  // plain `--commandTimeout 5`, and the builder then stripped the preserved malformed copy --
+  // changing a launch that ran on the default timeout into one that applies 5.
+  const { settings, extraArgs } = parseServerArgs(['--commandTimeout', 'bad', '--commandTimeout', '5']);
+  assert.equal(settings.commandTimeout, undefined, 'neither value is modeled');
+  assert.deepEqual(extraArgs, ['--commandTimeout', 'bad', '--commandTimeout', '5']);
+});
+
+test('P90: the duplicate pair survives a no-op save intact', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'wcli0@latest', '--commandTimeout', 'bad', '--commandTimeout', '5'],
+  });
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.deepEqual(
+    args.filter((a) => a === '--commandTimeout' || a === 'bad' || a === '5'),
+    ['--commandTimeout', 'bad', '--commandTimeout', '5'],
+    'both occurrences round-trip in order',
+  );
+});
+
+test('P90: a single diverted numeric value is still preserved, not flagged', () => {
+  const { settings, extraArgs } = parseServerArgs(['--commandTimeout', 'bad']);
+  assert.equal(settings.commandTimeout, undefined);
+  assert.deepEqual(extraArgs, ['--commandTimeout', 'bad'], 'unchanged single-occurrence behavior');
+});
+
+test('P91: a url with surrounding whitespace is decomposed like the save path does', () => {
+  const { settings } = parseMcpEntry({ type: 'http', url: '  http://gateway.example:8443/mcp ' });
+  assert.equal(settings.transportHost, 'gateway.example', 'the host is modeled, not the default');
+  assert.equal(settings.transportPort, 8443);
+  assert.equal(settings.transportUrl, 'http://gateway.example:8443/mcp', 'stored trimmed');
+});
+
+test('P92: a url with a VS Code variable in its authority is not decomposed', () => {
+  // The colon inside `${input:...}` is not the host/port delimiter, and the real values are
+  // unknown until launch. Splitting it produced host `${input` and let a save rewrite the URL
+  // as `http://${input:9444/mcp`, destroying both the variable and the endpoint.
+  for (const url of ['http://${input:host}:8080/mcp', 'http://host:${input:port}/mcp']) {
+    assert.equal(parseHttpUrl(url), undefined, `${url} is undecomposable`);
+    const { settings, notes } = parseMcpEntry({ type: 'http', url });
+    assert.equal(settings.transportUrl, url, 'the URL is retained verbatim');
+    assert.equal(settings.transportHost, defaults().transportHost, 'host stays at the default');
+    assert.ok(
+      notes.some((n) => /cannot be represented by the host and port fields/.test(n)),
+      'the preserve-as-is note is shown',
+    );
+  }
+  // A plain URL is still decomposed normally.
+  assert.deepEqual(parseHttpUrl('http://host:8080/mcp'), { host: 'host', port: 8080 });
+});
+
 test('P88: a network entry with no usable url gets a keep-as-is note', () => {
   const { settings, notes } = parseMcpEntry({ type: 'http' });
   assert.equal(settings.transportMode, 'http');

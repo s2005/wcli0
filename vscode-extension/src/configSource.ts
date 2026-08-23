@@ -515,10 +515,15 @@ export function parseServerArgs(
   // The scalar option keys that appear more than once in this arg list. A duplicated scalar is NOT
   // modeled last-wins (which would silently collapse `--config a --config b` to `b` on a no-op
   // save); instead every occurrence is preserved verbatim in extraArgs so the hand-authored entry
-  // round-trips unchanged (P78). The count mirrors the modeling paths in the loop below — it honors
-  // the stdio transport exclusion (optionFor), the number-diversion rule (divertNumber), the `-c`
-  // config bundle, and stops at the `--` separator (P74) — so a key is flagged only when two
-  // occurrences would actually have been modeled into the same field.
+  // round-trips unchanged (P78). The count follows the modeling paths in the loop below — it honors
+  // the stdio transport exclusion (optionFor), the `-c` config bundle, and stops at the `--`
+  // separator (P74) — but deliberately counts a SYNTACTICALLY present occurrence even when its
+  // value would be diverted from the typed field (an unparseable or out-of-range number, P34/P59).
+  // yargs still turns such a repeat into an array (verified: `--commandTimeout bad
+  // --commandTimeout 5` => ['bad', 5], which applyCliSecurityOverrides ignores because it is not a
+  // number), so counting only the representable occurrence modeled the entry as a plain
+  // `--commandTimeout 5` and let the builder strip the preserved malformed copy — changing a
+  // launch that ran on the default timeout into one that applies 5 (P90).
   const duplicatedScalarKeys = ((): Set<keyof Wcli0Settings> => {
     const counts = new Map<keyof Wcli0Settings, number>();
     const bump = (key: keyof Wcli0Settings) => counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -531,10 +536,7 @@ export function parseServerArgs(
       if (eq > 0 && token.startsWith('-')) {
         const spec = optionFor(token.slice(0, eq));
         if (spec && isScalarOption(spec)) {
-          const value = token.slice(eq + 1);
-          if (!(spec.kind === 'number' && divertNumber(spec, value))) {
-            bump(spec.key);
-          }
+          bump(spec.key); // counted even when divertNumber would keep the value out of the field
         }
         continue;
       }
@@ -551,14 +553,8 @@ export function parseServerArgs(
         continue;
       }
       const spec = optionFor(token);
-      if (
-        spec &&
-        isScalarOption(spec) &&
-        i + 1 < args.length &&
-        !args[i + 1].startsWith('-') &&
-        !(spec.kind === 'number' && divertNumber(spec, args[i + 1]))
-      ) {
-        bump(spec.key);
+      if (spec && isScalarOption(spec) && i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        bump(spec.key); // counted even when divertNumber would keep the value out of the field
       }
     }
     const dups = new Set<keyof Wcli0Settings>();
@@ -635,14 +631,23 @@ export function parseServerArgs(
         out.enableLogResources = (on ? 'enabled' : 'disabled') as TriState;
         return true;
       case '--yolo':
-      case '--unsafe':
+      case '--unsafe': {
         if (safetyConflict) {
           return false; // preserve verbatim — the conflicting entry is server-rejected (P71)
         }
+        // Last-wins, exactly as yargs resolves a repeated boolean (verified: `--unsafe
+        // --unsafe=false` => unsafe:false, `--unsafe=false --unsafe` => unsafe:true). A later
+        // FALSE must therefore clear a mode an earlier occurrence set, or a no-op save would
+        // rewrite `--unsafe --unsafe=false` as a bare `--unsafe` and disable every protection
+        // the entry actually kept (P89).
+        const mode = flag === '--yolo' ? 'yolo' : 'unsafe';
         if (on) {
-          out.safetyMode = flag === '--yolo' ? 'yolo' : 'unsafe';
+          out.safetyMode = mode;
+        } else if (out.safetyMode === mode) {
+          out.safetyMode = 'safe';
         }
-        return true; // `--yolo=false` / `--unsafe=false` leaves the default safe mode
+        return true;
+      }
       default:
         return false;
     }
@@ -706,8 +711,15 @@ export function parseServerArgs(
       if (boolValueFollows(i)) {
         i++;
       }
+      // Last-wins like yargs (`--unsafe --unsafe false` => unsafe:false): an explicit false
+      // clears a mode an earlier occurrence of the SAME family set, mirroring the `--no-*`
+      // spellings below. Without this a repeated flag ending in false was modeled as the
+      // positive mode and a no-op save dropped the false, disabling the protections (P89).
+      const mode = token === '--yolo' ? 'yolo' : 'unsafe';
       if (on) {
-        out.safetyMode = token === '--yolo' ? 'yolo' : 'unsafe';
+        out.safetyMode = mode;
+      } else if (out.safetyMode === mode) {
+        out.safetyMode = 'safe';
       }
       continue;
     }
@@ -914,7 +926,12 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
 
   if (type === 'http' || type === 'sse') {
     s.transportMode = type as TransportMode;
-    const url = asString(entry.url);
+    // Trim exactly as preservedFileUrl does before it decides whether to keep the URL verbatim.
+    // Parsing the untrimmed value here made `" http://gateway.example:8443/mcp"` undecomposable,
+    // so the form showed the default host/port while the save path (which trims) decomposed it,
+    // saw a mismatch against those defaults, and rewrote the endpoint to the canonical default on
+    // an otherwise no-op save (P91).
+    const url = asString(entry.url).trim();
     // Always retain the verbatim URL so a save round-trips it unchanged, even when the
     // host/port fields cannot fully represent it: a custom scheme/path (P5), a URL with
     // no explicit port (P8), or a socket/named-pipe URL (P10).
@@ -1109,6 +1126,20 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
 export function parseHttpUrl(url: string): { host: string; port: number | undefined } | undefined {
   if (!url) {
     return undefined;
+  }
+  // An authority holding a VS Code substitution token (`http://${input:host}:8080/mcp`,
+  // `http://host:${input:port}/mcp`) cannot be decomposed: the colon INSIDE `${...}` is not the
+  // host/port delimiter, and the real host/port are unknown until VS Code resolves the variable at
+  // launch. Splitting it anyway produced host `${input` with a malformed port, and the save then
+  // rebuilt the URL as `http://${input:9444/mcp`, destroying both the variable and the endpoint.
+  // Report it as undecomposable so it is preserved verbatim like a socket URL (P10) and host/port
+  // edits are refused rather than applied to it (P81/P92).
+  const authorityStart = /^[a-z]+:\/\//i.exec(url);
+  if (authorityStart) {
+    const authority = url.slice(authorityStart[0].length).split(/[/?#]/)[0];
+    if (authority.includes('${')) {
+      return undefined;
+    }
   }
   // Match `scheme://[userinfo@]host[:port]/...`, where host may be a bracketed IPv6
   // literal. The optional `userinfo@` is skipped so credentials (`user:pass@host:port`)

@@ -480,3 +480,18 @@ options. All verified against the project's yargs semantics and covered by new u
   entry that has none exactly as found (absent, empty or non-string) while mode/host/port are
   untouched, instead of manufacturing `http://127.0.0.1:9444/mcp` on a no-op save. A real host/port
   edit or a mode switch still writes the rebuilt URL, and a parse note explains the state)
+- [x] P89: Clear a prior safety mode when a later value is false (fixed - both safety branches now
+  follow yargs' last-wins for a repeated boolean, so `--unsafe --unsafe=false` loads as safe and a
+  no-op save no longer re-emits a bare `--unsafe` that disables every protection. Verified against
+  the installed yargs-parser; the reverse order still selects the positive mode)
+- [x] P90: Count diverted numeric occurrences when detecting duplicates (fixed - the duplicate
+  pre-scan counts every syntactically present scalar occurrence, so `--commandTimeout bad
+  --commandTimeout 5` is preserved whole instead of being modeled as 5 with the malformed copy
+  stripped, which changed a launch the server ignored into one that applies 5)
+- [x] P91: Trim URLs consistently before decomposing them (fixed - `parseMcpEntry` trims the entry
+  URL exactly as `preservedFileUrl` does, so `" http://gateway.example:8443/mcp"` shows its real
+  host/port instead of the defaults and a no-op save no longer rewrites the endpoint)
+- [x] P92: Preserve variable-bearing network URLs (fixed - `parseHttpUrl` reports an authority
+  holding a `${...}` token as undecomposable, so `http://${input:host}:8080/mcp` is preserved
+  verbatim like a socket URL instead of being split at the colon inside the variable and rewritten
+  as `http://${input:9444/mcp` on save)

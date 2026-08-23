@@ -819,6 +819,15 @@ test('P10: a file save preserves a socket url it cannot decompose', async () => 
   assert.equal(wcli0Entry().url, 'unix:///tmp/server.sock#/mcp');
 });
 
+test('P92: a file save keeps a url whose authority holds a VS Code variable', async () => {
+  const base = { type: 'http', url: 'http://${input:host}:8080/mcp' };
+  const s = defaultSettings();
+  s.transportMode = 'http';
+  const ok = await writeMcpJsonFromSettings(s, WS[0], { baseEntry: base });
+  assert.equal(ok, true);
+  assert.equal(wcli0Entry().url, 'http://${input:host}:8080/mcp', 'the variable URL is intact');
+});
+
 test('P88: a file save does not manufacture a url for an entry that has none', async () => {
   // {"type":"http"} has no url to preserve; the canonical fallback would write
   // http://127.0.0.1:9444/mcp on a no-op save, turning an incomplete entry into a live endpoint.
