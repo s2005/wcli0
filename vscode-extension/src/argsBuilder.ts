@@ -145,6 +145,17 @@ export interface BuildOptions {
   resolvePaths?: boolean;
 
   /**
+   * Only meaningful together with `resolvePaths: false`. When true, a plain relative
+   * path-like value (`--config`, `--allowedDir`, `--initialDir`, `--logDirectory`) is
+   * preserved verbatim instead of being anchored to a `${workspaceFolder}` token. Set
+   * when re-saving a loaded `.vscode/mcp.json` source, whose relative args were authored
+   * relative to the entry's own `cwd` and must round-trip unchanged so an unrelated edit
+   * does not retarget them (P27). Left false for a settings-driven export, where relative
+   * path settings are workspace-relative (matching the provider) and get the token.
+   */
+  preserveRelativePaths?: boolean;
+
+  /**
    * When set, the server is launched against this auto-managed config file
    * (`--config <path>`) and the global CLI flags are NOT emitted. Used when the
    * user configures shells individually (`wcli0.shells`), which can only be
@@ -288,15 +299,26 @@ function pathValue(value: string, opts: BuildOptions): string | undefined {
     if (!trimmed) {
       return undefined;
     }
-    // Convert a plain relative path to a ${workspaceFolder}-relative token so VS
-    // Code anchors it to the workspace, matching the resolved-path and config-file
-    // generators. A bare relative value would otherwise be C-rooted by the
-    // server's normalizeWindowsPath (e.g. "src" -> C:\src), denying the intended
-    // directory and possibly allowing an unrelated one. Values that already carry
-    // a token (or are absolute) are kept verbatim for VS Code to resolve.
     if (!isAbsolutePath(trimmed) && !hasUnresolvedVariables(trimmed)) {
+      // For a file-source round-trip, a relative path was authored relative to the
+      // entry's own cwd (the server resolves --config/--allowedDir/etc. against
+      // process.cwd()). Preserve it verbatim so re-saving an unrelated field does not
+      // retarget it: anchoring config.json to ${workspaceFolder} would launch a
+      // different file when cwd is not the workspace root, e.g. cwd
+      // ${workspaceFolder}/server must keep config.json -> .../server/config.json (P27).
+      if (opts.preserveRelativePaths) {
+        return trimmed.split(/[\\/]/).join('/');
+      }
+      // Settings export: convert a plain relative path to a ${workspaceFolder}-relative
+      // token so VS Code anchors it to the workspace, matching what the provider does
+      // (it resolves relative path settings against the workspace, not cwd). A bare
+      // relative value would otherwise be C-rooted by the server's normalizeWindowsPath
+      // (e.g. "src" -> C:\src), denying the intended directory and possibly allowing an
+      // unrelated one.
       return `\${workspaceFolder}/${trimmed.split(/[\\/]/).join('/')}`;
     }
+    // Values that already carry a token (or are absolute) are kept verbatim for VS
+    // Code to resolve.
     return trimmed;
   }
   return resolvedPath(value);
