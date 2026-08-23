@@ -362,18 +362,15 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = f
  * launcher options whose names collide with wcli0 flags (a wrapper's `--config`, node's
  * `--inspect`) in the launcher portion (P15).
  *
- * `allowIndexZero` is true only when the command IS the wcli0 binary, so an index-0 run
- * really is server flags. For a non-wcli0 (wrapper) command an index-0 flag run is
- * ambiguous — `mywrapper --transport fast` is the wrapper's own option, not a wcli0 flag
- * (P-wrapperflags) — so scanning starts at index 1: the leading token stays in the
- * launcher portion and the scan still finds a LATER modeled-flag suffix, e.g. the
- * `--shell` in `wrapper --no-cache --shell bash`, instead of stranding it (P43).
+ * Only ever used for a WRAPPER command; a direct wcli0 launch parses its whole arg list instead
+ * (P105). An index-0 flag run is ambiguous for a wrapper — `mywrapper --transport fast` is the
+ * wrapper's own option, not a wcli0 flag (P-wrapperflags) — so scanning starts at index 1: the
+ * leading token stays in the launcher portion and the scan still finds a LATER modeled-flag
+ * suffix, e.g. the `--shell` in `wrapper --no-cache --shell bash`, instead of stranding it (P43).
  *
- * A wrapper scan additionally requires the suffix to contain a modeled wcli0 flag
- * (`requireModeled`), so an unknown-only run such as the wrapper's own `--verbose` in
- * `wrapper target --verbose` is NOT mistaken for a server-flag suffix and stays in the
- * launcher portion (P56). The wcli0 binary itself (allowIndexZero) does not require this: its
- * args are genuinely wcli0's, including unknown-only extraArgs.
+ * The suffix must also contain a modeled wcli0 flag (`requireModeled` in the run check), so an
+ * unknown-only run such as the wrapper's own `--verbose` in `wrapper target --verbose` is NOT
+ * mistaken for a server-flag suffix and stays in the launcher portion (P56).
  *
  * The scan stops at a `--` options separator, because yargs treats everything after one as
  * positionals, so no server-flag suffix can begin there (P75). The single exception is a
@@ -386,8 +383,8 @@ function isPureServerFlagRun(tokens: string[], requireModeled = false, stdio = f
  * server would never read it (P83). `stdio` is forwarded to the run check so a stdio entry's
  * transport flags do not count as modeled evidence (P77).
  */
-function serverFlagSuffixStart(args: string[], allowIndexZero: boolean, stdio = false): number {
-  for (let i = allowIndexZero ? 0 : 1; i < args.length; i++) {
+function serverFlagSuffixStart(args: string[], stdio = false): number {
+  for (let i = 1; i < args.length; i++) {
     if (args[i] === '--') {
       // An options separator: yargs treats every following token as a positional, so no
       // server-flag suffix can begin at or after it (P75). Stop -- unless this is a wrapper
@@ -398,10 +395,7 @@ function serverFlagSuffixStart(args: string[], allowIndexZero: boolean, stdio = 
       // program) keeps its remainder in the launcher portion, so a positional is never modeled as
       // an active flag and a saved flag is never appended behind a separator the server ignores
       // (P83). A second `--` after the wrapped binary is that binary's own separator and stops
-      // the scan, exactly as it does for a direct wcli0 launch.
-      if (allowIndexZero) {
-        break;
-      }
+      // the scan, exactly as parseServerArgs stops at it for a direct wcli0 launch.
       const wrappedBinaryAt = args.findIndex((t, j) => j > i && isWcli0Command(t));
       if (wrappedBinaryAt === -1) {
         break;
@@ -409,7 +403,7 @@ function serverFlagSuffixStart(args: string[], allowIndexZero: boolean, stdio = 
       i = wrappedBinaryAt; // resume scanning at the token AFTER the wrapped wcli0 binary
       continue;
     }
-    if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i), !allowIndexZero, stdio)) {
+    if (args[i].startsWith('-') && isPureServerFlagRun(args.slice(i), true, stdio)) {
       return i;
     }
   }
@@ -1145,16 +1139,23 @@ export function parseMcpEntry(entry: Record<string, unknown>): ParsedEntry {
     // `--config`/`--transport`, node's `--inspect`, uvx's `--from`) stays in customArgs
     // and a load/save round-trip preserves the command order (P15).
     //
-    // Only trust an index-0 boundary when the command IS the wcli0 binary (its args really
-    // are server flags). For a wrapper command an index-0 flag run is ambiguous —
-    // `mywrapper --transport fast` is the wrapper's own option, not wcli0's — so the scan
-    // skips index 0 and keeps looking for a later modeled-flag suffix, so the `--shell` in
-    // `wrapper --no-cache --shell bash` is still recovered instead of stranded in customArgs
-    // (P-wrapperflags / P43).
+    // When the command IS the wcli0 binary there is nothing to split: every arg is the server's
+    // own, so the WHOLE list is parsed as one server argument list. Scanning it for a suffix could
+    // cut it in the wrong place — for `wcli0 --allowAllDirs marker --no-allowAllDirs` the index-0
+    // run failed the purity check on the positional `marker`, so the scan picked the trailing
+    // negation as the suffix, left the ENABLING flag in customArgs and modeled allowAllDirs=false;
+    // a no-op save then emitted `--allowAllDirs marker` and flipped the server from restricted to
+    // UNRESTRICTED directories (P105). parseServerArgs handles the `--` separator itself, keeping
+    // it and its positionals verbatim in extraArgs (P74), so the round-trip stays exact.
+    //
+    // For a wrapper command the split is still needed and still starts at index 1: an index-0 flag
+    // run is ambiguous — `mywrapper --transport fast` is the wrapper's own option, not wcli0's — so
+    // the scan keeps looking for a later modeled-flag suffix, recovering the `--shell` in
+    // `wrapper --no-cache --shell bash` instead of stranding it (P-wrapperflags / P43).
     // This branch only ever parses a stdio entry (http/sse return earlier), so pass stdio=true:
     // a transport flag in the args must not "prove" a server-flag suffix that reorders a wrapper's
     // own options on save, since stdio leaves transport flags in extraArgs verbatim (P77).
-    const start = serverFlagSuffixStart(args, isWcli0Command(command), true);
+    const start = isWcli0Command(command) ? 0 : serverFlagSuffixStart(args, true);
     s.customArgs = args.slice(0, start);
     serverArgs = args.slice(start);
   }
