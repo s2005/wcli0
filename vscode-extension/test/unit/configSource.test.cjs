@@ -1824,3 +1824,95 @@ test('P78: a single scalar occurrence is still modeled, and array options still 
   assert.deepEqual(b.settings.allowedDirectories, ['/a', '/b']);
   assert.deepEqual(b.extraArgs, []);
 });
+
+test('P111: a trailing valueless numeric duplicate is preserved verbatim', () => {
+  // yargs is order-sensitive: it drops a valueless number option only while the key is still
+  // undefined, so `--maxCommandLength 1000000 --maxCommandLength` becomes [1000000, null] -- an
+  // array applyCliSecurityOverrides ignores, leaving the server's much stricter default limit in
+  // force. Modeling 1000000 and stripping the preserved valueless token turned an unrelated save
+  // into one that activates the weaker limit.
+  const { settings, extraArgs } = parseServerArgs([
+    '--maxCommandLength',
+    '1000000',
+    '--maxCommandLength',
+  ]);
+  assert.equal(settings.maxCommandLength, undefined, 'neither occurrence is modeled');
+  assert.deepEqual(extraArgs, ['--maxCommandLength', '1000000', '--maxCommandLength']);
+});
+
+test('P111: the trailing valueless pair survives a no-op save intact', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'node',
+    args: ['dist/index.js', '--commandTimeout', '600', '--commandTimeout'],
+  });
+  assert.equal(settings.commandTimeout, defaults().commandTimeout, 'the form shows no timeout');
+  const args = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true }).args;
+  assert.deepEqual(args, ['dist/index.js', '--commandTimeout', '600', '--commandTimeout']);
+});
+
+test('P111/P102: a LEADING valueless number is still dropped by yargs, so it is not a duplicate', () => {
+  // `--commandTimeout --commandTimeout 5` defines no key for the first token, so yargs resolves
+  // it to the scalar 5 -- counting it would leave the form showing no timeout at all (P102).
+  const { settings, extraArgs } = parseServerArgs(['--commandTimeout', '--commandTimeout', '5']);
+  assert.equal(settings.commandTimeout, 5, 'the value yargs actually applies is modeled');
+  assert.deepEqual(extraArgs, ['--commandTimeout'], 'the inert leading token is preserved');
+});
+
+test('P112: a leading positional is not swallowed by a rebuilt allowed-directory array', () => {
+  // yargs reads `wcli0 marker --allowedDir C:/trusted` as the positional `marker` plus ONE
+  // allowed directory. extraArgs is appended after the generated flags, so re-emitting it as
+  // `--allowedDir C:/trusted marker` made `marker` a SECOND allowed directory, silently widening
+  // the server's permitted working directories on an unrelated save.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['marker', '--allowedDir', 'C:/trusted'],
+  });
+  assert.deepEqual(settings.allowedDirectories, ['C:/trusted'], 'the directory stays editable');
+  assert.deepEqual(settings.extraArgs, ['marker']);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['marker', '--allowedDir', 'C:/trusted'], 'authored order is kept');
+});
+
+test('P112: an edited allowed-directory list still cannot capture the positional', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['marker', '--allowedDir', 'C:/trusted'],
+  });
+  const edited = { ...settings, allowedDirectories: ['C:/trusted', 'C:/extra'] };
+  const spec = buildLaunchSpec(edited, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, [
+    'marker',
+    '--allowedDir',
+    'C:/trusted',
+    '--allowedDir',
+    'C:/extra',
+  ]);
+});
+
+test('P112: a leading positional is kept out of the blocked lists too', () => {
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['marker', '--blockedCommand', 'rm'],
+  });
+  assert.deepEqual(settings.blockedCommands, ['rm']);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['marker', '--blockedCommand', 'rm']);
+});
+
+test('P112: array flags keep their usual position when extraArgs lead with a flag', () => {
+  // The hoist fires only on the dangerous shape: a later positional already has a `-`-prefixed
+  // token in front of it, which is where yargs stops consuming array values.
+  const { settings } = parseMcpEntry({
+    type: 'stdio',
+    command: 'wcli0',
+    args: ['--allowedDir', 'C:/trusted', '--futureFlag', 'x'],
+  });
+  assert.deepEqual(settings.allowedDirectories, ['C:/trusted']);
+  assert.deepEqual(settings.extraArgs, ['--futureFlag', 'x']);
+  const spec = buildLaunchSpec(settings, { resolvePaths: false, preserveRelativePaths: true });
+  assert.deepEqual(spec.args, ['--allowedDir', 'C:/trusted', '--futureFlag', 'x']);
+});

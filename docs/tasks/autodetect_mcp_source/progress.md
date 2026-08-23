@@ -584,3 +584,12 @@ findings were never returned and every check reported "0 unresolved". #89 was re
 - [x] P110: Reject incompatible concurrent launch-method changes (the P80 transport-mode guard one
   level down: a save carrying a method-specific field is refused when the entry's launch method
   changed on disk, unless the user is switching the method themselves)
+- [x] P111: Preserve trailing valueless numeric duplicates (yargs drops a valueless number option
+  only while its key is undefined, so `--maxCommandLength 1000000 --maxCommandLength` is the array
+  `[1000000, null]` the server ignores; the pre-scan now counts such a repeat as a duplicate and
+  keeps both tokens verbatim instead of modeling the value and activating the weaker limit on an
+  unrelated save. The leading form of P102 is unchanged)
+- [x] P112: Keep positionals out of rebuilt allowed-directory arrays (the greedy-array counterpart
+  of P106/P109: the builder re-emits `--allowedDir` / `--blocked*` after the leading run of
+  positionals preserved in extraArgs, so `marker --allowedDir C:/trusted` no longer rebuilds into
+  two allowed directories - and an edited list is safe too)

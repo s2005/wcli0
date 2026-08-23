@@ -615,11 +615,20 @@ export function parseServerArgs(
         // usable shell name). Requiring a value token hid that occurrence, so only `bash` was
         // modeled, the preserved `--shell` was stripped when the field was emitted, and a no-op
         // save rewrote an entry with NO usable shell into one running commands through Bash (P98).
-        // A NUMBER option is different: yargs DROPS a valueless one entirely (`--commandTimeout
-        // --commandTimeout 5` => 5, no array), so counting it would preserve a pair the server
-        // resolves to a single value and leave the form showing no timeout (P102). Values the
-        // typed field cannot hold are still counted (P90).
-        if (spec.kind !== 'number' || isOptionValueToken(args[i + 1])) {
+        // A NUMBER option is different: yargs DROPS a valueless one only while the key is still
+        // UNDEFINED (`--commandTimeout --commandTimeout 5` => 5, no array), so counting that
+        // leading occurrence would preserve a pair the server resolves to a single value and
+        // leave the form showing no timeout (P102). Once an earlier occurrence has defined the
+        // key, a valueless repeat is appended as null and yargs yields an ARRAY (verified:
+        // `--maxCommandLength 1000000 --maxCommandLength` => [1000000, null]), which
+        // applyCliSecurityOverrides ignores because it is not a number -- the entry runs on the
+        // server's safer default. Counting only the occurrence that carries a value modeled
+        // 1000000, and the builder then stripped the preserved valueless token, so an unrelated
+        // save activated the much weaker command-length limit the entry never applied (P111).
+        // Values the typed field cannot hold are still counted (P90).
+        const numberDefinesKey =
+          isOptionValueToken(args[i + 1]) || (counts.get(spec.key) ?? 0) > 0;
+        if (spec.kind !== 'number' || numberDefinesKey) {
           bump(spec.key);
         }
       }

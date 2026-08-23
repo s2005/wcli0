@@ -422,6 +422,17 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     return buildManagedServerArgs(s, opts.managedConfigPath);
   }
   const args: string[] = [];
+  // Indices in `args` occupied by a yargs ARRAY option (--allowedDir / --blocked*), recorded so
+  // they can be re-emitted after a leading positional preserved in extraArgs (see the hoist at
+  // the end of this function, P112).
+  const greedyArrayAt = new Set<number>();
+  const pushArrayOption = (flag: string, value: string): void => {
+    const before = args.length;
+    pushOption(args, flag, value);
+    for (let i = before; i < args.length; i++) {
+      greedyArrayAt.add(i);
+    }
+  };
 
   const configFile = pathValue(s.configFile, opts);
   if (configFile) {
@@ -446,12 +457,12 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     // are gated on preserveRelativePaths): there an empty line is editor noise, not an authored
     // deny-all, and the form filters blanks out when collecting the textarea anyway.
     if (opts.preserveRelativePaths && dir.trim() === '') {
-      pushOption(args, '--allowedDir', dir);
+      pushArrayOption('--allowedDir', dir);
       continue;
     }
     const resolved = pathValue(dir, opts);
     if (resolved) {
-      pushOption(args, '--allowedDir', resolved);
+      pushArrayOption('--allowedDir', resolved);
     }
   }
   const initialDir = pathValue(s.initialDir, opts);
@@ -474,13 +485,13 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
     pushOption(args, '--wslMountPoint', s.wslMountPoint.trim());
   }
   for (const cmd of s.blockedCommands) {
-    pushOption(args, '--blockedCommand', cmd);
+    pushArrayOption('--blockedCommand', cmd);
   }
   for (const arg of s.blockedArguments) {
-    pushOption(args, '--blockedArgument', arg);
+    pushArrayOption('--blockedArgument', arg);
   }
   for (const op of s.blockedOperators) {
-    pushOption(args, '--blockedOperator', op);
+    pushArrayOption('--blockedOperator', op);
   }
   // Only emit log limits the server accepts as a config-file value; an out-of-range value
   // makes validateLoggingConfig throw on startup (surfaced by validateLaunchSpec). A loaded
@@ -631,6 +642,28 @@ export function buildServerArgs(s: Wcli0Settings, opts: BuildOptions = {}): stri
   }
   for (const flag of emittedTransportScalarFlags) {
     extras = stripValueFlag(extras, [flag]);
+  }
+  // yargs declares --allowedDir/--blockedCommand/--blockedArgument/--blockedOperator as ARRAY
+  // options, which keep consuming tokens until the next `-`-prefixed one. extraArgs is appended
+  // AFTER the generated flags, so a bare POSITIONAL preserved at the head of extraArgs lands
+  // directly behind those array flags and is swallowed as another value: yargs reads
+  // `wcli0 marker --allowedDir C:/trusted` as the positional `marker` plus ONE allowed directory,
+  // but rebuilding it as `--allowedDir C:/trusted marker` yields TWO -- so an unrelated save
+  // silently widened the server's permitted working directories (and the same shape can empty a
+  // blocked list). Re-emit the array flags after that leading run instead, which reproduces the
+  // authored order. Only the leading run is at risk: any later positional already has a
+  // `-`-prefixed token in front of it, which is exactly where yargs stops consuming array values.
+  let leadingPositionals = 0;
+  while (leadingPositionals < extras.length && isOptionValueToken(extras[leadingPositionals])) {
+    leadingPositionals++;
+  }
+  if (leadingPositionals > 0 && greedyArrayAt.size > 0) {
+    return [
+      ...args.filter((_, i) => !greedyArrayAt.has(i)),
+      ...extras.slice(0, leadingPositionals),
+      ...args.filter((_, i) => greedyArrayAt.has(i)),
+      ...extras.slice(leadingPositionals),
+    ];
   }
   for (const extra of extras) {
     args.push(extra);
